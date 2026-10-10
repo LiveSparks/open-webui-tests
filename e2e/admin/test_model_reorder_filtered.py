@@ -8,7 +8,9 @@ hides keeps its place in the stored order. Each test gives its models a place at
 
 Discriminates: passes on dev ef67cc3fa; with the frontend change of #30390 reverted both filtered
 tests fail (the dragged row does not move under a search or a tag), while the unfiltered drag
-passes on both.
+passes on both. The drag hovers over the target until the row has moved, because the list ignores
+the pointer for a moment after each swap. It passes on dev b40891e0a, and a frontend copy of it
+that only lets a row be dragged without a search still turns the searched test red.
 """
 
 from __future__ import annotations
@@ -95,6 +97,12 @@ def _listed_names(settings: Locator, prefix: str) -> Locator:
     return settings.locator("#model-list").get_by_text(prefix)
 
 
+def _row_index(settings: Locator, name: str) -> int:
+    return settings.locator("#model-list > div").evaluate_all(
+        "(rows, name) => rows.findIndex((row) => row.textContent.includes(name))", name
+    )
+
+
 def _drag_above(page: Page, settings: Locator, moved: str, onto: str) -> None:
     grip = _row(settings, moved).locator("svg").first
     target = _row(settings, onto)
@@ -102,7 +110,12 @@ def _drag_above(page: Page, settings: Locator, moved: str, onto: str) -> None:
     page.mouse.down()
     box = target.bounding_box()
     page.mouse.move(box["x"] + 20, box["y"] + 4, steps=15)
-    page.mouse.move(box["x"] + 20, box["y"] + 2, steps=5)
+    # the list ignores the pointer while a swap animates, so hover until the row has moved up
+    for nudge in range(40):
+        if _row_index(settings, moved) < _row_index(settings, onto):
+            break
+        page.mouse.move(box["x"] + 20, box["y"] + 2 + nudge % 3, steps=2)
+        page.wait_for_timeout(50)
     page.mouse.up()
 
 
