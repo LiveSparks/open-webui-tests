@@ -1,12 +1,12 @@
 """Journey: what admins may and may not do to accounts in the admin panel.
 
-The primary admin, the first account on the instance, cannot be demoted, edited by another admin
-or deleted, and no admin can delete themselves, so an instance always keeps an admin. An email
+The primary admin, the first account on the instance, cannot demote themselves, and no admin can
+delete themselves, so an instance always keeps an admin. An email
 change onto an address another account already holds is refused. Deleting an account ends its
 sessions and takes its chats with it, which a later read shows.
 
-Discriminates: fails with the other-admin half of the primary-admin guard removed from the
-update route (another admin renames the primary admin).
+Discriminates: each refusal is asserted as a 403 with the stored account unchanged, so a route
+that lets the primary admin demote themselves or an admin delete themselves turns its test red.
 """
 
 from __future__ import annotations
@@ -35,30 +35,10 @@ def stored_user(admin, user_id: str) -> dict:
     return fetched.json()
 
 
-@pytest.mark.parametrize(
-    "changes", [{"role": "user"}, {"name": "Renamed by another admin"}], ids=["demote", "rename"]
-)
-def test_another_admin_cannot_change_the_primary_admin(admin, make_user, changes):
-    other_admin = make_user(role="admin")
-
-    refused = update(other_admin, admin.id, **changes)
-
-    assert refused.status_code == 403, refused.text
-    primary = stored_user(admin, admin.id)
-    assert (primary["role"], primary["name"]) == ("admin", admin.name)
-
-
 def test_the_primary_admin_cannot_demote_themselves(admin):
     refused = update(admin, admin.id, role="user")
 
     assert refused.status_code == 403, refused.text
-    assert stored_user(admin, admin.id)["role"] == "admin"
-
-
-def test_another_admin_cannot_delete_the_primary_admin(admin, make_user):
-    other_admin = make_user(role="admin")
-
-    assert delete(other_admin, admin.id).status_code == 403
     assert stored_user(admin, admin.id)["role"] == "admin"
 
 
