@@ -485,6 +485,8 @@ def test_a_stopped_background_subagent_is_reported_as_interrupted_and_the_chat_c
         turn, stored = ask(client, prompt)
         [handle] = dispatch_handles(stored)
         sub_id = handle["subagent_chat_id"]
+        # stopped earlier, the parent's report (which names the task) would take the helper's reply
+        wait_for_request(upstream, reply.answering(task))
 
         stopped = client.post(f"/api/tasks/chat/{sub_id}/stop")
         assert stopped.status_code == 200, stopped.text
