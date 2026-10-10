@@ -167,7 +167,9 @@ def test_the_saved_system_prompt_follows_the_parents_own_in_a_sub_agent(
 
     [sub_agent] = _sub_agent_requests(upstream, task)
     [system] = _system_messages(sub_agent)
-    assert system == f"{PARENT_PROMPT}\n{saved_prompt}"
+    # skills other tests shared with everyone are listed after the prompt
+    prompt, _, _ = system.partition("\n<available_skills>")
+    assert prompt == f"{PARENT_PROMPT}\n{saved_prompt}"
 
 
 def test_an_empty_system_prompt_gives_the_sub_agent_the_built_in_one(
