@@ -1,14 +1,17 @@
 """Regression: a fast burst of note edits can leave the saved note behind the editor.
 
-Issue #31585 (open, fix PR #31596 open): every edit does awaited work on the server (loading the
-note, checking write access, storing and passing on the update) before it replaces the pending save
-with its own, so with edits a few milliseconds apart an older edit can finish that work after a
-newer one and its text is the one saved. The stored note then misses the last characters the editor
-shows. It hits a writer the note was shared with most, because the access check widens the window,
-and the owner as well.
+Issue #31585 (fixed by 8594b2f42, PR #31596 closed unmerged): every edit did awaited work on the
+server (loading the note, checking write access, storing and passing on the update) before it
+replaced the pending save with its own, so with edits a few milliseconds apart an older edit could
+finish that work after a newer one and its text was the one saved. The stored note then missed the
+last characters the editor showed. It hit a writer the note was shared with most, because the access
+check widened the window, and the owner as well.
 
 Here a tab sends bursts of edits without waiting for the server, each carrying the full text so
 far, on several notes at once; once the save delay has passed every note must hold the last text.
+Each round of notes gets a tab of its own, kept open until the saves are checked: since f56db6913
+(PR #31603) a connection may hold only 20 documents open and the server refuses further joins, so
+one tab joining all 48 notes left 28 of them unjoined and never saved.
 On Postgres the instance gets the pool the scaling docs suggest to start from
 (`DATABASE_POOL_SIZE=15`, `DATABASE_POOL_MAX_OVERFLOW=20`) and the notes get their bursts one at a
 time: with the default pool even one note's burst runs out of connections and the server answers
@@ -18,11 +21,14 @@ Discriminates: fails on dev 176d31d1d (some notes keep an older edit's text); pa
 newest edit's save is the one that stays scheduled. On dev f6cbeb1a1 7 or 8 of the 8 notes keep an
 older text on Postgres and Redis, and 11 to 22 of the 48 on SQLite; with PR #31596's per-note
 ordering applied in a backend copy both tests pass on both, the SQLite writer's only once the wait
-was raised from 8 to 30 seconds, as the ordered edits take longer to work through.
+was raised from 8 to 30 seconds, as the ordered edits take longer to work through. On dev e24cd406e
+both pass on SQLite and on Postgres and Redis; in a backend copy without 8594b2f42's per-note lock
+both fail on SQLite.
 """
 
 from __future__ import annotations
 
+import contextlib
 import time
 import uuid
 
@@ -92,16 +98,18 @@ def _type_bursts(writer, owner, note_ids: list[str]) -> str:
     steps = range(EDITS_PER_NOTE)
     texts = [SENTENCE[: 1 + step * len(SENTENCE) // EDITS_PER_NOTE] for step in steps]
     texts[-1] = SENTENCE
-    with connected(writer) as tab:
-        for note_id in note_ids:
-            tab.join_note(note_id)
+    with contextlib.ExitStack() as tabs:
         for start in range(0, len(note_ids), NOTES_PER_ROUND):
+            round_ids = note_ids[start : start + NOTES_PER_ROUND]
+            tab = tabs.enter_context(connected(writer))
+            for note_id in round_ids:
+                tab.join_note(note_id)
             for text in texts:
-                for note_id in note_ids[start : start + NOTES_PER_ROUND]:
+                for note_id in round_ids:
                     tab.client.emit("ydoc:document:update", _edit_message(note_id, text))
                 time.sleep(EDIT_SPACING)
             # a call is answered after the emits before it, so the round has been read
-            tab.join_note(note_ids[start])
+            tab.join_note(round_ids[0])
         return _wait_for_saves(owner, note_ids, SENTENCE)
 
 
