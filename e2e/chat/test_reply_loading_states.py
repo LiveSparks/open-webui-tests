@@ -8,7 +8,7 @@ Stopping halfway keeps exactly what arrived, and a reload reads the same.
 
 `test_a_reply_stopped_before_its_first_word_stays_empty` is red on dev 62f70a844: since de73bb830 a
 reply stopped with Stop never ends on the page, the Stop button stays and the next message is not
-answered (open-webui/open-webui#32081).
+answered (open-webui/open-webui#32081, fixed by d12bf062b).
 
 Discriminates: passes on dev ebc6add67; the waiting test fails on a build that only shows the
 cursor once there are words, and the stop tests fail on a backend copy whose stop endpoint

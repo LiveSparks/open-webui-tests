@@ -15,7 +15,7 @@ drop the old one from authlib's registry, or the next connect still signs in as 
 `test_registering_the_server_again_connects_with_the_new_client` are red on dev 1c010b438: a tool
 written with the official MCP SDK that returns plain text also sends it as structured data, and the
 model gets the text twice, the second time wrapped as `{"result": ...}`
-(open-webui/open-webui#32126).
+(open-webui/open-webui#32126, fixed by ab15284a4).
 
 Discriminates: in a backend copy, never adding the S256 code challenge fails every test at the
 connect (the authorization server refuses the authorize), and returning the stored token without

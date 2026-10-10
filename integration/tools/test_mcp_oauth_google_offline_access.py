@@ -15,7 +15,8 @@ is sent neither parameter, and its expired token is still refreshed as before.
 
 `test_the_tool_still_works_after_the_first_token_expired` is red on dev 1c010b438: a tool written
 with the official MCP SDK that returns plain text also sends it as structured data, and the model
-gets the text twice, the second time wrapped as `{"result": ...}` (open-webui/open-webui#32126).
+gets the text twice, the second time wrapped as `{"result": ...}` (open-webui/open-webui#32126,
+fixed by ab15284a4).
 
 Discriminates: passes on dev a5bc78300, fails with a5176f4cd reverted (the sign-in asks no offline
 access, the stand-in issues no refresh token, and the tool call after expiry finds the connection

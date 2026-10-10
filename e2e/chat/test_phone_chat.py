@@ -28,7 +28,7 @@ and in one that leaves the chat's files out of the request the file test.
 
 The two Download choices tests are red on dev ebc6add67: on a screen this narrow the choices open
 beside the menu, past the left edge of the screen, with their names cut off
-(open-webui/open-webui#32015).
+(open-webui/open-webui#32015, fixed by f7727e24b).
 """
 
 from __future__ import annotations

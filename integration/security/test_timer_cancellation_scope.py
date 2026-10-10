@@ -20,7 +20,7 @@ passes the acting user.
 `test_a_stranger_reading_the_chat_leaves_the_owners_timer_running` are red on dev 62f70a844: since
 de73bb830 a chat request whose reply message is already stored in the chat, the way automations,
 sub-agents and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 Discriminates: passes on dev `ef67cc3fa`; with `e140d8f3c` reverted (the query's owner filter
 and the handler's early return) the stranger's read cancels the timer and it never fires, and

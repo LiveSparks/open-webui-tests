@@ -14,7 +14,7 @@ sends the next reply to the new one, a removed target leaves the list and is not
 Make Default moves the model's `notify` tool to that target. A target for failed chats is called
 when a reply fails, as the notifications docs promise; on dev a provider error that ends a reply
 announces nothing, so that test stays red until the failure is published
-(open-webui/open-webui#32003).
+(open-webui/open-webui#32003, fixed by 0a5095409).
 
 Discriminates: passes on dev a5bc78300, and the chat link test fails on dev 176d31d1d, before PR
 #31572; in frontend copies of 176d31d1d, with the target save sending no URL the save test fails,

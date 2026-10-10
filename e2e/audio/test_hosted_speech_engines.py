@@ -8,7 +8,7 @@ speech-to-text with its key and model; a user who set a Speech-to-Text Language 
 chat input and Deepgram's transcript lands there, asked for in that language. When Deepgram
 refuses the recording, the error the user sees should give Deepgram's reason; on dev ebc6add67 it
 gives only Deepgram's status ("401, message='Unauthorized'"), so that test is red
-(open-webui/open-webui#32009). Twin, in the
+(open-webui/open-webui#32009, fixed by 6faf54031). Twin, in the
 browser, of integration/audio/test_hosted_speech_engines.py.
 
 Discriminates: passes on the dev ebc6add67 build; in a backend copy whose `_tts_elevenlabs` sends

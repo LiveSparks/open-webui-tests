@@ -9,7 +9,8 @@ one. Sign-in with OAuth 2.1 is in test_mcp_oauth_sign_in.py.
 
 `test_an_mcp_server_the_admin_adds_is_called_in_chat` is red on dev 1c010b438: a tool written with
 the official MCP SDK that returns plain text also sends it as structured data, and the model gets
-the text twice, the second time wrapped as `{"result": ...}` (open-webui/open-webui#32126).
+the text twice, the second time wrapped as `{"result": ...}` (open-webui/open-webui#32126, fixed by
+ab15284a4).
 
 Discriminates: on dev ebc6add67, in a backend copy whose MCP check answers success without
 connecting the key check fails; with the MCP branch of the chat's tool resolution skipped both chat

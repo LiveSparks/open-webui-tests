@@ -13,7 +13,7 @@ e2e/workspace/test_workspace_import_export.py.
 The German-name search test is red on purpose: the Translations docs page says Workspace search
 matches the translated name as well as the original, but the skill list's search goes to the
 server, which matches only the original name, description and id, so typing the name a German
-user is shown finds nothing (open-webui/open-webui#32018).
+user is shown finds nothing (open-webui/open-webui#32018, fixed by 1579af28a).
 
 Discriminates: passes on the dev ebc6add67 build apart from the search test; in a frontend copy
 that never resolves a translated name the German name test goes red. Retargeted for 9bbb95048,

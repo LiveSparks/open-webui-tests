@@ -20,7 +20,8 @@ the skip link pointing nowhere the skip link test.
 
 The settings focus test is red on dev ebc6add67: Settings opened from the user menu hand the focus
 back on closing to the menu's Settings entry, which is gone by then, so the focus falls to the page
-itself and the next Tab starts over at the top of the page (open-webui/open-webui#32017).
+itself and the next Tab starts over at the top of the page (open-webui/open-webui#32017, fixed by
+c7e7dbf98).
 """
 
 from __future__ import annotations

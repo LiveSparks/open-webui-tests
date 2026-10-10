@@ -16,7 +16,7 @@ changed it.
 
 The switched-back test is red on dev ebc6add67: Default stores the chat's value as null, and that
 null replaces the account's value in the request, so no temperature is sent at all
-(open-webui/open-webui#32013).
+(open-webui/open-webui#32013, fixed by c2a5c7a24).
 
 Discriminates: every other test passes on dev ebc6add67. On a build that sends only the account's
 parameters every chat-value test fails (and the switched-back test passes); on one that ignores a

@@ -6,7 +6,7 @@ succession, as an agent editing a skill's files or a person saving twice does, c
 and the picker shows an older version on top.
 
 Red on dev 178de3666: five saves made one after another come back in random order
-(open-webui/open-webui#32134).
+(open-webui/open-webui#32134, fixed by 2dff26b1b).
 
 Discriminates: red 3 of 3 on dev 178de3666; passes 3 of 3 in a backend copy whose history query
 breaks ties by the order the versions were written in.

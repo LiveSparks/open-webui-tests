@@ -12,7 +12,7 @@ frontend build whose channel messages ignore a swipe the swipe test fails at the
 
 The swipe test is red on dev ebc6add67: the same swipe also reaches the sidebar's swipe-to-open
 gesture, so the drawer slides open over the channel and covers the quoted message
-(open-webui/open-webui#32016).
+(open-webui/open-webui#32016, fixed by 92f283bba).
 """
 
 from __future__ import annotations

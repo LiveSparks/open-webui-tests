@@ -14,7 +14,7 @@ with Run now right after.
 `test_the_first_run_on_a_cold_cache_offers_the_models_tools` are red on dev 62f70a844: since
 de73bb830 a chat request whose reply message is already stored in the chat, the way automations,
 sub-agents and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 Discriminates: passes on dev efe63bd34; with 60ded561a reverted in a backend copy both cold-cache
 tests fail (no tools offered, and the channel run says "You are <model id>"). The warm-cache test

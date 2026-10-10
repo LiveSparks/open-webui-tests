@@ -12,7 +12,7 @@ name it was offered and the result must come back. Nearby: a short id keeps the 
 
 Every test here is red on dev 1c010b438: a tool written with the official MCP SDK that returns plain
 text also sends it as structured data, and the model gets the text twice, the second time wrapped as
-`{"result": ...}` (open-webui/open-webui#32126).
+`{"result": ...}` (open-webui/open-webui#32126, fixed by ab15284a4).
 
 Discriminates: passes on dev b859124f9, fails with e1248e5cf reverted (the offered name is over 64
 characters).

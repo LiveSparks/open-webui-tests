@@ -12,7 +12,7 @@ Twin of integration/tools/test_mcp_oauth_long_scope_list.py.
 `test_pressing_a_server_that_asks_for_many_scopes_connects_it` is red on dev 1c010b438: a tool
 written with the official MCP SDK that returns plain text also sends it as structured data, and the
 model gets the text twice, the second time wrapped as `{"result": ...}`
-(open-webui/open-webui#32126).
+(open-webui/open-webui#32126, fixed by ab15284a4).
 
 Discriminates: passes on dev b859124f9, fails with cd64930c0 reverted (the browser comes back with
 the state error in the address and the server is still not connected).

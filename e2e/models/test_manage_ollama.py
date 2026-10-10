@@ -11,9 +11,10 @@ and an action on one server leaves the other alone.
 Two tests stay red on dev until the dialog is fixed. A create whose stream reports download
 progress (Ollama pulls a base it does not have first) shows no progress: the progress block reads
 `createModelTag`, a variable the dialog lost in 419005a57, and throws "createModelTag is not
-defined" (open-webui/open-webui#32001). A create Ollama refuses outright (a 400 such as "neither
-'from' or 'files' was specified") shows nothing at all: the dialog only reads a response that
-succeeded, clears the form and gives no error (open-webui/open-webui#32002).
+defined" (open-webui/open-webui#32001, fixed by 4c5520a01). A create Ollama refuses outright (a 400
+such as "neither 'from' or 'files' was specified") shows nothing at all: the dialog only reads a
+response that succeeded, clears the form and gives no error (open-webui/open-webui#32002, fixed by
+eebf6438a).
 
 Discriminates: passes on dev ebc6add67 apart from the two red tests; in frontend copies, with the
 pasted command no longer trimmed the pull test fails, with the picker's choice not passed on the

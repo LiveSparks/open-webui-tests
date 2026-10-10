@@ -184,7 +184,7 @@ def test_saved_pipe_valves_shape_the_next_reply(admin):
 def test_a_pipe_whose_valves_need_a_key_installs_and_answers_once_the_key_is_saved(admin):
     """Red on dev 3dd1db147: saving a function builds its Valves from the stored values, so a
     function with a required valve and nothing stored yet is refused and cannot be installed
-    (open-webui/open-webui#32145)."""
+    (open-webui/open-webui#32145, fixed by c9f9c4b1d)."""
     with installed_function(admin, KEYED_PIPE) as pipe_id:
         _save_function_valves(admin, pipe_id, {"api_key": "the saved key"})
         reply = _pipe_reply(admin, pipe_id)

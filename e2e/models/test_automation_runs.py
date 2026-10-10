@@ -15,7 +15,7 @@ said "Never" as well), since only the scheduler's own claim wrote that time.
 and `test_the_run_history_lists_every_run_with_its_chat` are red on dev 62f70a844: since de73bb830 a
 chat request whose reply message is already stored in the chat, the way automations, sub-agents and
 timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 Discriminates: passes on dev a5bc78300, and the last run test fails on dev 176d31d1d, before PR
 #31583. On dev ac00d40e3, in a backend copy, with `POST /api/v1/automations/{id}/run` answering

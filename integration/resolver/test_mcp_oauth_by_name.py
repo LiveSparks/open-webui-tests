@@ -23,7 +23,7 @@ are not affected by the flag.
 `test_an_expiring_token_is_refreshed_at_a_server_named_by_host` are red on dev 1c010b438: a tool
 written with the official MCP SDK that returns plain text also sends it as structured data, and the
 model gets the text twice, the second time wrapped as `{"result": ...}`
-(open-webui/open-webui#32126).
+(open-webui/open-webui#32126, fixed by ab15284a4).
 
 Discriminates: on dev 176d31d1d, a backend copy whose `env.py` installs a resolver that fails every
 lookup when the flag is on turns every c-ares run of a by-name test red and leaves every threaded

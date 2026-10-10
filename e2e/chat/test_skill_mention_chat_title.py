@@ -5,7 +5,7 @@ becomes the title as typed. A message that starts with a skill picked from the `
 titled the way the message reads, but the sidebar shows the mention's raw markup, such as
 `<$skill-id|Skill name> what now?`, because the fallback title is the stored message text and
 the mention is only resolved where the message itself is drawn. That test is red on purpose
-(open-webui/open-webui#32019).
+(open-webui/open-webui#32019, fixed by cdd96e5b5).
 
 Discriminates: the plain message test passes on the dev ebc6add67 build and turns red in a
 backend copy whose fallback title is a fixed "Untitled"; the mention test fails on that build

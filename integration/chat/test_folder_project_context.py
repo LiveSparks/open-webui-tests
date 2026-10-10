@@ -12,7 +12,7 @@ Twin of e2e/chat/test_folder_project_context.py.
 `test_an_automation_filed_in_a_folder_runs_under_its_prompt` is red on dev 62f70a844: since
 de73bb830 a chat request whose reply message is already stored in the chat, the way automations,
 sub-agents and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 Discriminates: passes on dev ebc6add67; in a backend copy with the middleware's folder lookup
 returning no folder every test that expects the prompt goes red, and with the prompt taken from

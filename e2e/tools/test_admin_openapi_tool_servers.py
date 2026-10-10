@@ -10,7 +10,7 @@ members only. integration/tools/test_openapi_tool_server.py covers what a call s
 
 `test_a_server_the_admin_adds_is_called_in_chat_with_its_auth` is red now and then on dev 896056690:
 since de73bb830 the reply in a new chat sometimes stays blank until a reload although the server
-saved it whole (open-webui/open-webui#32091).
+saved it whole (open-webui/open-webui#32091, fixed by 958ad3673).
 
 Discriminates: on dev ebc6add67, in a backend copy whose tools list skips the connection access
 check the group test fails (the outsider is offered the server); with the enable check dropped

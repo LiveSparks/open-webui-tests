@@ -12,7 +12,7 @@ run side by side up to the admin's concurrent limit.
 `test_the_subagents_of_one_reply_run_side_by_side` are red on dev 62f70a844: since de73bb830 a chat
 request whose reply message is already stored in the chat, the way automations, sub-agents and
 timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 Discriminates: passes on dev 176d31d1d. In backend copies each test turns red with its edit: the
 context left off the task, the default prompt dropped, the delegation tool left in the sub-agent's

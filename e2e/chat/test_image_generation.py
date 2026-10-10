@@ -12,8 +12,9 @@ picture and shows its error in the tool result.
 `test_a_model_with_image_generation_by_default_starts_with_the_chip_on` is red now and then on dev
 7b7dba6ee: since de73bb830 a live update to the reply can write back an older copy of it, so the
 picture drops out of the reply, or the reply stays blank, until a reload
-(open-webui/open-webui#32091). With the chat list answering 1.5 s late, dev 22102e4a2 lost the
-reply and its picture in 5 of 5 runs and a build without the per-update copy in none.
+(open-webui/open-webui#32091, fixed by 958ad3673). With the chat list answering 1.5 s late, dev
+22102e4a2 lost the reply and its picture in 5 of 5 runs and a build without the per-update copy in
+none.
 
 Discriminates: passes on dev 176d31d1d with its built frontend. In a backend copy, with
 `/api/v1/images/config/update` ignoring `IMAGES_OPENAI_API_KEY` the settings test fails (the key

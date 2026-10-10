@@ -14,7 +14,7 @@ still save.
 
 `test_pipe_valves_saved_from_the_function_list_shape_its_next_reply` is red now and then on dev
 896056690: since de73bb830 the reply in a new chat sometimes stays blank until a reload although the
-server saved it whole (open-webui/open-webui#32091).
+server saved it whole (open-webui/open-webui#32091, fixed by 958ad3673).
 
 Discriminates: passes on dev 176d31d1d; in a frontend copy, the valves dialog saving an empty
 form turned the tool, pipe, reset and Integrations menu tests red and left the chat controls test

@@ -13,9 +13,9 @@ model from the selector.
 
 Two tests stay red on dev ebc6add67. The CSV export reads each rating's chat from the rating data,
 where it is never stored (the chat sits in the rating's meta), so its chat_id column is always
-empty (open-webui/open-webui#32021). Rating the reply of a comparison that is not the selected one
-selects it first, which rebuilds the reply and closes the rating form it just opened, so the
-rating is saved without the form for a score, a reason, a comment or tags
+empty (open-webui/open-webui#32021, fixed by b6a7820a2). Rating the reply of a comparison that is
+not the selected one selects it first, which rebuilds the reply and closes the rating form it just
+opened, so the rating is saved without the form for a score, a reason, a comment or tags
 (open-webui/open-webui#32022).
 
 Discriminates: passes on dev 176d31d1d; in a frontend copy, sorting the leaderboard the other

@@ -20,7 +20,7 @@ parent's is what the person typed.
 `test_the_result_row_opens_to_the_task_and_the_answer` are red on dev 62f70a844: since de73bb830 a
 chat request whose reply message is already stored in the chat, the way automations, sub-agents and
 timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 `test_the_row_reads_executing_while_the_subagent_is_still_working` is red on dev 93fc3fcb7
 for the same reason: the sub-agent is refused at once, so its row never reads Executing.

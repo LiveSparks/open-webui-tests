@@ -9,7 +9,7 @@ asked. With Deepgram picked, a recording comes back as Deepgram's transcript, se
 key and model and the language asked for, and an error Deepgram gives is passed on. That last
 test is red on dev ebc6add67: the transcription keeps only Deepgram's status ("401, message=
 'Unauthorized'") and drops the reason Deepgram gives, which the error handler means to show
-(open-webui/open-webui#32009).
+(open-webui/open-webui#32009, fixed by 6faf54031).
 
 Discriminates: the other tests pass on dev ebc6add67; in a backend copy whose `_tts_elevenlabs`
 asks for the admin's voice in place of the one asked for the speech test fails, and in one whose

@@ -20,13 +20,13 @@ a reload for both values.
 `test_a_timer_fires_and_its_whole_follow_up_shows_after_a_reload` are red on dev 62f70a844: since
 de73bb830 a chat request whose reply message is already stored in the chat, the way automations,
 sub-agents and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 `test_reasoning_deltas_fill_a_thinking_block_above_the_answer` and
 `test_a_long_reply_over_many_pieces_is_shown_in_full` are red now and then on dev 93fc3fcb7: since
 de73bb830 the reply in a new chat sometimes stays blank until a reload although the server saved
-it whole (open-webui/open-webui#32091). The first passes six of six on de73bb830^ and fails two of
-six on de73bb830 and on 93fc3fcb7.
+it whole (open-webui/open-webui#32091, fixed by 958ad3673). The first passes six of six on
+de73bb830^ and fails two of six on de73bb830 and on 93fc3fcb7.
 
 Discriminates: passes on dev 176d31d1d with the toggle off and on; with the in-place branch
 appending a marker before each piece every append-in-place case turns red and the append-copies

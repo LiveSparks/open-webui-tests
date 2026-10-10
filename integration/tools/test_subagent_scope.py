@@ -23,9 +23,9 @@ Chat` keeps nothing (the task tools are withheld from it for that reason, dev d2
 Every test here but the temporary chat one is red on dev 1c010b438: since de73bb830 a chat request
 whose reply message is already stored in the chat, the way automations, sub-agents and timers
 prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066). Apart from the skill test they pass on de73bb830^. With that refusal
-removed in a backend copy of dev 1c010b438 the skill test passes three of three, and fails three
-of three with ecbbff8af reverted as well.
+(open-webui/open-webui#32066, fixed by 641c82df1). Apart from the skill test they pass on
+de73bb830^. With that refusal removed in a backend copy of dev 1c010b438 the skill test passes three
+of three, and fails three of three with ecbbff8af reverted as well.
 
 Discriminates: passes on dev 015dbc861 apart from the skill test, which turns green in a backend
 copy that strips the skill list from the parent's prompt; the folder knowledge test fails on dev

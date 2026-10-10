@@ -5,7 +5,7 @@ exact reply the model gives, so every assertion is about what the page does with
 
 `test_stop_keeps_the_partial_reply_and_the_next_message_still_sends` is red on dev 62f70a844: since
 de73bb830 a reply stopped with Stop never ends on the page, the Stop button stays and the next
-message is not answered (open-webui/open-webui#32081).
+message is not answered (open-webui/open-webui#32081, fixed by d12bf062b).
 """
 
 from __future__ import annotations

@@ -34,7 +34,8 @@ Bugs, both red on dev ebc6add67:
 `test_an_automation_filed_in_a_folder_runs_into_it_under_its_prompt` and
 `test_the_calendar_shows_an_active_automations_runs_and_opens_them` are red on dev 93fc3fcb7: since
 de73bb830 an automation's run, whose reply is stored before it is asked for, is refused with 409 and
-the reply is never written (open-webui/open-webui#32066). They pass on de73bb830^.
+the reply is never written (open-webui/open-webui#32066, fixed by 641c82df1). They pass on
+de73bb830^.
 
 Discriminates: passes on dev ebc6add67 apart from the two bugs. In a frontend copy building every
 weekly rule without its days the weekly create and rename cases go red, and with the Once date

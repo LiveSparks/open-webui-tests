@@ -25,12 +25,12 @@ until the person reloaded. Every test that reads the report waits for it in the 
 `test_two_accounts_at_once_each_get_only_their_own_report` are red on dev 62f70a844: since de73bb830
 a chat request whose reply message is already stored in the chat, the way automations, sub-agents
 and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 `test_stopping_the_chat_during_a_foreground_subagent_stops_it_and_the_chat_still_works` is red on
 dev 62f70a844 for two reasons: the sub-agent's reply is refused with 409
-(open-webui/open-webui#32066), and a reply stopped with Stop never ends on the page
-(open-webui/open-webui#32081).
+(open-webui/open-webui#32066, fixed by 641c82df1), and a reply stopped with Stop never ends on the
+page (open-webui/open-webui#32081, fixed by d12bf062b).
 
 Discriminates: passes on dev a5bc78300; on dev 176d31d1d the tests that wait for the report fail on
 that bug. In backend copies the tests turn red when the dispatch waits for the sub-agent, the cap

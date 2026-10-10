@@ -14,11 +14,11 @@ server is before and after; the leak is one entry per request, far below the pro
 batch of non-streamed chats, which never register a listener, is the reference for what every
 chat leaves behind anyway.
 
-The finished stream test is red on dev b859124f9 on purpose (open-webui/open-webui#31953): since
-24e30d1cb the socket router checks the tab's session token again for every event the tab sends, so
-the reply's pieces can overtake each other while those checks run and the streamed reply comes back
-scrambled or empty. It passes on dev 015dbc861 and on b859124f9 with that check taken back out of
-the router.
+The finished stream test is red on dev b859124f9 on purpose (open-webui/open-webui#31953, fixed by
+a1bb3b392): since 24e30d1cb the socket router checks the tab's session token again for every event
+the tab sends, so the reply's pieces can overtake each other while those checks run and the streamed
+reply comes back scrambled or empty. It passes on dev 015dbc861 and on b859124f9 with that check
+taken back out of the router.
 
 Twin of unit/footprint/test_direct_connection_listener_leak.py.
 

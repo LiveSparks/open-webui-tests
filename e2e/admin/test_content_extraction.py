@@ -12,7 +12,7 @@ inline with Use Base64 on), PaddleOCR-vl (its token) and MinerU (the parameters 
 The Datalab Marker test is red on dev ebc6add67: the loader writes the text Marker returned under
 the hard-coded /app/backend/data/uploads/marker_output before handing it on, so an install outside
 the official container, which has no such folder, never gets the text to the model
-(open-webui/open-webui#32025).
+(open-webui/open-webui#32025, fixed by 8fa22d099).
 
 Discriminates: passes on dev ebc6add67 apart from the Datalab Marker test; in a frontend build
 whose Documents form sends the stored engine settings back in place of the edited ones, the Tika,

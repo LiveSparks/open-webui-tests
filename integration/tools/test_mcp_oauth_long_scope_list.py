@@ -13,7 +13,8 @@ land connected with the tool call carrying the user's token. Nearby: one scope s
 `test_a_sign_in_asking_for_many_scopes_keeps_the_session_cookie_small` and
 `test_a_sign_in_asking_for_one_scope_is_unchanged` are red on dev 1c010b438: a tool written with the
 official MCP SDK that returns plain text also sends it as structured data, and the model gets the
-text twice, the second time wrapped as `{"result": ...}` (open-webui/open-webui#32126).
+text twice, the second time wrapped as `{"result": ...}` (open-webui/open-webui#32126, fixed by
+ab15284a4).
 
 Discriminates: passes on dev b859124f9, fails with cd64930c0 reverted (the session cookie is over
 4096 bytes, the browser stand-in drops it and the callback is refused over its state).

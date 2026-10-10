@@ -11,7 +11,7 @@
 
 `test_send_now_sends_only_the_chosen_message` is red on dev 62f70a844: Send now stops the running
 reply first, and since de73bb830 a stopped reply never ends on the page, so the chosen message is
-not sent (open-webui/open-webui#32081).
+not sent (open-webui/open-webui#32081, fixed by d12bf062b).
 
 Discriminates: passes on the efe63bd34 build; with `5f8d8f0c5` reverted the delete and edit
 tests fail (the message behind the failed one is never sent), and with `aea7d34f4` reverted the

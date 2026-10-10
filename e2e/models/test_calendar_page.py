@@ -27,7 +27,7 @@ week, the page no longer sending the browser's zone and the sidebar toggle ignor
 test went red and the rest stayed green; in a backend copy with the calendar tool reading times
 as UTC the model's event test went red, and with calendars listed to their owners only the
 sharing test went red at the reader. The occurrence test fails on dev 176d31d1d, before PR #30971.
-The late evening test is red on dev ebc6add67 (open-webui/open-webui#31994).
+The late evening test is red on dev ebc6add67 (open-webui/open-webui#31994, fixed by 69a1c5732).
 """
 
 from __future__ import annotations

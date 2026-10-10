@@ -17,7 +17,7 @@ of the messages endpoint whose reply an outlet filter audits.
 `test_an_automation_run_streams_its_reply_into_a_new_chat` are red on dev 62f70a844: since de73bb830
 a chat request whose reply message is already stored in the chat, the way automations, sub-agents
 and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 Discriminates: in a backend copy whose in-place branch adds a bar before each piece every
 `append-in-place` case goes red and every `append-copies` case stays green; with the bar in the

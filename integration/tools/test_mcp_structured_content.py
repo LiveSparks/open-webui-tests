@@ -8,7 +8,8 @@ is now added to the tool result as JSON, unless a text item already carries the 
 Red on dev 1c010b438 and a53e453a2: a tool written with the official MCP SDK that returns a plain
 string also sends it as structured content, `{"result": "..."}`, and since the text is not JSON
 the structured copy is added as well, so the model gets the text twice
-(open-webui/open-webui#32126). `test_a_plain_string_from_an_sdk_tool_reaches_the_model_once`.
+(open-webui/open-webui#32126, fixed by ab15284a4).
+`test_a_plain_string_from_an_sdk_tool_reaches_the_model_once`.
 
 Discriminates: passes on dev 1c010b438 apart from the #32126 test; with 22102e4a2 reverted in a
 backend copy the forecast test fails (the follow-up request carries the summary but not the

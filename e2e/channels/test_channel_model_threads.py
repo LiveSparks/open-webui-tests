@@ -150,7 +150,7 @@ def test_a_slowly_streamed_answer_shows_its_first_words_to_another_member(
     admin, people, page_for, upstream
 ):
     """Red on dev ebc6add67: a channel answer only shows once the model is done, issue
-    open-webui/open-webui#31998.
+    open-webui/open-webui#31998, fixed by de73bb830.
 
     The docs say a channel reply streams as the model writes it. The pipeline now sends each
     piece as a delta of an output item it never announced, and the channel's emitter, which

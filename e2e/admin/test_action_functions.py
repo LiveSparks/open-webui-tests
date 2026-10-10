@@ -10,7 +10,7 @@ in Admin Panel > Functions leaves the reply.
 
 The rewrite test is red on dev: the action's new content is stored on the reply, but the page
 renders a reply from its `output` items, which the rewrite leaves alone, so the old text stays on
-screen live and after a reload (open-webui/open-webui#32023).
+screen live and after a reload (open-webui/open-webui#32023, fixed by 200036f6a).
 
 Discriminates: on dev ebc6add67 all pass but the rewrite test (the bug above), which passes on a
 frontend build that writes the action's content into the reply's output as well. One backend copy

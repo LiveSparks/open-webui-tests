@@ -20,7 +20,8 @@ body, an MCP server with a text content item holding the JSON.
 
 `test_an_image_in_an_mcp_tools_json_text_is_attached` is red on dev 1c010b438: the echo tool,
 written with the official MCP SDK, also sends its text as structured data, and that `{"result":
-...}` copy reaches the model with the image's base64 still in it (open-webui/open-webui#32126).
+...}` copy reaches the model with the image's base64 still in it (open-webui/open-webui#32126, fixed
+by ab15284a4).
 
 Discriminates: passes on ef67cc3fa. With `afda09454` reverted every test fails except the bare
 screenshot row and the deliberate-limits test (base64 in the tool message, nothing attached);

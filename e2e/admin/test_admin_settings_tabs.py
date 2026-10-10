@@ -9,7 +9,7 @@ admin and puts the settings back afterwards.
 
 `test_a_saved_image_engine_draws_the_models_picture` is red now and then on dev 896056690: since
 de73bb830 the reply in a new chat sometimes stays blank until a reload although the server saved it
-whole (open-webui/open-webui#32091).
+whole (open-webui/open-webui#32091, fixed by 958ad3673).
 
 Discriminates: passes on dev ac00d40e3; in a backend copy, with `/api/v1/retrieval/config/update`
 ignoring `RAG_TEMPLATE` the documents test fails (the template never sticks), with it ignoring

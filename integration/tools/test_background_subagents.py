@@ -33,7 +33,7 @@ answer before it and hid that question (open-webui/open-webui#31507, fixed by PR
 `test_two_chats_of_one_account_each_get_only_their_own_report` are red on dev 62f70a844: since
 de73bb830 a chat request whose reply message is already stored in the chat, the way automations,
 sub-agents and timers prepare their reply, is refused with 409 and the reply is never written
-(open-webui/open-webui#32066).
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
 `test_a_background_limit_of_zero_means_the_default_and_refuses_nothing` (two of three runs on dev
 93fc3fcb7) and `test_an_unlimited_background_setting_lets_every_delegation_through` (three of three

@@ -14,8 +14,9 @@ filters on its side, and the docs say the list is not applied to Jina, so neithe
 case.
 
 Red on dev ebc6add67, each naming the engine: Kagi applies the filter to its parsed results, which
-have no `get`, so a filtered search fails (open-webui/open-webui#32004); Perplexity Search is
-handed the filter list and never applies it (open-webui/open-webui#32005).
+have no `get`, so a filtered search fails (open-webui/open-webui#32004, fixed by e0b0edfeb);
+Perplexity Search is handed the filter list and never applies it (open-webui/open-webui#32005, fixed
+by 4b088a4a9).
 
 Discriminates: passes on dev ebc6add67 for every other engine; in a backend copy whose `search_web`
 tool hands the model the engine's hits without their snippets, every engine case fails, and with
