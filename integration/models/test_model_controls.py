@@ -8,7 +8,9 @@ as JSON. A pick is sent for its parameters even over the chat's or the model's o
 for one model never reach another, and a pick of an option that is gone is refused; the chat
 input still offers that control, so the user can pick again. A pick of a removed control is
 pinned in the browser suite, where it leaves the user stuck.
-Picking needs the Chat Controls and Advanced Params permissions; the defaults apply regardless.
+Without the Chat Controls or Advanced Params permission a pick is skipped and the defaults are
+sent, so a pick saved before the permission was taken away no longer refuses every message
+(open-webui/open-webui#31995, fixed by 9b3d599c7).
 On the model routes, people see the labels of the controls and options but never what an option
 sends, only admins read or change the controls, a writer's save without them keeps the admin's,
 malformed controls are refused and a model on a pipe cannot carry any.
@@ -180,21 +182,18 @@ def test_picks_not_keyed_by_model_are_refused(make_user, upstream):
 
 
 @pytest.mark.parametrize("withheld", ["controls", "params"])
-def test_picking_needs_the_chat_parameter_permissions(
+def test_without_the_chat_parameter_permissions_a_pick_is_skipped(
     admin, make_user, upstream, preserve, withheld
 ):
     preserve("permissions")
     _set_chat_permissions(admin, **{withheld: False})
     with preset_with_controls(admin, {"thinking": THINKING}) as model:
         with make_user().client() as client:
-            refused = _refused(client, model["id"], {model["id"]: {"thinking": "high"}})
-            defaults_only = _sent(client, upstream, model["id"], {model["id"]: {}})
+            skipped = _sent(client, upstream, model["id"], {model["id"]: {"thinking": "high"}})
         with admin.client() as client:
             as_admin = _sent(client, upstream, model["id"], {model["id"]: {"thinking": "high"}})
 
-    assert refused.status_code == 403
-    assert refused.json()["detail"] == "You cannot change model parameters."
-    assert defaults_only.get("reasoning_effort") == "medium"
+    assert skipped.get("reasoning_effort") == "medium", "a pick without the permission was sent"
     assert as_admin.get("reasoning_effort") == "high"
 
 
