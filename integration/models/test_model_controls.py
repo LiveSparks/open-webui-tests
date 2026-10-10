@@ -12,16 +12,22 @@ Without the Chat Controls or Advanced Params permission a pick is skipped and th
 sent, so a pick saved before the permission was taken away no longer refuses every message
 (open-webui/open-webui#31995, fixed by 9b3d599c7).
 On the model routes, people see the labels of the controls and options but never what an option
-sends, only admins read or change the controls, a writer's save without them keeps the admin's,
-malformed controls are refused and a model on a pipe cannot carry any.
+sends. Anyone with write access to the model reads and changes its controls, a reader gets no
+parameters and cannot save, a user with the Models permission creates a model with controls, a
+writer's save without them keeps the stored ones, malformed controls are refused and a model on a
+pipe cannot carry any.
 
 Discriminates: passes on dev ebc6add67. In a backend copy whose chat route checks the picks but
 never merges them, every payload test and the permission test fail; in one that sends each
 control's default whatever was picked, with no permission check and no keeping of omitted
 controls, the picked-option, per-model, permission and writer's save tests fail; in one that
 gives every model the first model's picks and returns the full controls to everyone, the per-model
-and both visibility tests fail; in one without the pick, key, label, option and default
-validation, the writer and user checks and the pipe check, every refusal test fails.
+and the labels test fail; in one without the pick, key, label, option and default validation and
+the pipe check, every refusal test fails.
+Retargeted for 3e0e760ce, which lets anyone with write access read and change the controls: passes
+on dev b40891e0a (3 of 3). In a backend copy of it with the admin-only rules back and the
+parameters no longer withheld from readers, the writer, reader and Models permission tests fail; in
+one whose update skips the write check, the test of the reader's save fails.
 """
 
 from __future__ import annotations
@@ -73,6 +79,10 @@ def _writer_grants(account) -> list[dict]:
         {"principal_type": "user", "principal_id": account.id, "permission": permission}
         for permission in ("read", "write")
     ]
+
+
+def _reader_grant(account) -> dict:
+    return {"principal_type": "user", "principal_id": account.id, "permission": "read"}
 
 
 # --------------------------------------------------------------------------- what is sent
@@ -226,21 +236,24 @@ def test_people_see_the_labels_and_never_what_an_option_sends(admin, make_user):
     }
 
 
-def test_only_admins_read_the_controls_from_the_model_routes(admin, make_user):
-    writer = make_user()
+def test_writers_read_the_controls_from_the_model_routes_and_readers_do_not(admin, make_user):
+    writer, reader = make_user(), make_user()
     model_params = {"temperature": 0.4}
+    grants = [*_writer_grants(writer), _reader_grant(reader)]
     with preset_with_controls(
-        admin, {"thinking": THINKING}, params=model_params, access_grants=_writer_grants(writer)
+        admin, {"thinking": THINKING}, params=model_params, access_grants=grants
     ) as model:
-        with writer.client() as client:
-            as_writer = client.get("/api/v1/models/model", params={"id": model["id"]}).json()
-            listed = client.get("/api/v1/models/list").json()["items"]
-        as_admin = _stored_controls(admin, model["id"])
-    writer_listed = next(entry for entry in listed if entry["id"] == model["id"])
+        seen = {}
+        for name, account in (("writer", writer), ("reader", reader)):
+            with account.client() as client:
+                loaded = client.get("/api/v1/models/model", params={"id": model["id"]}).json()
+                listed = client.get("/api/v1/models/list").json()["items"]
+            entry = next(entry for entry in listed if entry["id"] == model["id"])
+            seen[name] = (loaded["params"], entry["params"])
 
-    assert as_admin == {"thinking": THINKING}
-    assert as_writer["params"] == model_params
-    assert "model_controls" not in writer_listed["params"]
+    with_controls = {**model_params, "model_controls": {"thinking": THINKING}}
+    assert seen["writer"] == (with_controls, with_controls)
+    assert seen["reader"] == ({}, {})
 
 
 def test_a_writer_saving_without_controls_keeps_the_admins(admin, make_user):
@@ -259,48 +272,59 @@ def test_a_writer_saving_without_controls_keeps_the_admins(admin, make_user):
     assert kept == {"thinking": THINKING}
 
 
-def test_a_writer_cannot_change_the_controls(admin, make_user):
-    writer = make_user()
+def test_a_writer_changes_the_controls_and_a_reader_cannot(admin, make_user):
+    writer, reader = make_user(), make_user()
     changed = copy.deepcopy(THINKING)
     changed["options"]["high"]["params"] = {"reasoning_effort": "high", "max_tokens": "999999"}
-    with preset_with_controls(
-        admin, {"thinking": THINKING}, access_grants=_writer_grants(writer)
-    ) as model:
+    grants = [*_writer_grants(writer), _reader_grant(reader)]
+    with preset_with_controls(admin, {"thinking": THINKING}, access_grants=grants) as model:
         with writer.client() as client:
             loaded = client.get("/api/v1/models/model", params={"id": model["id"]}).json()
+        with reader.client() as client:
+            params = {**loaded["params"], "model_controls": {}}
+            refused = client.post("/api/v1/models/model/update", json={**loaded, "params": params})
+        assert refused.status_code == 400, refused.text
+        assert _stored_controls(admin, model["id"]) == {"thinking": THINKING}
+
+        stored_after = []
+        with writer.client() as client:
             for controls in ({"thinking": changed}, {}):
                 params = {**loaded["params"], "model_controls": controls}
-                refused = client.post(
+                saved = client.post(
                     "/api/v1/models/model/update", json={**loaded, "params": params}
                 )
-                assert refused.status_code == 403, refused.text
-                assert refused.json()["detail"] == "Only admins can change model controls."
-        kept = _stored_controls(admin, model["id"])
+                assert saved.status_code == 200, saved.text
+                stored_after.append(_stored_controls(admin, model["id"]) or {})
 
-    assert kept == {"thinking": THINKING}
+    assert stored_after == [{"thinking": changed}, {}]
 
 
-def test_a_user_cannot_create_a_model_with_controls(make_user, preserve, admin):
+def test_a_user_with_the_models_permission_creates_a_model_with_controls(
+    make_user, preserve, admin
+):
     preserve("permissions")
     with admin.client() as client:
         permissions = client.get("/api/v1/users/default/permissions").json()
         permissions["workspace"]["models"] = True
         client.post("/api/v1/users/default/permissions", json=permissions).raise_for_status()
 
+    model_id = f"self-tuned-{uuid.uuid4().hex[:8]}"
     with make_user().client() as client:
-        refused = client.post(
+        created = client.post(
             "/api/v1/models/create",
             json={
-                "id": f"self-tuned-{uuid.uuid4().hex[:8]}",
+                "id": model_id,
                 "name": "Self tuned",
                 "base_model_id": MOCK_MODEL_ID,
                 "meta": {},
                 "params": {"model_controls": {"thinking": THINKING}},
             },
         )
-
-    assert refused.status_code == 403
-    assert refused.json()["detail"] == "Only admins can change model controls."
+        try:
+            assert created.status_code == 200, created.text
+            assert _stored_controls(admin, model_id) == {"thinking": THINKING}
+        finally:
+            client.post("/api/v1/models/model/delete", json={"id": model_id})
 
 
 def _with(control: dict, **changes) -> dict:

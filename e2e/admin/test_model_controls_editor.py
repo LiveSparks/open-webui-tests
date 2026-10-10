@@ -7,9 +7,9 @@ a row is blank); Apply stays off while the name or an option name is blank. Savi
 stores the controls, and a user's chat on the model then sends the default option's parameters,
 with string values read as JSON. Editing a control keeps the keys of its options when they are
 renamed, Remove takes a control away from the model and from the chat input, and the arrow keys
-on a control's handle reorder the controls, in the store and in the chat input's menu. The
-workspace model editor of the same model shows no Model controls section and saves the controls
-it was given unchanged. Admin Settings opens a preset in the workspace editor, so the form is
+on a control's handle reorder the controls, in the store and in the chat input's menu. In the
+workspace model editor a writer of the model who is no admin sees the same controls and saves
+them unchanged. Admin Settings opens a preset in the workspace editor, so the form is
 tested on a model the scripted provider serves and the workspace editor on a preset.
 
 Discriminates: passes on the dev 93fc3fcb7 build. In a frontend build whose Apply drops the
@@ -20,6 +20,10 @@ change: it renames the preset first, passes on dev 206bf9723 and fails in a buil
 editor drops the controls on save. The add and edit tests were retargeted for 10fdca6e3, whose
 parameter fields suggest names and values and so are found by their label: they pass on dev
 0401b7522 (3 of 3) and fail in a build of it whose Apply drops the options' parameters.
+The workspace editor test was retargeted for 82f142d37 and 3e0e760ce, which show the controls in
+the workspace editor and let anyone with write access read and change them: it opens the preset as
+a writer who is no admin, passes on dev b40891e0a (3 of 3) and fails in a backend copy of it with
+the admin-only rules back, where the writer sees no controls.
 """
 
 from __future__ import annotations
@@ -310,16 +314,29 @@ def test_apply_stays_off_while_the_control_name_or_an_option_name_is_blank(
     expect(apply).to_be_enabled()
 
 
-def test_the_workspace_editor_shows_no_controls_and_saves_them_unchanged(page_for, builder):
+def test_a_writer_sees_the_controls_in_the_workspace_editor_and_saves_them_unchanged(
+    page_for, builder, make_user, preserve
+):
+    preserve("permissions")
+    with builder.client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["workspace"]["models"] = True
+        saved = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert saved.status_code == 200, saved.text
+    writer = make_user()
+    grants = [
+        {"principal_type": "user", "principal_id": writer.id, "permission": permission}
+        for permission in ("read", "write")
+    ]
     controls = {"thinking": THINKING, "length": LENGTH}
-    with preset_with_controls(builder, controls) as preset:
-        page = page_for(builder)
+    with preset_with_controls(builder, controls, access_grants=grants) as preset:
+        page = page_for(writer)
         page.goto(f"/workspace/models/edit?id={preset['id']}")
         editor = page.get_by_role("main")
         expect(editor.get_by_placeholder("Model Name")).to_have_value(preset["name"])
-        expect(editor.get_by_text("Advanced Params")).to_be_visible()
-        expect(editor.get_by_text("Model controls", exact=True)).to_have_count(0)
-        expect(editor.get_by_role("button", name="Add control")).to_have_count(0)
+        expect(editor.get_by_text("Model controls", exact=True)).to_be_visible()
+        for label in ("Thinking", "Answer length"):
+            expect(editor.get_by_role("button", name=f"Reorder {label}")).to_be_visible()
         # the editor saves only a change, so rename the preset
         editor.get_by_placeholder("Model Name").fill(f"{preset['name']} renamed")
         editor.get_by_role("button", name="Save & Update").click()
