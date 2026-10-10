@@ -25,7 +25,9 @@ the server turns the delete test red, always showing the thumbs turns the messag
 red and always showing the arena section turns the arena test red. On dev ebc6add67, in one
 frontend build, column headers that do nothing turn the header test red, a model dialog that
 leaves out the top tags the tags test, an export that ignores the model filter the JSON test and
-a rating form without the arena's answer the added arena test.
+a rating form without the arena's answer the added arena test. The added arena test makes the
+model public from the Visibility menu that replaced the arena dialog's Private and Public select:
+it passes on dev b40891e0a, and a frontend copy of it whose menu changes nothing turns it red.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ from harness import upstream as reply
 from harness.actors import Actor
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
+from utils.access_control import choose_visibility
 from utils.chat_ui import conversation, expect_reply, replies, send
 from utils.model_selector import select_model
 from utils.tooltips import tooltip_button
@@ -417,7 +420,7 @@ def test_an_arena_model_added_in_the_settings_answers_through_its_model_and_name
     choices.select_option(label=contender)
     choices.locator("xpath=following-sibling::div//button").click()
     expect(arena.get_by_text(contender, exact=True)).to_be_visible()
-    arena.get_by_role("combobox").filter(has_text="Public").select_option("public")
+    choose_visibility(arena, "Public")
     arena.get_by_role("button", name="Save", exact=True).click()
     expect(arena).to_be_hidden()
     expect(settings.get_by_text(name)).to_be_visible()
