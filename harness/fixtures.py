@@ -12,7 +12,6 @@ from __future__ import annotations
 import contextlib
 from typing import Callable, Generator, Iterator
 
-import httpx
 import pytest
 
 from harness import upstream as upstream_module
@@ -131,31 +130,27 @@ def preserve(request: pytest.FixtureRequest) -> Generator[Callable[..., None], N
     A setting is a name from `SETTINGS` or a `(read endpoint, write endpoint)` pair. Pass
     `on=` an instance from `instance_with` to preserve its settings instead of the shared one's.
     """
-    snapshots: list[tuple[httpx.Client, str, dict]] = []
-    clients: dict[str, httpx.Client] = {}
+    snapshots: list[tuple[LaunchedInstance, str, dict]] = []
 
     def snapshot(*settings: str | tuple[str, str], on: LaunchedInstance | None = None) -> None:
         # the shared instance only boots when a test preserves its settings
         target = on or request.getfixturevalue("instance")
-        if target.base_url not in clients:
-            clients[target.base_url] = target.client()
-        client = clients[target.base_url]
-        for setting in settings:
-            read_path, write_path = SETTINGS[setting] if isinstance(setting, str) else setting
-            current = client.get(read_path)
-            current.raise_for_status()
-            snapshots.append((client, write_path, current.json()))
+        with target.client() as client:
+            for setting in settings:
+                read_path, write_path = SETTINGS[setting] if isinstance(setting, str) else setting
+                current = client.get(read_path)
+                current.raise_for_status()
+                snapshots.append((target, write_path, current.json()))
 
     yield snapshot
     failures = []
-    try:
-        for client, write_path, value in reversed(snapshots):
+    for target, write_path, value in reversed(snapshots):
+        # a new connection: one kept from the snapshot can be closed by the server's keep-alive
+        # timeout just as the restore goes out on it
+        with target.client() as client:
             restored = client.post(write_path, json=value)
-            if restored.status_code != 200:
-                failures.append(f"restoring {write_path} failed: {restored.text}")
-    finally:
-        for client in clients.values():
-            client.close()
+        if restored.status_code != 200:
+            failures.append(f"restoring {write_path} failed: {restored.text}")
     assert not failures, failures
 
 
