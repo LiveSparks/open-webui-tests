@@ -78,10 +78,15 @@ def test_a_group_marker_lists_each_source_and_opens_each_on_its_own_text(
     expect(group).to_contain_text("+1")
     expect(reply_shown).not_to_contain_text(written)
 
+    # the list has no role, and its entry shares a name with the single [2]
+    listed = page.locator("[data-link-preview-content]")
     for name in SOURCES:
         group.click()
-        page.get_by_role("button", name=f"View source: {name}").click()
+        listed.get_by_role("button", name=f"View source: {name}").click()
         expect_source_dialog(page, name)
+        # the list stays open behind the dialog, and a click on the marker would toggle it shut
+        page.keyboard.press("Escape")
+        expect(listed).to_have_count(0)
 
     single = reply_shown.get_by_role("button", name="View source: otters.txt")
     expect(single).to_have_count(1)
