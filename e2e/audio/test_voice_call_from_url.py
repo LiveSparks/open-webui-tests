@@ -15,10 +15,9 @@ Kokoro model is a download the suite cannot make, so here the model request is a
 404: the call asks for the model, shows the loading error and stays open. A spoken reply is not
 covered.
 
-Red on dev ebc6add67 since 093bfce2b (open-webui/open-webui#31993): a new chat opened with
-`?call=true` shows the side panel without the call. Opening the call now sets the panel's
-switches at once, where it waited a moment before, and the call does not stay open. Both tests
-that expect a call are red; they pass on that build with the wait put back.
+Since 0ffd86967, which closed open-webui/open-webui#31993 (from 093bfce2b the call did not stay
+open), a link that starts a call asks first ("Start a voice call using your microphone?") and
+opens nothing until that is confirmed; each test confirms it, and the checks above run then.
 
 Discriminates: passes on the dev b859124f9 build, fails on that build with 79baaca3b and
 51da3eefc reverted (each refused case opens a call without its message, and the Kokoro call
@@ -54,6 +53,10 @@ def end_call_button(page: Page):
 def open_from_url(page: Page, query: str) -> None:
     page.goto(f"/?{query}")
     expect(chat_input(page)).to_be_visible()
+    asked = page.get_by_role("dialog", name="Open link")
+    expect(asked).to_contain_text("Start a voice call using your microphone?")
+    expect(end_call_button(page), "the call opened before it was confirmed").to_have_count(0)
+    asked.get_by_role("button", name="Confirm").click()
 
 
 def expect_no_call(page: Page) -> None:
