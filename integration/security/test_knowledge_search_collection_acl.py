@@ -16,7 +16,7 @@ Twin of unit/security/test_knowledge_search_collection_acl.py, which keeps the a
 vector backend ignores a `filter` argument and the Pinecone case.
 
 Discriminates: passes on ef67cc3fa; with the filter dropped from `search` in the Qdrant, Qdrant
-multitenancy or Elasticsearch backend the reader is shown the admin's private knowledge base on
+multitenancy or Elasticsearch backend the reader is shown the owner's private knowledge base on
 that store, and with the `filter` argument removed from the search in `query_knowledge_bases`
 on every store.
 """
@@ -30,6 +30,7 @@ import httpx
 import pytest
 
 from harness import upstream as reply
+from harness.access import make_group
 from harness.actors import Actor, admin_of, create_user
 from harness.chat import ask
 from harness.elasticsearch_server import elasticsearch_env, serving_elasticsearch
@@ -85,8 +86,13 @@ def create_knowledge_base(client: httpx.Client, name: str, access_grants: list[d
 
 @pytest.fixture
 def knowledge_bases(store) -> KnowledgeBases:
-    """Two of the admin's knowledge bases, one shared with a reader and one private."""
-    owner = admin_of(store)
+    """Two of an account's knowledge bases, one shared with a reader and one private.
+
+    Not the admin's: the admin reads every knowledge base the instance has collected, and with
+    every text embedded alike the store's nearest hundred of those need not include these two.
+    """
+    owner = create_user(store)
+    make_group(admin_of(store), [owner], {"workspace": {"knowledge": True}})
     reader = create_user(store)
     read_grant = {"principal_type": "user", "principal_id": reader.id, "permission": "read"}
     with owner.client() as client:
