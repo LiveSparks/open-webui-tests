@@ -162,6 +162,8 @@ def test_an_older_version_opens_read_only_beside_the_production_one(page_for, cu
 def test_set_as_production_brings_the_old_prompt_back_into_the_editor_and_the_chat(
     page_for, curator, upstream
 ):
+    """Red on dev b40891e0a: a model without controls opens as edited, so Set as Production stops
+    on the discard dialog (open-webui/open-webui#32207)."""
     model = _model_with_two_versions(curator)
     page = page_for(curator)
     editor = _open_editor(page, model)
