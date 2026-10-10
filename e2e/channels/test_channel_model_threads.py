@@ -74,6 +74,8 @@ def _ask_model(page: Page, box: Locator, question: str) -> None:
     box.click()
     page.keyboard.type(f"@{MOCK_MODEL_ID}")
     page.locator("#suggestions-container").get_by_role("button", name=MOCK_MODEL_ID).click()
+    # the input takes focus back a frame after the pick; keys sent before that are lost
+    expect(box).to_be_focused()
     page.keyboard.type(f" {question}")
     page.keyboard.press("Enter")
 
