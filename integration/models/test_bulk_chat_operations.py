@@ -1,7 +1,7 @@
 """Journey: the chat list's bulk actions and folder views, each confined to the caller's chats.
 
 Archive all moves every chat of the account out of the sidebar into the archive, and unarchive
-all brings them back along with the tags an archived chat was the last to carry. Export all
+all brings them back with their tags, which archiving keeps under their own names. Export all
 streams every chat of the account, archived ones included, one JSON object per line. A folder
 lists its chats and those of its subfolders, and its paged list holds ten chats a page. Marking
 a chat unread, the whole chat list read or one folder read changes what the sidebar counts as
@@ -9,8 +9,9 @@ unread. The admin's database export holds every account's chats. In each case an
 account's chats keep the state they had.
 
 Discriminates: in a backend copy, dropping the owner filter from archive all turns the archive
-test red (the stranger's chat is archived too), dropping the tag restore from unarchive all
-turns the tag test red, and marking chats read without the owner filter turns the read test red.
+test red (the stranger's chat is archived too), dropping archived chats from the tag count
+(78550396d reverted) turns the tag test red, and marking chats read without the owner filter
+turns the read test red.
 """
 
 from __future__ import annotations
@@ -101,7 +102,7 @@ def test_unarchive_all_brings_the_chats_and_their_tags_back(owner, stranger_chat
         tagged_id = create_chat(client, "Tagged")
         other_id = create_chat(client, "Plain")
         assert client.post(f"/api/v1/chats/{tagged_id}/tags", json={"name": "Quarterly"}).is_success
-        # archiving the last chat with a tag drops the tag from the list
+        # an archived chat still uses its tag, so the tag keeps its name (#30454)
         assert client.post(f"/api/v1/chats/{tagged_id}/archive").is_success
         assert client.post(f"/api/v1/chats/{other_id}/archive").is_success
         tags_while_archived = [tag["name"] for tag in client.get("/api/v1/chats/all/tags").json()]
@@ -113,8 +114,8 @@ def test_unarchive_all_brings_the_chats_and_their_tags_back(owner, stranger_chat
         assert client.get("/api/v1/chats/archived/count").json() == 0
         tags = [tag["name"] for tag in client.get("/api/v1/chats/all/tags").json()]
         by_tag = client.post("/api/v1/chats/tags", json={"name": "quarterly"}).json()
-    assert "quarterly" not in tags_while_archived
-    assert "quarterly" in tags, "unarchiving did not bring the chat's tag back"
+    assert "Quarterly" in tags_while_archived
+    assert "Quarterly" in tags, "unarchiving did not bring the chat's tag back"
     assert [chat["id"] for chat in by_tag] == [tagged_id]
     assert read_chat(stranger, stranger_chat_id)["archived"] is True
 

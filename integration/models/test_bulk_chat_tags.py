@@ -3,12 +3,18 @@
 Fix 0ab3a2b33 (open-webui/open-webui#30453, issue open-webui/open-webui#30452). Unarchive all
 brought the chats back without the tags that archiving had dropped from the tag list, so the
 sidebar's tag suggestions and tag search lacked them. Delete all removed every chat and left
-their tags behind in the suggestions with no chat to point at. Unarchive all now restores the
-tag rows its chats carry, and delete all removes the tags no chat of the account uses any more.
-The unarchive half is also walked in the journey in test_bulk_chat_operations.py.
+their tags behind in the suggestions with no chat to point at. Delete all now removes the tags no
+chat of the account uses any more.
 
-Discriminates: passes on dev efe63bd34, fails with 0ab3a2b33 reverted (the tag is missing after
-unarchive all and still listed after delete all).
+Since 78550396d (open-webui/open-webui#32200, issue open-webui/open-webui#30454) archiving keeps
+the tag, as an archived chat still uses it; before, archiving the last chat with a tag dropped it
+and unarchiving rebuilt it from its id, so "Harbour Log" came back as "harbour_log". The tag now
+stays listed under its own name while archived and after unarchive all. The unarchive half is also
+walked in the journey in test_bulk_chat_operations.py.
+
+Discriminates: passes on dev 79d376a1f; with 78550396d reverted in a backend copy the archive
+tests fail (the tag leaves the list on archive and comes back renamed), and with 0ab3a2b33
+reverted the delete all test fails (the tag is still listed after delete all).
 """
 
 from __future__ import annotations
@@ -23,7 +29,7 @@ pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_sour
 
 @pytest.fixture
 def tag() -> str:
-    return f"harbour-{uuid.uuid4().hex[:8]}"
+    return f"Harbour {uuid.uuid4().hex[:8]}"
 
 
 def tagged_chat(client: httpx.Client, *tags: str) -> str:
@@ -63,18 +69,17 @@ def delete_all(client: httpx.Client) -> None:
     assert deleted.status_code == 200 and deleted.json() is True, deleted.text
 
 
-def test_unarchive_all_brings_back_the_tag_of_a_chat_archived_alone(make_user, tag):
+def test_archiving_the_only_chat_with_a_tag_keeps_the_tag_and_its_name(make_user, tag):
     with make_user().client() as client:
         chat_id = tagged_chat(client, tag)
         archive(client, chat_id)
-        assert tag not in tag_names(client), "archiving the only chat with a tag keeps the tag"
+        assert tag in tag_names(client), (
+            "archiving the only chat with a tag dropped the tag from the list (#30454)"
+        )
 
         unarchive_all(client)
 
-        assert tag in tag_names(client), (
-            "unarchiving every chat did not bring back the tag of the chat it restored, so the "
-            "tag suggestions miss it (#30452)"
-        )
+        assert tag in tag_names(client), "the tag came back renamed after unarchive all (#30454)"
         assert chats_tagged(client, tag) == [chat_id]
 
 
@@ -92,14 +97,14 @@ def test_delete_all_removes_the_tags_no_chat_uses_any_more(make_user, tag):
         )
 
 
-def test_unarchive_all_restores_every_tag_of_every_archived_chat(make_user, tag):
-    first, second, shared = f"{tag}-first", f"{tag}-second", f"{tag}-shared"
+def test_unarchive_all_keeps_every_tag_of_every_archived_chat(make_user, tag):
+    first, second, shared = f"{tag} first", f"{tag} second", f"{tag} shared"
     with make_user().client() as client:
         first_id = tagged_chat(client, first, shared)
         second_id = tagged_chat(client, second, shared)
         archive(client, first_id)
         archive(client, second_id)
-        assert tag_names(client).isdisjoint({first, second, shared})
+        assert {first, second, shared} <= tag_names(client)
 
         unarchive_all(client)
 
