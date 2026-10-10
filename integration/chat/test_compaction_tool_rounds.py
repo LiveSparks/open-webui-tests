@@ -241,7 +241,9 @@ def test_without_passing_an_active_threshold_the_run_is_sent_whole(
     compaction()
     with user.client() as client:
         long_tool_run(client, upstream, log_tool)
-        assert summary_requests(upstream), "control: the same run over the threshold was not compacted"
+        assert summary_requests(upstream), (
+            "control: the same run over the threshold was not compacted"
+        )
         upstream.reset()
         compaction(enable=enable, threshold=threshold)
         _, message = long_tool_run(client, upstream, log_tool)
@@ -252,4 +254,3 @@ def test_without_passing_an_active_threshold_the_run_is_sent_whole(
         assert prefix_break(earlier, later) is None, f"request {number}"
     assert called_pages(requests[-1]["messages"]) == [page_name(page) for page in range(1, 13)]
     assert ANSWER in message["content"]
-
