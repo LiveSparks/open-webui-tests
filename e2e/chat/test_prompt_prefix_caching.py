@@ -15,22 +15,23 @@ model's description edited mid-chat, a workspace tool picked before the first tu
 skill loaded on demand and a sub-agent. Every consecutive pair of the provider's requests is
 checked.
 
-Five tests went red, on what the page does not name as a breaker. Two rewrite the tool list at
-the very start of the prefix: opening a folder in the terminal's file browser moves the working
+Five tests went red, on what the page did not name as a breaker. Two rewrote the tool list at the
+very start of the prefix: opening a folder in the terminal's file browser moved the working
 directory written into the run_command tool's description (open-webui/open-webui#32026), and a
-reload with the terminal's shell open closes it, which drops the two user shell tools
-(open-webui/open-webui#31590, fix PR #31602 open). Two rewrote the system message: the turn a
-timer or a background sub-agent's report started was sent the chat's finished system prompt with
-the model's system prompt and knowledge added again (open-webui/open-webui#31568). Dev ecbbff8af
-fixed that; both are now red only for the refusal below. The Create skill command is sent as the
-skill authoring prompt on its own turn and as the typed command on the next, so that turn
-rewrites an earlier user message (open-webui/open-webui#31591, fix PR #31598 open).
+reload with the terminal's shell open closed it, which dropped the two user shell tools
+(open-webui/open-webui#31590). Since a20b622ba a terminal connection's Working Directory Context
+and User Shell Tools settings keep both steady and the page names them, so the terminal chats here
+turn the first off and set the second to Always Include. Two rewrote the system message: the turn
+a timer or a background sub-agent's report started was sent the chat's finished system prompt with
+the model's system prompt and knowledge added again (open-webui/open-webui#31568, fixed by
+ecbbff8af). The Create skill command was sent as the skill authoring prompt on its own turn and as
+the typed command on the next, so that turn rewrote an earlier user message
+(open-webui/open-webui#31591, fixed by ed6f69002).
 
-`test_a_sub_agent_only_appends` is red on dev 93fc3fcb7, and the timer and report tests on dev
-1c010b438: since de73bb830 a chat request whose reply message is already stored in the chat, the
-way automations, sub-agents and timers prepare their reply, is refused with 409 and the reply is
-never written (open-webui/open-webui#32066). With that refusal removed in a backend copy of dev
-1c010b438 the timer and report tests pass three of three, and fail with ecbbff8af reverted as well.
+From de73bb830 the sub-agent, timer and report tests were red: a chat request whose reply message
+was already stored in the chat, the way automations, sub-agents and timers prepare their reply,
+was refused with 409 and the reply never written (open-webui/open-webui#32066, fixed by
+641c82df1).
 
 Discriminates: passes on dev 30f3f6a8f apart from those five, which fail there. In backend
 copies, a clock value added to the model's system prompt turned every other test red; with no
@@ -82,6 +83,8 @@ pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.req
 
 SUBAGENTS = ("/api/v1/configs/subagents", "/api/v1/configs/subagents")
 TIMER_PROMPT = "Time to leave for the ferry."
+# the Prompt Caching page's terminal settings: no working directory, shell tools always listed
+CACHE_STEADY = {"working_directory_context": False, "user_shell_tools": "always"}
 TIDE_TOOL = """
 class Tools:
     def tide_time(self, harbour: str) -> str:
@@ -189,7 +192,9 @@ def skill_author_chat(page_for, cached_setup, admin, make_user, preserve, open_t
 
 def _terminal_chat(page_for, cached_setup, admin, person, preserve, open_terminal):
     preserve(TERMINAL_SERVERS_CONFIG)
-    connection = open_terminal.connection(config={"access_grants": [read_grant(person.id)]})
+    connection = open_terminal.connection(
+        config={**CACHE_STEADY, "access_grants": [read_grant(person.id)]}
+    )
     with admin.client() as client:
         configure_terminals(client, connection)
     (open_terminal.home / "tickets").mkdir(exist_ok=True)
