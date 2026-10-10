@@ -13,6 +13,9 @@ pixels wide (wider than the screen, so controls on the right fall off it) all th
 backend copy whose model create drops `params` the editor test goes red at the system prompt.
 Retargeted for 37138282f, where the rewritten prompt editor names its fields Prompt Name and
 Prompt Content: the tests that fill the Create Prompt dialog pass on that build.
+Retargeted for e32d2f75b, whose editor picks the base model with the chat's model selector (Select
+a base model): the editor test passes on dev b40891e0a (3 of 3) and fails in a backend copy of it
+that leaves the system prompt out of the provider payload.
 """
 
 from __future__ import annotations
@@ -111,7 +114,7 @@ def test_a_model_made_in_the_editor_on_a_phone_answers_with_its_system_prompt(ph
     model_name = editor.get_by_role("textbox", name="Model Name")
     expect_reachable(model_name)
     model_name.fill(name)
-    base_model = editor.get_by_role("button", name="Select a base model (e.g. llama3, gpt-4o)")
+    base_model = editor.get_by_role("button", name="Select a base model", exact=True)
     expect_reachable(base_model)
     base_model.tap()
     choose_model(phone, MOCK_MODEL_ID)

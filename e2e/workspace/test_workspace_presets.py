@@ -11,6 +11,9 @@ out of the provider payload the preset test fails (no system message), and with
 shows in the list).
 Retargeted for 37138282f, where the rewritten prompt editor names its fields Prompt Name and
 Prompt Content: the tests that fill the Create Prompt dialog pass on that build.
+Retargeted for e32d2f75b, whose editor picks the base model with the chat's model selector (Select
+a base model): the preset test passes on dev b40891e0a (3 of 3) and fails in a backend copy of it
+that leaves the system prompt out of the provider payload.
 """
 
 from __future__ import annotations
@@ -62,7 +65,7 @@ def test_a_preset_sends_its_system_prompt_with_the_chat(page_for, builder, upstr
     page.goto("/workspace/models/create")
     editor = page.get_by_role("main")
     editor.get_by_role("textbox", name="Model Name").fill(name)
-    editor.get_by_role("button", name="Select a base model (e.g. llama3, gpt-4o)").click()
+    editor.get_by_role("button", name="Select a base model", exact=True).click()
     _choose_from_models(page, "mock-model")
     editor.get_by_role("textbox", name=re.compile("^Write your model system prompt")).fill(
         system_prompt

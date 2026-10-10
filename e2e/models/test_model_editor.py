@@ -33,6 +33,9 @@ Retargeted for 8d0ff76f2, whose editor folds its settings into sections that ope
 its checkboxes into switches and picks tools, skills, filters, actions and knowledge from a search
 list: passes on dev 76ad6f97c (3 of 3), and in a build of it whose editor saves the model's settings
 as they were loaded every test that saves an edit fails.
+Retargeted for e32d2f75b, whose editor picks the base model with the chat's model selector (Select
+a base model): the sharing test passes on dev b40891e0a (3 of 3) and fails in a backend copy of it
+that makes every new model readable by everyone.
 """
 
 from __future__ import annotations
@@ -514,7 +517,7 @@ def test_a_new_model_is_private_until_shared_with_a_group(page_for, builder, cre
     editor = page.get_by_role("main")
     editor.get_by_placeholder("Model Name").fill(model["name"])
     editor.get_by_placeholder("Model ID").fill(model["id"])
-    editor.get_by_role("button", name="Select a base model (e.g. llama3, gpt-4o)").click()
+    editor.get_by_role("button", name="Select a base model", exact=True).click()
     page.get_by_role("textbox", name="Search In Models").fill(MOCK_MODEL_ID)
     model_option(page, MOCK_MODEL_ID).click()
     editor.get_by_role("button", name="Save & Create").click()

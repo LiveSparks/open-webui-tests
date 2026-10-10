@@ -15,6 +15,10 @@ backend copy of it without the `load()` after `verify()`.
 Discriminates: passes on dev ef67cc3fa; in a backend copy without the `load()` after `verify()`
 the short PNG is saved and the refusal test fails, and in one whose `Image.open` fails on every
 input the JPEG is refused.
+Retargeted for 79702261b, whose editor names the button Change once a background is chosen, so the
+tests wait for the background preview: they pass on dev b40891e0a (3 of 3), the refusal test fails
+in a backend copy of it without the `load()` after `verify()` and the JPEG test in one that refuses
+every background.
 """
 
 from __future__ import annotations
@@ -81,7 +85,7 @@ def _choose_background_and_save(page, model_id: str, content: bytes) -> None:
     with page.expect_file_chooser() as chooser:
         page.get_by_role("button", name="Add background").click()
     chooser.value.set_files({"name": "harbour.png", "mimeType": "image/png", "buffer": content})
-    expect(page.get_by_role("button", name="Change background")).to_be_visible()
+    expect(page.get_by_role("img", name="Background image preview")).to_be_visible()
     page.get_by_role("button", name="Save & Update").click()
 
 
