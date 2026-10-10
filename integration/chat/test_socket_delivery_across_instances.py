@@ -63,6 +63,7 @@ import threading
 import time
 from typing import Iterator
 
+import psutil
 import pytest
 import redis
 import socketio
@@ -1194,23 +1195,37 @@ def _model_finished(received: list[dict]) -> bool:
     )
 
 
-def _listeners(url: str) -> tuple[int, int]:
-    """The fleet's pub/sub clients on a channel, and those on a pattern (the room channels).
+def _listeners(url: str, fleet: dict) -> dict[str, tuple[int, int]]:
+    """Each instance's pub/sub clients on a channel, and those on a pattern (the room channels).
 
-    Only the default account's: the limited instances' account does not outlive a restart.
+    A client counts for the instance whose process holds its end of the connection: Redis can
+    hold other subscribers too, which nothing brings back after a restart.
     """
+    redis_port = redis.connection.parse_url(url)["port"]
+    owners = {}
+    for name, instance in fleet.items():
+        process = psutil.Process(instance.pid)
+        for member in [process, *process.children(recursive=True)]:
+            for connection in member.net_connections(kind="tcp"):
+                if connection.raddr and connection.raddr.port == redis_port:
+                    owners[connection.laddr.port] = name
     client = redis.Redis.from_url(url, decode_responses=True)
     try:
-        entries = [
-            entry for entry in client.client_list(_type="pubsub") if entry["user"] == "default"
-        ]
+        entries = client.client_list(_type="pubsub")
     except redis.exceptions.RedisError:
-        return 0, 0
+        entries = []
     finally:
         client.close()
-    on_a_channel = sum(1 for entry in entries if entry["sub"] != "0")
-    on_a_pattern = sum(1 for entry in entries if entry["psub"] != "0")
-    return on_a_channel, on_a_pattern
+    listening = {name: (0, 0) for name in fleet}
+    for entry in entries:
+        name = owners.get(int(entry["addr"].rsplit(":", 1)[1]))
+        if name:
+            on_a_channel, on_a_pattern = listening[name]
+            listening[name] = (
+                on_a_channel + (entry["sub"] != "0"),
+                on_a_pattern + (entry["psub"] != "0"),
+            )
+    return listening
 
 
 def _subscriptions(url: str) -> list[tuple[int, int]]:
@@ -1223,8 +1238,9 @@ def _subscriptions(url: str) -> list[tuple[int, int]]:
         client.close()
 
 
-def _listen_again(url: str, before: tuple[int, int]) -> bool:
-    return all(now >= then for now, then in zip(_listeners(url), before))
+def _listen_again(url: str, fleet: dict, before: dict[str, tuple[int, int]]) -> bool:
+    now = _listeners(url, fleet)
+    return all(current >= then for name in before for current, then in zip(now[name], before[name]))
 
 
 # Open WebUI's own Redis clients fail the first command on each connection Redis closed, and a
@@ -1308,14 +1324,14 @@ def test_tabs_open_through_a_redis_loss_hear_the_account_again(
     ):
         _answer_inputs(tab, "Ada")
         # an instance listens once its first socket connects, so both of the pair listen by now
-        listening_before = _listeners(shared_redis.url)
+        listening_before = _listeners(shared_redis.url, fleet)
         _lose_redis(shared_redis, loss)
         assert backends.wait_until(
-            lambda: _listen_again(shared_redis.url, listening_before), timeout=60
+            lambda: _listen_again(shared_redis.url, fleet, listening_before), timeout=60
         ), (
             f"after the Redis {loss} the instances did not all listen again: "
             f"(on a channel, on a pattern) went from {listening_before} "
-            f"to {_listeners(shared_redis.url)}"
+            f"to {_listeners(shared_redis.url, fleet)}"
         )
         heard = _heard_again(account, tab, provider, loss)
         answered = _answered_again(account, tool_id, tab, provider, loss)
