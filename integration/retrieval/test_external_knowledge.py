@@ -101,6 +101,8 @@ def test_the_admin_retrieval_test_searches_the_collection(admin, listener, upstr
 def test_a_chat_with_the_knowledge_base_attached_gets_its_points(
     admin, listener, upstream, connection_id
 ):
+    """Red on dev e24cd406e with Postgres: integer point ids make the file name lookup fail and
+    the chat gets no knowledge (open-webui/open-webui#32206)."""
     upstream.queue(reply.text("The code is 4471.", match=reply.answering("gate code")))
     with admin.client() as client, external_knowledge_base(client, connection_id, COLLECTION) as kb:
         _, answer = ask(
