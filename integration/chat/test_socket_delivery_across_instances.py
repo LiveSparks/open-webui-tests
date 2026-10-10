@@ -25,11 +25,12 @@ Redis that drops every subscription or restarts. A test client subscribed to eve
 records which channel carried a chat's events. That an instance with nobody in the room skips the
 message is only visible as CPU and is not pinned.
 
-Finding, red on purpose: an instance whose Redis account may use only the pub/sub channels Open
-WebUI needed before (`socketio` and `open-webui:*`) neither hears nor reaches the other instances
-with the switch on, since Redis refuses the pattern subscription `socketio#*` and every publish on
-a room channel (NOPERM) and the listener retries every second; with the switch off it works (fix
-PR open-webui/open-webui#31617 open).
+An instance whose Redis account is limited to some pub/sub channels is heard and reaches the others
+when the account has the channels its mode needs: `socketio` and `open-webui:*` with the switch off,
+and also `socketio#*` with it on, as `.env.example` names since 1469f73b3 (PR
+open-webui/open-webui#31617, which kept the old channels working with the switch on, was closed
+unmerged). With only the old channels and the switch on, Redis refuses the pattern subscription and
+every publish on a room channel (NOPERM) and the instance logs which channels to allow.
 
 Also red on dev b859124f9, in some of its four cases per run: the direct connection answered by the
 browser (open-webui/open-webui#31953, fixed by a1bb3b392). Since 24e30d1cb the socket router checks
@@ -621,30 +622,36 @@ def test_many_accounts_streaming_at_once_each_hear_only_their_own_chat(fleet, pr
 
 
 # the pub/sub channels Open WebUI uses with room channels off: python-socketio's and its own
-LOCKED_USER = "owui-locked"
 LOCKED_RIGHTS = ["on", ">locked-password", "~*", "+@all", "&socketio", "&open-webui:*"]
+# room channels on also need their own, as .env.example names them
+ROOM_CHANNEL_RIGHTS = ["&socketio#*"]
 
 
 @pytest.fixture(scope="module")
 def locked(fleet, shared_redis, instance_with) -> dict[str, LaunchedInstance]:
-    """Per switch value, one more instance whose Redis account may use only the channels above."""
+    """Per switch value, one more instance whose Redis account may use only the channels its
+    mode needs."""
     client = redis.Redis(port=shared_redis.port)
     try:
-        client.execute_command("ACL", "SETUSER", LOCKED_USER, *LOCKED_RIGHTS)
+        client.execute_command("ACL", "SETUSER", "owui-locked-off", *LOCKED_RIGHTS)
+        client.execute_command(
+            "ACL", "SETUSER", "owui-locked-on", *LOCKED_RIGHTS, *ROOM_CHANNEL_RIGHTS
+        )
     finally:
         client.close()
-    url = f"redis://{LOCKED_USER}:locked-password@127.0.0.1:{shared_redis.port}/0"
-    shared = {
-        "REDIS_URL": url,
-        "WEBSOCKET_MANAGER": "redis",
-        "DATABASE_URL": fleet["on-a"].database_url,
-    }
-    return {
-        mode: instance_with(
-            {**shared, "WEBUI_NAME": f"{mode}-locked", "WEBSOCKET_REDIS_ROOM_CHANNELS": switch}
+    instances = {}
+    for mode, switch in (("on", "true"), ("off", "false")):
+        user = f"owui-locked-{mode}"
+        instances[mode] = instance_with(
+            {
+                "REDIS_URL": f"redis://{user}:locked-password@127.0.0.1:{shared_redis.port}/0",
+                "WEBSOCKET_MANAGER": "redis",
+                "DATABASE_URL": fleet["on-a"].database_url,
+                "WEBUI_NAME": f"{mode}-locked",
+                "WEBSOCKET_REDIS_ROOM_CHANNELS": switch,
+            }
         )
-        for mode, switch in (("on", "true"), ("off", "false"))
-    }
+    return instances
 
 
 @pytest.mark.parametrize("mode", MODES)
