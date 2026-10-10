@@ -20,6 +20,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
+from harness.backends import wait_until
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, replies, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -60,6 +61,10 @@ def _offer_follow_ups(upstream) -> None:
 
 def _follow_up(page: Page, text: str) -> Locator:
     return conversation(page).get_by_role("button", name=f"Follow up: {text}")
+
+
+def _follow_up_requests(upstream) -> int:
+    return len([body for body in upstream.chat_requests() if reply.answering(FOLLOW_UP_TASK)(body)])
 
 
 def _asked_answered(page: Page, upstream) -> None:
@@ -105,9 +110,12 @@ def test_only_the_last_reply_lists_follow_ups_unless_the_account_keeps_them(
         _asked_answered(page, upstream)
         # the next turn would otherwise take the follow-ups queued for this one
         expect(_follow_up(page, FOLLOW_UPS[0])).to_be_visible()
+        asked = _follow_up_requests(upstream)
         upstream.queue(reply.text("In late September.", match=reply.answering("next question")))
         send(page, "next question")
         expect_reply(page, "In late September.")
+        # nor may this turn's follow-up task take those queued for the next account
+        assert wait_until(lambda: _follow_up_requests(upstream) > asked, 15)
 
     expect(_follow_up(plain, FOLLOW_UPS[0])).to_have_count(0)
     expect(_follow_up(keeping, FOLLOW_UPS[0])).to_be_visible()
