@@ -18,6 +18,9 @@ gets no test here (the suite adds none for legacy mode).
 Discriminates: in a backend copy of dev 436f06ca5 with 67cfa917c reverted, no summary is made
 inside the reply and every test fails (the threshold-off cases on their control run, the same run
 over the threshold, which must be compacted before the quiet run counts).
+With the cut allowed at any message, the pairing and crossing tests fail (a result is sent
+without its call); with the tool calls left out of the summary prompt, only the summary-prompt
+test fails.
 """
 
 from __future__ import annotations
