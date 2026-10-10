@@ -25,6 +25,9 @@ files, the chip's close button not saving, the access panel never sending the gr
 Delete not calling the API, removing a person dropping only their write grant and the access list
 shown without the sharing permission.
 In the a5bc78300 build with #31539 reverted, the second line of a table cell starts a broken row.
+The public and no-list tests read the Visibility menu that replaced the panel's Private and Public
+select: they pass on dev b40891e0a, and a frontend copy of it whose menu never sends the grants
+turns the public test red and one offering Public without the sharing permission the no-list test.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import make_group
 from harness.actors import Actor
+from utils.access_control import choose_visibility, visibility_choices
 from utils.chat_ui import chat_input
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -425,7 +429,7 @@ def test_making_a_note_public_lets_any_account_read_it(page_for, sharer, make_us
     panel = _open_access_panel(page)
 
     try:
-        panel.get_by_role("combobox").first.select_option("public")
+        choose_visibility(panel, "Public")
 
         expect(page.get_by_text("Saved", exact=True)).to_be_visible()
         expect(panel.get_by_text("Accessible to all users")).to_be_visible()
@@ -448,4 +452,4 @@ def test_without_the_sharing_permission_the_access_panel_has_no_list(page_for, m
     private = panel.get_by_text("Only select users and groups with permission can access")
     expect(private).to_be_visible()
     expect(panel.get_by_role("button", name="Add Access")).to_have_count(0)
-    expect(panel.get_by_role("combobox").first.get_by_role("option")).to_have_text(["Private"])
+    expect(visibility_choices(panel)).to_have_text(["Private"])
