@@ -3,21 +3,15 @@
 The delegation tool (and the timer that shares its switch) is offered to an ordinary account only
 while sub-agents are on, and not to a model whose Sub-agents tick is off, whether the tick sits on
 the model or in the models' default settings. Once on, the saved settings shape each sub-agent:
-the saved system prompt follows the parent's own (the built-in prompt when it is empty), the max
-output cuts a long answer short before it reaches the parent, and the max iterations stops a
-sub-agent that keeps calling tools.
+the saved system prompt follows the parent's own system message on the next line (the built-in
+prompt when it is empty), the max output cuts a long answer short before it reaches the parent,
+and the max iterations stops a sub-agent that keeps calling tools.
 
-`test_a_larger_max_iterations_lets_the_sub_agent_finish`,
-`test_an_answer_within_the_max_output_reaches_the_parent_whole`,
-`test_an_empty_system_prompt_gives_the_sub_agent_the_built_in_one`,
-`test_the_max_iterations_stops_a_sub_agent_that_keeps_calling_tools`,
-`test_the_max_output_cuts_a_long_answer_before_it_reaches_the_parent` and
-`test_the_saved_system_prompt_follows_the_parents_own_in_a_sub_agent` are red on dev 62f70a844:
-since de73bb830 a chat request whose reply message is already stored in the chat, the way
-automations, sub-agents and timers prepare their reply, is refused with 409 and the reply is never
-written (open-webui/open-webui#32066).
+From de73bb830 the sub-agent tests were red: a chat request whose reply message was already
+stored in the chat, the way sub-agents prepare their reply, was refused with 409
+(open-webui/open-webui#32066, fixed by 641c82df1).
 
-Discriminates: passes on dev 176d31d1d; in a backend copy that offers the delegation tool whatever
+Discriminates: passes on dev 79d376a1f; in a backend copy that offers the delegation tool whatever
 the setting says, or whatever the model's tick says, or that ignores the default settings' tick,
 the availability tests fail, and with the system prompt, the output cap or the iteration cap
 replaced by a constant the matching test fails.
@@ -42,6 +36,8 @@ SUBAGENTS = ("/api/v1/configs/subagents", "/api/v1/configs/subagents")
 MODELS_CONFIG = ("/api/v1/configs/models", "/api/v1/configs/models")
 DELEGATION = {"delegate_task", "timer"}
 PARENT_PROMPT = "You are the harbour master."
+# the chat's system prompt, sent the way the web UI sends it
+PARENT_SYSTEM = [{"role": "system", "content": PARENT_PROMPT}]
 BUILT_IN_PROMPT = "You are a sub-agent working on a specific task"
 
 
@@ -167,11 +163,11 @@ def test_the_saved_system_prompt_follows_the_parents_own_in_a_sub_agent(
         reply.text("The helper counted three."),
     )
     with make_user().client() as client:
-        ask(client, "how many boats are in?", params={"system": PARENT_PROMPT})
+        ask(client, "how many boats are in?", history=PARENT_SYSTEM)
 
     [sub_agent] = _sub_agent_requests(upstream, task)
     [system] = _system_messages(sub_agent)
-    assert system == f"{PARENT_PROMPT}\n\n{saved_prompt}"
+    assert system == f"{PARENT_PROMPT}\n{saved_prompt}"
 
 
 def test_an_empty_system_prompt_gives_the_sub_agent_the_built_in_one(
@@ -185,11 +181,11 @@ def test_an_empty_system_prompt_gives_the_sub_agent_the_built_in_one(
         reply.text("The helper counted four."),
     )
     with make_user().client() as client:
-        ask(client, "how many buoys are out?", params={"system": PARENT_PROMPT})
+        ask(client, "how many buoys are out?", history=PARENT_SYSTEM)
 
     [sub_agent] = _sub_agent_requests(upstream, task)
     [system] = _system_messages(sub_agent)
-    assert system.startswith(f"{PARENT_PROMPT}\n\n{BUILT_IN_PROMPT}")
+    assert system.startswith(f"{PARENT_PROMPT}\n{BUILT_IN_PROMPT}")
 
 
 def test_the_max_output_cuts_a_long_answer_before_it_reaches_the_parent(
