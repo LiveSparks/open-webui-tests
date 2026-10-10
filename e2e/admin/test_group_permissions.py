@@ -15,7 +15,7 @@ agrees), Reset to Defaults takes back what the group granted, and unticking them
 takes both the group's permission and a model shared only with the group out of the open tab.
 Default models set in the group's General tab start the member's next new chat on that model.
 The sidebar's Workspace entry does not follow: it stays missing until a reload, so that test is
-red on dev (open-webui/open-webui#32020).
+red on dev (open-webui/open-webui#32020, fixed by 88b3f68a1).
 
 Discriminates: passes on dev ebc6add67 except the sidebar test, which a frontend copy whose
 sidebar re-checks its entries when the account changes turns green. In a backend copy, groups
@@ -185,6 +185,11 @@ def _note_access_dialog(page: Page, owner: Actor) -> Locator:
     return page.get_by_role("dialog").filter(has_text="Access Control")
 
 
+def _visibility_choices(dialog: Locator) -> Locator:
+    dialog.locator("button[aria-label='Visibility']").click()
+    return dialog.page.get_by_role("menuitemradio")
+
+
 def test_notes_sharing_with_public_reaches_the_members_and_not_an_outsider(
     admin_page, page_for, make_user, set_defaults, make_named_group
 ):
@@ -196,11 +201,9 @@ def test_notes_sharing_with_public_reaches_the_members_and_not_an_outsider(
 
     member_dialog = _note_access_dialog(page_for(member), member)
     expect(member_dialog.get_by_role("button", name="Add Access")).to_be_visible()
-    expect(member_dialog.get_by_role("combobox").locator("option")).to_have_text(
-        ["Private", "Public"]
-    )
+    expect(_visibility_choices(member_dialog)).to_have_text(["Private", "Public"])
     outsider_dialog = _note_access_dialog(page_for(outsider), outsider)
-    expect(outsider_dialog.get_by_role("combobox").locator("option")).to_have_text(["Private"])
+    expect(_visibility_choices(outsider_dialog)).to_have_text(["Private"])
     expect(outsider_dialog.get_by_role("button", name="Add Access")).to_have_count(0)
 
 
