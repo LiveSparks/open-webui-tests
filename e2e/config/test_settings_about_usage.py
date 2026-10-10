@@ -2,7 +2,9 @@
 
 A fresh account's Usage tab says there is no usage yet. After one chat it counts that chat, one
 message each way and the model it went to, while a second account still has none. The About tab
-shows the release, and See what's new opens the release notes with an entry for that release.
+shows the release, and See what's new opens the release notes with an entry for the newest
+release in the changelog. Dev raises the version before its notes are written (as a6b1c0b35 did
+for 0.12.0), so the running release may have no entry yet.
 
 Discriminates: passes on dev 176d31d1d; in a frontend copy, the Usage tab treating every
 account as having no usage turns the usage test red, and the About tab showing no release turns
@@ -61,14 +63,15 @@ def test_usage_counts_the_accounts_own_chat(page_for, make_user, upstream):
 
 
 def test_about_shows_the_release_and_its_notes(page_for, make_user):
-    page = page_for(make_user())
+    account = make_user()
+    with account.client() as client:
+        newest = next(iter(client.get("/api/changelog").json()))
+    page = page_for(account)
     about = settings_tab(page, "about", "About")
-    release = about.get_by_text(RELEASE).first
-    expect(release).to_be_visible()
-    shown = RELEASE.search(release.inner_text()).group()
+    expect(about.get_by_text(RELEASE).first).to_be_visible()
 
     about.get_by_role("button", name="See what's new").click()
 
     notes = page.get_by_role("dialog").filter(has_text="What's New in")
     expect(notes).to_be_visible()
-    expect(notes.get_by_role("heading", name=shown, exact=True)).to_be_visible()
+    expect(notes.get_by_role("heading", name=f"v{newest}", exact=True)).to_be_visible()
