@@ -3,7 +3,7 @@
 Runs in an environment of its own with `oix[fastapi]` and `uvicorn` installed, started by
 `harness.apps`. Every verified event it handles, and every API error it meets, is appended as a
 JSON line to `APP_RECORD_FILE`, so a test reads what the app saw and did. Configuration comes
-from the environment: `API_KEY`, `APP_PRIVATE_KEY_FILE`, `OPEN_WEBUI_ALLOWED_PRIVATE_ORIGINS`
+from the environment: `API_KEY`, `APP_PRIVATE_KEY_FILE`, `OPEN_WEBUI_ALLOWED_ORIGINS`
 (read by oix), `APP_PORT`, `APP_PATH`, `APP_SCOPES`, `APP_NAME`, `APP_MANIFEST_ID`,
 `APP_SERVER` (`builtin` for `App.run`, `fastapi` for the router plus a proactive-message route),
 `APP_MANIFEST` (`false` serves POST only) and `APP_IGNORE_SELF` (`false` hands the app its own

@@ -48,7 +48,14 @@ def _channel_with_app(admin, app, **form) -> str:
     return channel_id
 
 
-def test_a_manager_invites_and_removes_an_app_from_the_member_panel(
+def _open_member_list(page: Page):
+    page.get_by_role("button", name="User Count").click()
+    members = page.get_by_role("dialog").filter(has_text="Members")
+    expect(members.first).to_be_visible()
+    return members.first
+
+
+def test_a_manager_invites_and_removes_an_app_from_the_member_list(
     page_for, apps_admin, installed_app
 ):
     with apps_admin.client() as client:
@@ -56,20 +63,21 @@ def test_a_manager_invites_and_removes_an_app_from_the_member_panel(
         channel_id = new_channel(client)
     page = page_for(apps_admin)
     _open_channel(page, channel_id)
-    page.get_by_role("button", name="User Count").click()
-    apps = page.get_by_role("region", name="Apps")
-    expect(apps.get_by_text("No apps have been invited.")).to_be_visible()
-    apps.get_by_label("App to invite").select_option(label="Invitable App")
-    apps.get_by_role("button", name="Invite").click()
-    expect(apps.get_by_text("Invitable App")).to_be_visible()
-    expect(
-        apps.get_by_label("App to invite").locator("option", has_text="Invitable App")
-    ).to_have_count(0)
+    members = _open_member_list(page)
+    members.get_by_role("button", name="Add Member").click()
+    adding = page.get_by_role("dialog").filter(has_text="Add Members")
+    adding.get_by_placeholder("Search").fill("Invitable")
+    adding.get_by_label("Invitable App").click()
+    adding.get_by_role("button", name="Add", exact=True).click()
+    expect(page.get_by_text("Members added successfully")).to_be_visible()
     with apps_admin.client() as client:
         joined = client.get(f"/api/v1/channels/{channel_id}/apps").json()
     assert [app["id"] for app in joined] == [installed_app["id"]]
-    apps.get_by_role("button", name="Remove").click()
-    expect(apps.get_by_text("No apps have been invited.")).to_be_visible()
+    expect(members.get_by_text("Invitable App")).to_be_visible()
+    members.get_by_role("button", name="Remove Invitable App").click()
+    expect(members.get_by_text("Invitable App")).to_have_count(0)
+    with apps_admin.client() as client:
+        assert client.get(f"/api/v1/channels/{channel_id}/apps").json() == []
 
 
 def test_a_plain_member_sees_the_app_but_cannot_manage_it(
@@ -79,11 +87,11 @@ def test_a_plain_member_sees_the_app_but_cannot_manage_it(
     channel_id = _channel_with_app(apps_admin, installed_app, type="group", user_ids=[member.id])
     page = page_for(member)
     _open_channel(page, channel_id)
-    page.get_by_role("button", name="User Count").click()
-    apps = page.get_by_role("region", name="Apps")
-    expect(apps.get_by_text(installed_app["name"])).to_be_visible()
-    expect(apps.get_by_role("button", name="Remove")).to_have_count(0)
-    expect(apps.get_by_label("App to invite")).to_have_count(0)
+    members = _open_member_list(page)
+    expect(members.get_by_text(installed_app["name"])).to_be_visible()
+    remove = members.get_by_role("button", name=f"Remove {installed_app['name']}")
+    expect(remove).to_have_count(0)
+    expect(members.get_by_role("button", name="Add Member")).to_have_count(0)
 
 
 def test_the_app_answers_a_command_for_everyone_under_its_name(

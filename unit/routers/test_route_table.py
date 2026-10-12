@@ -80,7 +80,8 @@ def test_every_route_path_starts_with_a_slash(route_table):
         (module, method, path)
         for module, routes in route_table.items()
         for method, path, _ in routes
-        if not path.startswith("/")
+        # an empty path is the router prefix itself, as `@router.get('')` on /api/v1/apps
+        if path and not path.startswith("/")
     ]
     assert not malformed, f"route paths with no leading slash: {malformed}"
 

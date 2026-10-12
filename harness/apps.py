@@ -4,8 +4,9 @@
 API key and Ed25519 key, and yields it once it answers. It runs from an environment of its own
 with `oix[fastapi]` and `uvicorn`: `OIX_PYTHON` names that interpreter, else `oix` importable
 next to the suite is used, and without either the tests that need it skip. CI builds that
-environment from `open-webui/oix` at the `oix-ref` input. The app appends every event it
-handles to a record file, which `app.records(...)` and `app.wait_for(...)` read.
+environment from `open-webui/oix` at the `oix-ref` input, a 0.4 release: 0.5 moved delivery
+to Socket.IO connections Open WebUI opens, which Open WebUI does not do yet. The app appends
+every event it handles to a record file, which `app.records(...)` and `app.wait_for(...)` read.
 
 `APPS_ENV` turns Apps and Channels on and lets the instance reach apps on the reserved ports
 over plain HTTP; an app's own `allowed_origins` lets it call that instance back. `install(...)`
@@ -186,7 +187,9 @@ def serving_reference_app(
         **os.environ,
         "API_KEY": reference.api_key,
         "APP_PRIVATE_KEY_FILE": str(key_file),
+        # 0.4.3 calls it OPEN_WEBUI_ALLOWED_PRIVATE_ORIGINS, 0.4.4 OPEN_WEBUI_ALLOWED_ORIGINS
         "OPEN_WEBUI_ALLOWED_PRIVATE_ORIGINS": ",".join(allowed_origins),
+        "OPEN_WEBUI_ALLOWED_ORIGINS": ",".join(allowed_origins),
         "APP_PORT": str(port),
         "APP_PATH": path,
         "APP_SCOPES": ",".join(scopes),

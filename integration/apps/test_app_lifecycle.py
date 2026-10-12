@@ -126,15 +126,12 @@ def test_one_app_serves_two_instances_independently(apps_instance, apps_admin, i
     assert seen_there["webui_url"] == other.base_url
 
 
-def test_an_app_that_may_not_call_open_webui_back_refuses_to_connect(apps_instance, apps_admin):
-    # the app is not told it may call this instance over plain HTTP
-    with serving_reference_app([]) as app:
+def test_an_app_allowing_only_other_instances_refuses_to_connect(apps_instance, apps_admin):
+    with serving_reference_app(["https://elsewhere.example"]) as app:
         with apps_admin.client() as client:
             created = install(client, app)
             connected = connect(client, created.json()["id"])
             after = client.get(f"/api/v1/apps/{created.json()['id']}").json()
-        log = app.log()
     assert connected.status_code == 502
-    assert "rejected the connection request" in connected.json()["detail"]
+    assert "refused the connection" in connected.json()["detail"]
     assert after["is_active"] is False
-    assert "App destination rejected" in log

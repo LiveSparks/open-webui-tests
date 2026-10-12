@@ -11,6 +11,8 @@ red.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -30,9 +32,9 @@ def _add_app(page: Page, url: str, api_key: str) -> None:
 
 
 def _back_from_scopes(page: Page) -> None:
-    page.get_by_role("region", name="App scopes").locator("xpath=..").get_by_role(
-        "button", name="Back"
-    ).click()
+    """The scope review closes with Continue (Back before e9635596d)."""
+    review = page.get_by_role("region", name="App scopes").locator("xpath=..")
+    review.get_by_role("button", name=re.compile("^(Continue|Back)$")).click()
 
 
 def _row(page: Page, name: str):

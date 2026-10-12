@@ -37,8 +37,10 @@ ROLE_OF_DEPENDENCY = {
     "get_current_user": "signed_in",
     # a session token, not an API key, on top of get_current_user (24e30d1cb)
     "get_human_user": "signed_in",
+    # an external app's signed token, never a user's session
+    "get_verified_app": "app",
 }
-ROLE_STRENGTH = ["public", "signed_in", "verified", "admin"]
+ROLE_STRENGTH = ["public", "signed_in", "app", "verified", "admin"]
 # dependencies that neither grant nor check a role
 NEUTRAL_DEPENDENCIES = {"get_async_session", "get_session"}
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
