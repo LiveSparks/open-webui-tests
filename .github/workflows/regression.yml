@@ -6,10 +6,10 @@ on:
   workflow_call:
     inputs:
       oix-ref:
-        description: Ref of open-webui/oix the reference app is built from
+        description: Ref of open-webui/oix the reference app is built from (a 0.4 release)
         required: false
         type: string
-        default: main
+        default: v0.4.4
       open-webui-ref:
         description: Ref of open-webui/open-webui to test (tag, branch or SHA)
         required: true
@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       oix-ref:
-        description: Ref of open-webui/oix the reference app is built from
+        description: Ref of open-webui/oix the reference app is built from (a 0.4 release)
         required: false
         type: string
-        default: main
+        default: v0.4.4
       open-webui-ref:
         description: Ref of open-webui/open-webui to test (tag, branch or SHA)
         required: true
@@ -310,6 +310,39 @@ jobs:
           name: integration-postgres-redis-report-${{ inputs.open-webui-ref }}-${{ matrix.shard }}
           path: tests/test-results
           if-no-files-found: ignore
+
+  # The shards split on .test_durations. This turns the run's own timings into a refreshed file,
+  # so committing it keeps the split balanced as tests are added and the runners change.
+  durations:
+    needs: [integration, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the test suite
+        uses: actions/checkout@v5
+        with:
+          repository: open-webui/tests
+          ref: ${{ inputs.tests-ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download the shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-report-*'
+          path: reports
+
+      - name: Refresh the durations
+        run: python scripts/refresh_durations.py .test_durations reports/integration-report-*/junit.xml reports/e2e-report-*/junit.xml
+
+      - name: Upload the refreshed durations
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-durations-${{ inputs.open-webui-ref }}
+          path: .test_durations
+          include-hidden-files: true
 
   # Built once for the browser shards, which restore it from the cache.
   e2e-build:
