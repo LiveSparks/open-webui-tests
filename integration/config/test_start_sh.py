@@ -349,7 +349,11 @@ def test_host_and_port_honour_the_environment(container):
 
 
 def test_the_default_launch_runs_the_configured_worker_count(container):
-    with booted(container, {"WEBUI_SECRET_KEY": "x", "UVICORN_WORKERS": "2"}) as boot:
+    # each worker migrates on import; the docs have one process migrate before several start
+    with booted(container, {"WEBUI_SECRET_KEY": "x"}):
+        pass
+    workers_env = {"WEBUI_SECRET_KEY": "x", "UVICORN_WORKERS": "2", "ENABLE_DB_MIGRATIONS": "false"}
+    with booted(container, workers_env) as boot:
         workers = _eventually(lambda: len(_worker_processes(boot.process.pid)) == 2)
         launched_with = _launch_arguments(boot.process.pid)
 
