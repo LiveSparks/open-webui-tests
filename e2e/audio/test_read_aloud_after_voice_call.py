@@ -5,8 +5,12 @@ Voice mode play through one hidden audio element on the chat page. Ending a call
 the Read Aloud player never unmuted it, so every reply read aloud after a call played with no
 sound until the page was reloaded. The player now unmutes the element before each sentence.
 
+Since 78613d86f a call plays through an audio element of its own and leaves the shared one alone,
+so the test mutes the shared element itself after the call and requires Read Aloud to unmute it.
+
 Discriminates: passes on the dev b859124f9 build, fails on that build with 35b0db7ed reverted
-(Read Aloud plays on an audio element that is still muted).
+(Read Aloud plays on an audio element that is still muted). Retargeted: passes on dev 4ca8fdc3f
+and fails on a build of it without the unmute.
 """
 
 from __future__ import annotations
@@ -53,7 +57,8 @@ def test_read_aloud_plays_unmuted_after_a_call_ends(
 
     page.get_by_role("button", name="End call").click()
     expect(page.get_by_role("button", name="End call")).to_have_count(0)
-    assert page.evaluate(IS_MUTED), "ending the call should have muted the player"
+    # what an ended call did to the shared player before 78613d86f, and anything else may do
+    page.evaluate("() => { document.getElementById('audioElement').muted = true; }")
 
     page.get_by_role("button", name="Read Aloud").last.click()
 

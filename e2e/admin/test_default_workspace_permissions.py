@@ -342,7 +342,11 @@ def picker_for(owner_after, page_for, admin, make_user):
         dialog.get_by_role("button", name="Add Access").click()
         picker = dialog.page.get_by_role("dialog").filter(has_text="Add Access").last
         token = group_name.split()[-1]
-        with dialog.page.expect_response(lambda r: "/users/search" in r.url and token in r.url):
+        if switches.get(GRANT_SWITCHES["users"], True):
+            with dialog.page.expect_response(lambda r: "/users/search" in r.url and token in r.url):
+                picker.get_by_placeholder("Search").fill(token)
+        else:
+            # with users withdrawn the picker searches no users at all
             picker.get_by_placeholder("Search").fill(token)
         return picker
 

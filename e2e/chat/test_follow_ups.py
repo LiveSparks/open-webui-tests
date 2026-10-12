@@ -25,7 +25,8 @@ from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, re
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
-FOLLOW_UP_TASK = "relevant follow-up questions"
+# the JSON key the reply is parsed from, the part of the task prompt that names its output
+FOLLOW_UP_TASK = '"follow_ups"'
 QUESTION = "Which grapes grow in the Douro valley?"
 ANSWER = "Touriga Nacional leads the reds."
 FOLLOW_UPS = ["What does Touriga Nacional taste like?", "When is the harvest?"]

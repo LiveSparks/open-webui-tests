@@ -215,7 +215,8 @@ def test_title_auto_generation_off_names_the_chat_after_its_first_message(
 
 
 CLIPBOARD = ["clipboard-read", "clipboard-write"]
-FOLLOW_UP_TASK = "Suggest 3-5 relevant follow-up questions"
+# the JSON key the reply is parsed from, the part of the task prompt that names its output
+FOLLOW_UP_TASK = '"follow_ups"'
 LONG_ANSWER = "Here is the script:\n\n```python\nfirst = 1\nsecond = 2\n```\n\nThat is all."
 
 
