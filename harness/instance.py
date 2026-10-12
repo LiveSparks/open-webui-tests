@@ -202,6 +202,8 @@ def launch(upstream: MockUpstream, extra_env: dict[str, str]) -> Iterator[Launch
         (scratch / name).mkdir()
     port = free_port()
     base_url = f"http://127.0.0.1:{port}"
+    # a setting can name the instance's own address, which is only known here
+    extra_env = {name: value.replace("{base_url}", base_url) for name, value in extra_env.items()}
     env = isolated_env(
         {
             "PYTHONUNBUFFERED": "1",

@@ -5,6 +5,11 @@ name: Regression suite
 on:
   workflow_call:
     inputs:
+      oix-ref:
+        description: Ref of open-webui/oix the reference app is built from
+        required: false
+        type: string
+        default: main
       open-webui-ref:
         description: Ref of open-webui/open-webui to test (tag, branch or SHA)
         required: true
@@ -21,6 +26,11 @@ on:
         default: unit
   workflow_dispatch:
     inputs:
+      oix-ref:
+        description: Ref of open-webui/oix the reference app is built from
+        required: false
+        type: string
+        default: main
       open-webui-ref:
         description: Ref of open-webui/open-webui to test (tag, branch or SHA)
         required: true
@@ -158,6 +168,27 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/open-terminal" open-terminal
           echo "OPEN_TERMINAL_BIN=$RUNNER_TEMP/open-terminal/bin/open-terminal" >> "$GITHUB_ENV"
 
+      # The Apps tests drive the reference app in harness/reference_app, built on the oix SDK in an
+      # environment of its own and checked here: it must serve its manifest with every scope.
+      - name: Build the reference app
+        run: |
+          git clone --quiet https://github.com/open-webui/oix "$RUNNER_TEMP/oix"
+          git -C "$RUNNER_TEMP/oix" checkout --quiet "${{ inputs.oix-ref }}"
+          uv venv "$RUNNER_TEMP/oix-env"
+          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi]" uvicorn
+          echo "OIX_PYTHON=$RUNNER_TEMP/oix-env/bin/python" >> "$GITHUB_ENV"
+          openssl genpkey -algorithm ED25519 > "$RUNNER_TEMP/app-key.pem"
+          export API_KEY=$(openssl rand -hex 32)
+          APP_PRIVATE_KEY_FILE="$RUNNER_TEMP/app-key.pem" APP_PORT=8765 \
+            APP_RECORD_FILE="$RUNNER_TEMP/app-records.jsonl" \
+            "$RUNNER_TEMP/oix-env/bin/python" tests/harness/reference_app/app.py &
+          for attempt in $(seq 30); do
+            curl -sf -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8765/events > "$RUNNER_TEMP/manifest.json" && break
+            sleep 1
+          done
+          kill %1
+          python -c "import json, sys; assert len(json.load(open(sys.argv[1]))['requested_scopes']) == 4" "$RUNNER_TEMP/manifest.json"
+
       - name: Run the integration suite
         working-directory: tests
         env:
@@ -236,6 +267,27 @@ jobs:
           uv venv "$RUNNER_TEMP/open-terminal"
           uv pip install --python "$RUNNER_TEMP/open-terminal" open-terminal
           echo "OPEN_TERMINAL_BIN=$RUNNER_TEMP/open-terminal/bin/open-terminal" >> "$GITHUB_ENV"
+
+      # The Apps tests drive the reference app in harness/reference_app, built on the oix SDK in an
+      # environment of its own and checked here: it must serve its manifest with every scope.
+      - name: Build the reference app
+        run: |
+          git clone --quiet https://github.com/open-webui/oix "$RUNNER_TEMP/oix"
+          git -C "$RUNNER_TEMP/oix" checkout --quiet "${{ inputs.oix-ref }}"
+          uv venv "$RUNNER_TEMP/oix-env"
+          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi]" uvicorn
+          echo "OIX_PYTHON=$RUNNER_TEMP/oix-env/bin/python" >> "$GITHUB_ENV"
+          openssl genpkey -algorithm ED25519 > "$RUNNER_TEMP/app-key.pem"
+          export API_KEY=$(openssl rand -hex 32)
+          APP_PRIVATE_KEY_FILE="$RUNNER_TEMP/app-key.pem" APP_PORT=8765 \
+            APP_RECORD_FILE="$RUNNER_TEMP/app-records.jsonl" \
+            "$RUNNER_TEMP/oix-env/bin/python" tests/harness/reference_app/app.py &
+          for attempt in $(seq 30); do
+            curl -sf -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8765/events > "$RUNNER_TEMP/manifest.json" && break
+            sleep 1
+          done
+          kill %1
+          python -c "import json, sys; assert len(json.load(open(sys.argv[1]))['requested_scopes']) == 4" "$RUNNER_TEMP/manifest.json"
 
       - name: Run the integration suite on Postgres and Redis
         working-directory: tests
@@ -366,6 +418,27 @@ jobs:
           uv venv "$RUNNER_TEMP/open-terminal"
           uv pip install --python "$RUNNER_TEMP/open-terminal" open-terminal
           echo "OPEN_TERMINAL_BIN=$RUNNER_TEMP/open-terminal/bin/open-terminal" >> "$GITHUB_ENV"
+
+      # The Apps tests drive the reference app in harness/reference_app, built on the oix SDK in an
+      # environment of its own and checked here: it must serve its manifest with every scope.
+      - name: Build the reference app
+        run: |
+          git clone --quiet https://github.com/open-webui/oix "$RUNNER_TEMP/oix"
+          git -C "$RUNNER_TEMP/oix" checkout --quiet "${{ inputs.oix-ref }}"
+          uv venv "$RUNNER_TEMP/oix-env"
+          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi]" uvicorn
+          echo "OIX_PYTHON=$RUNNER_TEMP/oix-env/bin/python" >> "$GITHUB_ENV"
+          openssl genpkey -algorithm ED25519 > "$RUNNER_TEMP/app-key.pem"
+          export API_KEY=$(openssl rand -hex 32)
+          APP_PRIVATE_KEY_FILE="$RUNNER_TEMP/app-key.pem" APP_PORT=8765 \
+            APP_RECORD_FILE="$RUNNER_TEMP/app-records.jsonl" \
+            "$RUNNER_TEMP/oix-env/bin/python" tests/harness/reference_app/app.py &
+          for attempt in $(seq 30); do
+            curl -sf -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8765/events > "$RUNNER_TEMP/manifest.json" && break
+            sleep 1
+          done
+          kill %1
+          python -c "import json, sys; assert len(json.load(open(sys.argv[1]))['requested_scopes']) == 4" "$RUNNER_TEMP/manifest.json"
 
       # The browser reports the locale as its language, and the runner's C locale as en-US@POSIX.
       - name: Run the browser suite

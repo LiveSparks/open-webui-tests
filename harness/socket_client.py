@@ -9,7 +9,7 @@ order they arrived, for a test that compares sequences (its handlers must not wa
 `join_note` and `edit_note` do what the note editor does with a note's live Yjs document;
 `note_edit(text)` is the raw update it sends after typing `text` into an empty note (built with
 pycrdt, which the backend depends on) and `note_text(state)` reads back a document state the
-server sent.
+server sent. Private app replies (`events:app`) are recorded in `app_events`.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class SocketSession:
     events: list[dict] = field(default_factory=list)
     document_states: list[dict] = field(default_factory=list)
     document_updates: list[dict] = field(default_factory=list)
+    app_events: list[dict] = field(default_factory=list)
 
     def call(self, event: str, data: dict) -> None:
         self.client.call(event, data, timeout=30)
@@ -93,6 +94,7 @@ def connected(
     session.client.on("events", session.events.append)
     session.client.on("ydoc:document:state", session.document_states.append)
     session.client.on("ydoc:document:update", session.document_updates.append)
+    session.client.on("events:app", session.app_events.append)
     session.client.connect(
         actor.base_url,
         socketio_path="/ws/socket.io",

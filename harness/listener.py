@@ -7,7 +7,7 @@ CORS preflights (`OPTIONS`) included. A route path ending in `*` answers every p
 prefix. A handler may return an iterator of byte chunks as the body: the listener sends them as they
 come, and when the client has gone away it closes the iterator, so a handler that finishes work
 after its last chunk can tell a client that read to the end from one that did not. `listening(host)`
-binds another local address, an IPv6 one included.
+binds another local address, an IPv6 one included, and `port` a fixed port.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ class IPv6HTTPServer(ThreadingHTTPServer):
 
 
 @contextmanager
-def listening(host: str = "127.0.0.1", tls: bool = False) -> Iterator[Listener]:
+def listening(host: str = "127.0.0.1", tls: bool = False, port: int = 0) -> Iterator[Listener]:
     class RequestHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -143,7 +143,7 @@ def listening(host: str = "127.0.0.1", tls: bool = False) -> Iterator[Listener]:
         do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = _serve
 
     server_class = IPv6HTTPServer if ":" in host else ThreadingHTTPServer
-    server = server_class((host, 0), RequestHandler)
+    server = server_class((host, port), RequestHandler)
     port = server.server_port
     url_host = f"[{host}]" if ":" in host else host
     scheme = "https" if tls else "http"

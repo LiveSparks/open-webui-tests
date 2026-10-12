@@ -51,6 +51,14 @@ uv venv ../open-terminal && uv pip install --python ../open-terminal open-termin
 export OPEN_TERMINAL_BIN=../open-terminal/bin/open-terminal
 ```
 
+The Apps tests (`integration/apps`, `e2e/apps`) run the reference app in `harness/reference_app`, which uses every feature of the [oix](https://github.com/open-webui/oix) SDK. Give it an environment of its own with `oix[fastapi]` and `uvicorn`, and name its interpreter in `OIX_PYTHON`; the tests skip without it:
+
+```bash
+git clone https://github.com/open-webui/oix ../oix
+uv venv ../oix-env && uv pip install --python ../oix-env "../oix[fastapi]" uvicorn
+export OIX_PYTHON=../oix-env/bin/python
+```
+
 ### Frontend suite
 
 `frontend/` imports `src/lib` modules straight out of the checkout, so the checkout needs `npm ci` and a `svelte-kit sync` first (its `tsconfig.json` extends the generated one).
