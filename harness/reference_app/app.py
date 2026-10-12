@@ -19,7 +19,8 @@ Channel commands, in any message the app can read:
 
 Mention words, after `@App`:
   public  answer in the channel     buttons  channel message with buttons    report  a download
-  defer   deferred work, ~2 s       fail     an error reply                  slow    exceed 2.5 s
+  ack     acknowledge, say nothing  fail     an error reply                  slow    exceed 2.5 s
+  later   ack, post a result ~3 s later in the thread, after rechecking the execution token
   crash   raise in the handler      authorize  recheck the execution token   (else)  private pong
 """
 
@@ -36,8 +37,9 @@ BUTTONS = [
     Action(action_id="approve", label="Approve", context={"step": 1}),
     Action(action_id="whoami", label="Who am I"),
     Action(action_id="reject", label="Reject", context={"reason": "unhandled"}),
+    Action(action_id="noted", label="Noted"),
 ]
-DEFER_SECONDS = 2.0
+LATER_SECONDS = 3.0
 
 app = App(
     manifest_id=os.environ.get("APP_MANIFEST_ID", "reference"),
@@ -50,7 +52,7 @@ app = App(
     redis_url=os.environ.get("APP_REDIS_URL") or None,
     ignore_self_events=os.environ.get("APP_IGNORE_SELF", "true") == "true",
 )
-jobs: dict[str, float] = {}
+background: set[asyncio.Task] = set()
 
 
 def record(kind: str, event=None, **details) -> None:
@@ -143,9 +145,13 @@ async def mentioned(event):
         return AppChannelReply(
             type="download", title="Weekly report", filename="weekly-report.md", content="# Report"
         )
-    if "defer" in words:
-        jobs[event.id] = time.monotonic() + DEFER_SECONDS
-        return AppChannelReply(type="deferred", operation_id=event.id, content="Started")
+    if "ack" in words:
+        return AppChannelReply(type="ack")
+    if "later" in words:
+        task = asyncio.create_task(finish_later(event))
+        background.add(task)
+        task.add_done_callback(background.discard)
+        return AppChannelReply(type="ack")
     if "fail" in words:
         return AppChannelReply(type="error", content="It broke")
     if "slow" in words:
@@ -158,15 +164,20 @@ async def mentioned(event):
     return f"pong: {event.content}"
 
 
-@app.on("channel.operation.status")
-async def operation_status(event):
-    record("operation.status", event)
-    finishes_at = jobs.get(event.id)
-    if finishes_at is None:
-        return AppChannelReply(type="error", content="Unknown job")
-    if time.monotonic() < finishes_at:
-        return AppChannelReply(type="deferred", operation_id=event.id, content="Still working")
-    return AppChannelReply(title="Result", content="Job finished")
+async def finish_later(event) -> None:
+    """Background work after an ack: recheck the asker's access, then publish the result."""
+    await asyncio.sleep(LATER_SECONDS)
+    try:
+        verified = await event.client.authorize(event.execution_token)
+        await event.client.create_message(
+            event.channel_id,
+            content=f"Job finished for {verified['actor']['name']}",
+            parent_id=event.parent_id,
+            reply_to_id=event.message_id,
+        )
+        record("later.finished", event)
+    except APIError as error:
+        record("later.refused", event, status=error.status)
 
 
 @app.action("approve")
@@ -181,6 +192,12 @@ async def approve(event):
 async def whoami(event):
     record("action.whoami", event)
     return f"you are {event.actor['id']} admin={event.actor['is_admin']}"
+
+
+@app.action("noted")
+async def noted(event):
+    record("action.noted", event)
+    return AppChannelReply(type="ack")
 
 
 @app.on("channel.action")

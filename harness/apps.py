@@ -356,8 +356,9 @@ class RawApp:
 
     It answers `app:connect` through `answer_connect(data)` (an honest, signed answer by
     default; `signed_proof(data, **claims)` forges single claims), acknowledges `app:ready` once
-    the instance answers its ping, and records every event. `request(operation, **arguments)`
-    calls the instance's runtime over the connection the instance opened, as an app's client does.
+    the instance answers its ping, and records every event, answering interactions with
+    `event_answer`. `request(operation, **arguments)` calls the instance's runtime over the
+    connection the instance opened, as an app's client does.
     """
 
     def __init__(self, private_pem: str):
@@ -372,6 +373,8 @@ class RawApp:
         self.sid: str | None = None
         self.ready = False
         self.answer_connect = self.signed_proof
+        # what the app answers an interaction with; message events always get `received`
+        self.event_answer: dict = {"type": "ack"}
         # operations sent while the instance still waits for `app:ready`, and their answers
         self.before_ready: list[str] = []
         self.before_ready_answers: list[dict] = []
@@ -460,7 +463,9 @@ def serving_raw_app(private_pem: str | None = None) -> Iterator[RawApp]:
 
         async def event(sid, payload):
             raw.events.append(payload)
-            return {"status": 200, "data": {"received": True}}
+            if str(payload.get("type", "")).startswith("channel.message."):
+                return {"status": 200, "data": {"received": True}}
+            return {"status": 200, "data": raw.event_answer}
 
         for name, handler in (
             ("connect", connect),

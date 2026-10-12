@@ -4,7 +4,7 @@ The admin enters the app's URL and API key, presses Continue, reviews the reques
 goes back and presses Connect. The app then shows in the list with its handle and an Enable
 switch that is on. Wrong keys and unreachable URLs show the reason in the form.
 
-Discriminates: passes on dev 1786d6cdb; in a frontend copy, never calling Connect after the
+Discriminates: passes on dev 4ca8fdc3f; in a frontend copy, never calling Connect after the
 app is created leaves its switch off and turns test_an_admin_connects_an_app_from_its_url_and_key
 red.
 """

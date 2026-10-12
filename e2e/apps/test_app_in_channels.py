@@ -1,13 +1,15 @@
 """Journey: people use an app inside a channel, from inviting it to pressing its buttons.
 
-A channel manager invites the app from the member panel (the user count in the header). People
-then mention it from the `@` picker; a private answer appears under their message marked "Only
+A channel manager invites the app through Add Member in the channel's member list. People then
+mention it from the `@` picker; a private answer appears under their message marked "Only
 visible to you" for them alone, while a channel answer and the app's own posts show to everyone
-under the app's name. Buttons on an app message call the app; deferred work shows "Working…"
-until the app has finished, and a download answer offers its file.
+under the app's name. Buttons on an app message call the app. Longer work is acknowledged with
+nothing shown, and its result arrives later as an ordinary app message; a download answer offers
+its file.
 
-Discriminates: passes on dev 1786d6cdb; in a frontend copy, never polling a deferred answer
-leaves it on "Working…" and turns test_deferred_work_shows_working_then_the_result red.
+Discriminates: passes on dev 4ca8fdc3f; in a frontend copy that drops both acknowledgement
+checks (the button handler's and the reply list's), the private reply row the acknowledgement
+then gets turns test_a_button_the_app_acknowledges_shows_nothing red. Either check alone holds.
 """
 
 from __future__ import annotations
@@ -190,15 +192,35 @@ def test_a_button_with_a_private_answer_tells_only_the_presser(
     expect(_private_reply(watcher, installed_app["id"])).to_have_count(0)
 
 
-def test_deferred_work_shows_working_then_the_result(page_for, apps_admin, installed_app):
+def test_acknowledged_work_shows_nothing_until_its_result_arrives(
+    page_for, apps_admin, make_apps_user, installed_app
+):
+    member = make_apps_user()
+    channel_id = _channel_with_app(apps_admin, installed_app, type="group", user_ids=[member.id])
+    asker, watcher = page_for(member), page_for(apps_admin)
+    _open_channel(asker, channel_id)
+    _open_channel(watcher, channel_id)
+    _type_mention(asker, installed_app["name"], "later")
+    result = f"Job finished for {member.name}"
+    expect(asker.get_by_text(result)).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
+    expect(watcher.get_by_text(result)).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
+    expect(_private_reply(asker, installed_app["id"])).to_have_count(0)
+
+
+def test_a_button_the_app_acknowledges_shows_nothing(
+    page_for, apps_admin, installed_app, reference_app
+):
     channel_id = _channel_with_app(apps_admin, installed_app)
+    with apps_admin.client() as client:
+        post(client, channel_id, "!buttons")
+        wait_for_message(client, channel_id, "Pick one")
     page = page_for(apps_admin)
     _open_channel(page, channel_id)
-    _type_mention(page, installed_app["name"], "defer")
-    reply = _private_reply(page, installed_app["id"])
-    expect(reply.get_by_role("status")).to_have_text("Working…", timeout=ANSWER_TIMEOUT_MS)
-    expect(reply).to_contain_text("Job finished", timeout=ANSWER_TIMEOUT_MS)
-    expect(reply.get_by_role("status")).to_have_count(0)
+    page.get_by_role("button", name="Noted").click()
+    reference_app.wait_for("action.noted", app_id=installed_app["id"], channel_id=channel_id)
+    page.wait_for_timeout(1000)
+    expect(_private_reply(page, installed_app["id"])).to_have_count(0)
+    expect(page.get_by_role("alert")).to_have_count(0)
 
 
 def test_a_download_answer_offers_its_file(page_for, apps_admin, installed_app):

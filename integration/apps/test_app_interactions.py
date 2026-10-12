@@ -1,14 +1,16 @@
-"""Journey: mentioning an app, pressing its buttons and waiting on its deferred work.
+"""Journey: mentioning an app, pressing its buttons and acknowledging work it finishes later.
 
 A mention or a button press is an interaction: Open WebUI sends the app the actor and a signed
 execution token, the app rechecks it, and answers within 2.5 seconds. A private answer reaches
 only the person who asked, over their socket (`events:app`); a channel answer becomes an app
-message everyone sees. Deferred work comes back with a receipt the asker polls with.
+message everyone sees; an acknowledgement says nothing at all. Work that takes longer is
+acknowledged and published later through the message API, after the app rechecks the asker's
+access with the same execution token.
 
 Discriminates: mutation, `app_channel_reply_handler` emitting the private reply to the whole
 channel, turns test_a_private_answer_reaches_only_the_person_who_asked red;
-`get_app_operation` skipping the actor comparison turns
-test_another_user_cannot_poll_someone_elses_operation red.
+`authorize_app_execution` skipping the channel access check turns
+test_background_work_loses_access_when_the_asker_leaves red.
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ def test_a_mention_gets_a_private_answer(apps_admin, installed_app, reference_ap
     assert event["reply"]["visibility"] == "private"
     assert event["reply"]["content"].startswith("pong: ")
     seen = reference_app.wait_for("mention", app_id=installed_app["id"], channel_id=channel)
-    assert seen["actor"] == {"id": apps_admin.id, "is_admin": True}
+    assert seen["actor"] == {"id": apps_admin.id, "name": apps_admin.name, "is_admin": True}
     assert seen["data"]["message_id"] == posted["id"]
 
 
@@ -224,7 +226,7 @@ def test_a_channel_message_with_buttons_stores_them(apps_admin, installed_app, c
         data = client.get(f"/api/v1/channels/{channel}/messages/{message['id']}/data").json()
     assert message["data"] is True, "the list only flags that the message carries data"
     labels = [action["label"] for action in data["app"]["actions"]]
-    assert labels == ["Approve", "Who am I", "Reject"]
+    assert labels == ["Approve", "Who am I", "Reject", "Noted"]
 
 
 def test_pressing_a_button_updates_the_message_for_everyone(apps_admin, installed_app, channel):
@@ -303,71 +305,78 @@ def test_a_disabled_app_takes_no_button_presses(apps_admin, installed_app, chann
     assert pressed.json()["detail"] == "App is inactive"
 
 
-def _deferred(actor, channel_id, app):
-    with connected(actor) as socket:
-        posted = _mention(actor, channel_id, app, "defer")
-        return reply_events(socket, message_id=posted["id"])["reply"]
+def test_an_ack_answers_without_any_message(apps_admin, installed_app, channel):
+    with connected(apps_admin) as socket:
+        posted = _mention(apps_admin, channel, installed_app, "ack")
+        time.sleep(2)
+        app_replies = [event for event in socket.app_events if event["message_id"] == posted["id"]]
+    with apps_admin.client() as client:
+        contents = [message["content"] for message in channel_messages(client, channel)]
+    assert app_replies == [], "an acknowledgement shows nothing to the asker"
+    assert contents == [posted["content"]], "and posts nothing in the channel"
 
 
-def _poll(actor, app_id, reply):
-    with actor.client() as client:
-        return client.get(
-            f"/api/v1/apps/{app_id}/operations/{reply['operation_id']}",
-            headers={"X-OpenWebUI-Operation-Receipt": reply["receipt"]},
-        )
+def test_a_button_press_can_be_acknowledged_silently(apps_admin, installed_app, channel):
+    with apps_admin.client() as client:
+        post(client, channel, "!buttons")
+        message = wait_for_message(client, channel, "Pick one")
+    _mention(apps_admin, channel, installed_app, "ack")
+    pressed = _press(apps_admin, installed_app["id"], message["id"], "reject")
+    assert pressed.status_code == 200
 
 
-def test_deferred_work_is_polled_until_it_finishes(apps_admin, installed_app, channel):
-    reply = _deferred(apps_admin, channel, installed_app)
-    assert reply["type"] == "deferred"
-    assert reply["receipt"]
-    first = _poll(apps_admin, installed_app["id"], reply)
-    assert first.status_code == 200, first.text
-    assert first.json()["type"] == "deferred"
-    deadline = time.monotonic() + 15
-    finished = first.json()
-    while finished["type"] == "deferred" and time.monotonic() < deadline:
-        time.sleep(0.5)
-        finished = _poll(apps_admin, installed_app["id"], reply).json()
-    assert finished["content"] == "Job finished"
-    assert finished["visibility"] == "private"
-
-
-def test_another_user_cannot_poll_someone_elses_operation(
-    apps_admin, make_apps_user, installed_app
+def test_background_work_publishes_its_result_after_an_ack(
+    apps_admin, installed_app, reference_app, channel
 ):
-    other = make_apps_user()
+    posted = _mention(apps_admin, channel, installed_app, "later")
     with apps_admin.client() as client:
-        channel_id = new_channel(client, type="group", user_ids=[other.id])
+        result = wait_for_message(client, channel, f"Job finished for {apps_admin.name}")
+    assert result["reply_to_id"] == posted["id"]
+    assert result["user"]["id"] == installed_app["id"]
+    reference_app.wait_for("later.finished", app_id=installed_app["id"], channel_id=channel)
+
+
+def test_background_work_loses_access_when_the_asker_leaves(
+    apps_admin, make_apps_user, installed_app, reference_app
+):
+    member = make_apps_user()
+    with apps_admin.client() as client:
+        channel_id = new_channel(client, type="group", user_ids=[member.id])
         invite(client, channel_id, installed_app["id"])
-    reply = _deferred(apps_admin, channel_id, installed_app)
-    stolen = _poll(other, installed_app["id"], reply)
-    assert stolen.status_code == 403
-
-
-def test_a_tampered_receipt_is_refused(apps_admin, installed_app, channel):
-    reply = _deferred(apps_admin, channel, installed_app)
-    payload, signature = reply["receipt"].split(".")
-    tampered = {**reply, "receipt": payload + "." + signature[::-1]}
-    assert _poll(apps_admin, installed_app["id"], tampered).status_code == 403
-    assert _poll(apps_admin, installed_app["id"], {**reply, "receipt": "x.y"}).status_code == 403
-
-
-def test_a_receipt_for_one_operation_cannot_poll_another(apps_admin, installed_app, channel):
-    reply = _deferred(apps_admin, channel, installed_app)
-    renamed = {**reply, "operation_id": "another-operation"}
-    assert _poll(apps_admin, installed_app["id"], renamed).status_code == 403
-
-
-def test_a_receipt_dies_with_the_app_key(apps_admin, installed_app, reference_app, channel):
-    reply = _deferred(apps_admin, channel, installed_app)
+    _mention(member, channel_id, installed_app, "later")
+    # the app has acknowledged and is working; only now does the asker leave
+    reference_app.wait_for("mention", app_id=installed_app["id"], channel_id=channel_id)
     with apps_admin.client() as client:
-        client.delete(f"/api/v1/apps/{installed_app['id']}")
-        client.post(
-            f"/api/v1/apps/{installed_app['id']}/connect", json={"api_key": reference_app.api_key}
+        removed = client.post(
+            f"/api/v1/channels/{channel_id}/update/members/remove", json={"user_ids": [member.id]}
         )
-    # the key round-trip re-encrypts it, so the receipt's signature no longer matches
-    assert _poll(apps_admin, installed_app["id"], reply).status_code == 403
+    assert removed.status_code == 200, removed.text
+    refused = reference_app.wait_for(
+        "later.refused", app_id=installed_app["id"], channel_id=channel_id
+    )
+    assert refused["status"] == 403
+    with apps_admin.client() as client:
+        contents = [message["content"] for message in channel_messages(client, channel_id)]
+    assert not any(content.startswith("Job finished") for content in contents)
+
+
+def test_an_ack_with_content_is_refused(apps_admin, make_apps_user, channel):
+    """Open WebUI checks the reply shape itself, whatever an app sends."""
+    from harness.apps import connect, install_raw_app, serving_raw_app
+
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            raw.installed = install_raw_app(client, raw)
+            assert connect(client, raw.installed["id"]).status_code == 200
+            raw.wait_until_ready()
+            invite(client, channel, raw.installed["id"])
+        raw.event_answer = {"type": "ack", "content": "sneaky"}
+        with apps_admin.client() as client:
+            post(client, channel, "!buttons")
+        with connected(apps_admin) as socket:
+            posted = _mention(apps_admin, channel, raw.installed, "anything")
+            event = reply_events(socket, message_id=posted["id"])
+    assert event["reply"]["type"] == "error"
 
 
 def test_leaving_the_channel_revokes_interactions(apps_admin, make_apps_user, installed_app):
