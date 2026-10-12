@@ -1,8 +1,8 @@
 """Regression: the owner's sidebar never marked the chats of a folder they had shared.
 
 Commit ce18eca34 lists a folder its owner shared in the owner's own shared folders, and the
-sidebar then shows the owner's picture on every chat in that folder and its sub-folders, with the
-owner's name on hover, as members see it. A folder the owner keeps to themselves, or stops
+sidebar then shows the owner's picture on every chat in that folder and its sub-folders, named
+after the owner, as members see it. A folder the owner keeps to themselves, or stops
 sharing, shows plain chats.
 
 Discriminates: passes on the dev 87a937459 build. All three go red with the sidebar change of
@@ -92,9 +92,10 @@ def open_sidebar(page: Page) -> Locator:
 
 
 def owner_picture(sidebar: Locator, title: str, owner) -> Locator:
-    chat = sidebar.get_by_role("button", name=title)
-    expect(chat).to_be_visible()
-    return chat.locator(f'img[src$="/users/{owner.id}/profile/image"]')
+    """The owner's picture in the chat's sidebar row, beside the link to the chat."""
+    row = sidebar.locator("#sidebar-chat-item").filter(has=sidebar.page.get_by_text(title))
+    expect(row).to_be_visible()
+    return row.locator(f'img[src$="/users/{owner.id}/profile/image"]')
 
 
 def test_the_owner_sees_their_picture_on_chats_in_a_folder_they_shared(page_for, crew):
@@ -108,8 +109,9 @@ def test_the_owner_sees_their_picture_on_chats_in_a_folder_they_shared(page_for,
 
     picture = owner_picture(sidebar, shared_title, owner)
     expect(picture).to_be_visible()
-    picture.hover()
-    expect(page.get_by_role("tooltip").filter(has_text=owner.name)).to_be_visible()
+    # the picture is a button named after the owner, which opens their profile card
+    row = sidebar.locator("#sidebar-chat-item").filter(has=page.get_by_text(shared_title))
+    expect(row.get_by_role("button", name=owner.name)).to_be_visible()
     expect(owner_picture(sidebar, kept_title, owner)).to_have_count(0)
 
 

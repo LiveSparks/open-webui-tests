@@ -62,6 +62,7 @@ from harness.realtime_provider import (
 from harness.upstream import MOCK_MODEL_ID
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.member_picker import pick_member
 from utils.model_editor import pick, section, set_checkbox
 from utils.speech_audio import silent_wav
 from utils.tooltips import tooltip_button
@@ -530,7 +531,7 @@ def test_a_new_model_is_private_until_shared_with_a_group(page_for, builder, cre
     access.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(group_name)
-    picker.get_by_role("button", name=re.compile(re.escape(group_name))).click()
+    pick_member(picker, re.compile(re.escape(group_name)))
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(access.get_by_text(group_name)).to_be_visible()
     page.keyboard.press("Escape")

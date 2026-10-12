@@ -37,6 +37,7 @@ from harness import upstream as reply
 from harness.access import make_group
 from harness.chat_history import seed_chat
 from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.sidebar_folders import folder_link, folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -130,14 +131,11 @@ def open_sidebar(page: Page) -> Locator:
     return sidebar
 
 
-def folder_row(sidebar: Locator, name: str) -> Locator:
-    return sidebar.get_by_role("button", name=re.compile(f"^{re.escape(name)}"))
-
-
 def open_share_dialog(page: Page, name: str) -> Locator:
-    row = folder_row(open_sidebar(page), name)
-    # focus shows the row's buttons like a hover, and keeps them shown while the section slides
-    row.focus()
+    sidebar = open_sidebar(page)
+    row = folder_row(sidebar, name)
+    # focus on the name shows the row's buttons like a hover, and keeps them shown while it slides
+    folder_link(sidebar, name).focus()
     row.get_by_role("button").last.click()
     page.get_by_role("menu").get_by_role("button", name="Share").click()
     dialog = page.get_by_role("dialog").filter(has_text=f"Share: {name}")
@@ -321,9 +319,10 @@ def test_a_reading_member_cannot_drop_a_chat_into_the_shared_folder(page_for, cr
 
 
 def open_row_menu(page: Page, name: str) -> Locator:
-    row = folder_row(open_sidebar(page), name)
-    # focus shows the row's buttons like a hover, and keeps them shown while the section slides
-    row.focus()
+    sidebar = open_sidebar(page)
+    row = folder_row(sidebar, name)
+    # focus on the name shows the row's buttons like a hover, and keeps them shown while it slides
+    folder_link(sidebar, name).focus()
     row.get_by_role("button").last.click()
     menu = page.get_by_role("menu")
     expect(menu.get_by_role("button", name="Export")).to_be_visible()

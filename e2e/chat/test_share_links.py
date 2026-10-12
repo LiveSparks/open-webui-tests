@@ -27,6 +27,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import conversation, expect_reply, send
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -63,7 +64,7 @@ def _grant(dialog: Locator, account) -> None:
     picker = dialog.page.get_by_role("dialog").filter(has_text="Add Access").last
     # the picker lists one page of users; searching reaches any account
     picker.get_by_placeholder("Search").fill(account.name)
-    picker.get_by_role("button", name=account.name).click()
+    pick_member(picker, account.name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(dialog.page.get_by_text("Access updated")).to_be_visible()
 

@@ -21,6 +21,7 @@ from playwright.sync_api import Page, expect
 
 from harness.channel_quotes import enable_channels, group_channel, post_message
 from utils.chat_ui import chat_input
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -65,7 +66,7 @@ def test_the_owner_adds_a_member_who_then_reads_the_earlier_messages(
     page.get_by_role("dialog").filter(has_text="Add Members").get_by_placeholder("Search").fill(
         newcomer.name
     )
-    page.get_by_role("dialog").get_by_role("button", name=newcomer.name).click()
+    pick_member(page.get_by_role("dialog"), newcomer.name)
     page.get_by_role("dialog").get_by_role("button", name="Add", exact=True).click()
 
     expect(page.get_by_text("Members added successfully")).to_be_visible()

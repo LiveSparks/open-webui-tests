@@ -16,6 +16,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from utils.sidebar_folders import folder_row
+
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 TITLE = "Trip to the coast"
@@ -130,7 +132,7 @@ def test_a_deleted_chat_stays_gone(sidebar):
 def test_a_chat_moved_into_a_folder_stays_there(sidebar):
     folders = sidebar.get_by_role("button", name="Folders", exact=True)
     folders.click()
-    folder = sidebar.get_by_role("button", name="Holidays")
+    folder = folder_row(sidebar, "Holidays")
     expect(folder).to_be_visible()
     expect(sidebar.get_by_text("No chats")).to_be_visible()
 

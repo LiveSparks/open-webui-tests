@@ -41,6 +41,7 @@ from harness import upstream as reply
 from harness.image_engines import PNG_BASE64
 from harness.knowledge_bases import knowledge_base
 from utils.chat_ui import expect_reply, send
+from utils.sidebar_folders import folder_link, folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -109,10 +110,6 @@ def reloaded(sidebar: Locator) -> Locator:
     sidebar.page.reload()  # the sidebar stays open
     show_folders(sidebar)
     return sidebar
-
-
-def folder_row(sidebar: Locator, name: str) -> Locator:
-    return sidebar.get_by_role("button", name=name, exact=True)
 
 
 def expand_toggle(sidebar: Locator, name: str) -> Locator:
@@ -209,7 +206,7 @@ def test_the_folder_settings_reach_a_new_chat_started_in_the_folder(
         assert attached[("collection", base_name)] == knowledge_id
         file_id = attached[("file", "moorings.txt")]
 
-        folder_row(sidebar, "Harbour").click()
+        folder_link(sidebar, "Harbour").click()
         expect(page).to_have_url(re.compile(f"/folders/{folder_id}"))
         upstream.queue(reply.text("High tide at noon", match=reply.answering("when is high tide?")))
         send(page, "when is high tide?")
@@ -345,7 +342,7 @@ def test_a_folder_renamed_in_place_keeps_its_new_name(page_for, make_user):
     update_path = f"/api/v1/folders/{folder_id}/update"
     sidebar = open_sidebar(page_for(owner))
 
-    folder_row(sidebar, "Drafts").dblclick()
+    folder_link(sidebar, "Drafts").dblclick()
     updates = []
     sidebar.page.on(
         "request",

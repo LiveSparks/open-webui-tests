@@ -18,13 +18,13 @@ its end.
 from __future__ import annotations
 
 import json
-import re
 import uuid
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness.chat_history import seed_chat
+from utils.sidebar_folders import folder_link, folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -82,9 +82,8 @@ def _reloaded(sidebar: Locator) -> Locator:
 
 def _folder_menu(sidebar: Locator, name: str) -> Locator:
     """Open the "More" menu on the folder's row, a button shown while the row has focus."""
-    # an unread count joins the row's name
-    row = sidebar.get_by_role("button", name=re.compile(rf"^{re.escape(name)}( \d+)?$"))
-    row.focus()
+    row = folder_row(sidebar, name)
+    folder_link(sidebar, name).focus()
     row.get_by_role("button").last.click()
     return sidebar.page.get_by_role("menu")
 
@@ -183,7 +182,7 @@ def test_header_menu_move_files_the_open_chat_into_the_chosen_folder(make_user, 
 
     page.reload()
     sidebar = _open_sidebar(page)
-    expect(sidebar.get_by_role("button", name=FOLDER_NAME, exact=True)).to_be_visible()
+    expect(folder_row(sidebar, FOLDER_NAME)).to_be_visible()
     expect(sidebar.get_by_text("No chats")).to_have_count(0)
     expect(_entry(sidebar, title)).to_be_visible()
 

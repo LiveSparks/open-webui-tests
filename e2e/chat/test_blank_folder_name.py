@@ -19,6 +19,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from utils.sidebar_folders import folder_link, folder_row
+
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 NAME = "Work"
@@ -59,10 +61,6 @@ def show_folders(sidebar: Locator) -> None:
         section.click()
 
 
-def folder_row(sidebar: Locator, name: str) -> Locator:
-    return sidebar.get_by_role("button", name=name, exact=True)
-
-
 def folder_menu(sidebar: Locator, name: str) -> Locator:
     """Open the "More" menu on the folder's row, a tooltip-only button shown on hover."""
     row = folder_row(sidebar, name)
@@ -101,7 +99,7 @@ def test_renaming_a_folder_to_spaces_is_refused(sidebar, owner):
 
 
 def test_renaming_a_folder_in_place_to_spaces_is_refused(sidebar, owner):
-    folder_row(sidebar, NAME).dblclick()
+    folder_link(sidebar, NAME).dblclick()
     rename_input = sidebar.get_by_role("textbox")
     rename_input.fill(" ")
     rename_input.press("Enter")

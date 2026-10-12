@@ -27,6 +27,7 @@ from harness import upstream as reply
 from harness.chat_history import seed_chat
 from harness.knowledge_bases import add_text_file, knowledge_base
 from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.sidebar_folders import folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -204,15 +205,15 @@ def test_a_subfolder_dragged_under_another_folder_keeps_its_chats_and_its_prompt
     page = page_for(owner)
     page.goto("/")
     sidebar = open_sidebar(page)
-    seeds_row = sidebar.get_by_role("button", name="Seeds", exact=True)
+    seeds_row = folder_row(sidebar, "Seeds")
     expect(seeds_row).to_be_visible()
 
     with page.expect_response(lambda response: response.url.endswith("/update/parent")):
-        drag(page, seeds_row, sidebar.get_by_role("button", name="Archive", exact=True))
+        drag(page, seeds_row, folder_row(sidebar, "Archive"))
 
     archive = folder_content(sidebar, archive_id)
-    expect(archive.get_by_role("button", name="Seeds", exact=True)).to_be_visible()
-    expect(folder_content(sidebar, garden_id).get_by_role("button", name="Seeds")).to_have_count(0)
+    expect(folder_row(archive, "Seeds")).to_be_visible()
+    expect(folder_row(folder_content(sidebar, garden_id), "Seeds")).to_have_count(0)
     with owner.client() as client:
         assert client.get(f"/api/v1/folders/{seeds_id}").json()["parent_id"] == archive_id
     page.reload()

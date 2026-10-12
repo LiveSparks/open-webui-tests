@@ -37,6 +37,7 @@ from harness.channel_quotes import enable_channels
 from harness.group_tree import move_group
 from harness.python_tools import EVERYONE_READS
 from utils.chat_ui import chat_input
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -220,7 +221,7 @@ def test_a_knowledge_base_shared_with_the_parent_in_the_access_dialog_reaches_a_
     dialog.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(parent_name)
-    picker.get_by_role("button", name=parent_name).click()
+    pick_member(picker, parent_name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text("Saved").first).to_be_visible()
     expect(dialog.get_by_text(parent_name)).to_be_visible()
@@ -368,7 +369,7 @@ def test_a_subgroup_member_shares_a_note_with_a_members_only_parent(
     panel.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has=page.get_by_role("button", name="Add"))
     picker.get_by_placeholder("Search").fill(parent_name)
-    picker.get_by_role("button", name=parent_name).click()
+    pick_member(picker, parent_name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text("Saved", exact=True)).to_be_visible()
 

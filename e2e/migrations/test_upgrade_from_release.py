@@ -39,6 +39,7 @@ from harness.instance import resolve_backend, resolve_frontend_build
 from harness.upgraded_release import Upgraded, data_set_params, upgraded_release
 from utils.cached_chat import attach_from_menu, calling, turn_on_tool
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, replies, send
+from utils.sidebar_folders import folder_row
 
 pytestmark = [
     pytest.mark.journey,
@@ -97,13 +98,8 @@ def _expand(sidebar: Locator, section: str) -> None:
         toggle.click()
 
 
-def _folder_row(sidebar: Locator, name: str) -> Locator:
-    """The folder's row, named with its unread count when it has one."""
-    return sidebar.get_by_role("button", name=re.compile(rf"^{re.escape(name)}( \d+)?$"))
-
-
 def _open_folder(sidebar: Locator, name: str) -> None:
-    _folder_row(sidebar, name).get_by_role("button").first.click()
+    folder_row(sidebar, name).get_by_role("button").first.click()
 
 
 def _folder_with_its_chats(sidebar: Locator, folder_id: str) -> Locator:
@@ -197,8 +193,8 @@ def test_the_pinned_chat_sits_in_its_nested_folder_once_unpinned(open_as, upgrad
     expect(sidebar.get_by_role("button", name="Pinned", exact=True)).to_be_visible()
     expect(sidebar.get_by_role("button", name=re.compile(branched["title"]))).to_be_visible()
     _expand(sidebar, "Folders")
-    child_folder = _folder_row(sidebar, folders["child"]["name"])
-    expect(_folder_row(sidebar, folders["parent"]["name"])).to_be_visible()
+    child_folder = folder_row(sidebar, folders["child"]["name"])
+    expect(folder_row(sidebar, folders["parent"]["name"])).to_be_visible()
     expect(child_folder).to_have_count(0)
     _open_folder(sidebar, folders["parent"]["name"])
     expect(child_folder).to_be_visible()

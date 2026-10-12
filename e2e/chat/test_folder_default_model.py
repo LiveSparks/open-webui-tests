@@ -26,6 +26,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.sidebar_folders import folder_link, folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -78,7 +79,7 @@ def open_edit_dialog(page: Page) -> Locator:
     expect(folders).to_be_visible()
     if folders.get_attribute("aria-expanded") != "true":
         folders.click()
-    row = sidebar.get_by_role("button", name=FOLDER, exact=True)
+    row = folder_row(sidebar, FOLDER)
     row.hover()
     row.get_by_role("button").last.click()
     page.get_by_role("menu").get_by_role("button", name="Edit").click()
@@ -197,7 +198,7 @@ def test_a_folder_without_a_default_does_not_inherit_the_last_chats_model(
     page.get_by_role("button", name="Open Sidebar", exact=True).click()
     sidebar = page.get_by_role("navigation", name="Chat history")
     sidebar.get_by_role("button", name="Folders", exact=True).click()
-    sidebar.get_by_role("button", name=FOLDER, exact=True).click()
+    folder_link(sidebar, FOLDER).click()
 
     expect(page).to_have_url(re.compile(f"/folders/{folder_id}"))
     expect(

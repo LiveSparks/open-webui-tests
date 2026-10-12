@@ -14,6 +14,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import expect
 
+from utils.sidebar_folders import folder_row
+
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 FOLDER_NAMES = ("projects", "2026", "q1")
@@ -44,10 +46,6 @@ def _open_folders_section(page) -> None:
         toggle.click()
 
 
-def _folder_row(page, name: str):
-    return page.get_by_role("button", name=name)
-
-
 def _drag(page, source, target) -> None:
     # A synthetic drag: a mouse drag across the nested rows sometimes never fires the drop.
     transfer = page.evaluate_handle("() => new DataTransfer()")
@@ -63,16 +61,16 @@ def test_dropping_a_folder_on_its_grandchild_is_refused_and_keeps_the_tree(
     page = page_for(owner_with_tree)
     _open_folders_section(page)
     for name in FOLDER_NAMES:
-        expect(_folder_row(page, name)).to_be_visible()
+        expect(folder_row(page, name)).to_be_visible()
     # every expanded folder has loaded its chats, so the tree has stopped moving
     expect(page.get_by_text("No chats")).to_have_count(len(FOLDER_NAMES))
 
     with page.expect_response(lambda response: response.url.endswith("/update/parent")):
-        _drag(page, _folder_row(page, "projects"), _folder_row(page, "q1"))
+        _drag(page, folder_row(page, "projects"), folder_row(page, "q1"))
 
     expect(
         page.get_by_text("Cannot move a folder into itself or one of its subfolders")
     ).to_be_visible()
     page.reload()  # the sidebar and its folders section stay open
     for name in FOLDER_NAMES:
-        expect(_folder_row(page, name)).to_be_visible()
+        expect(folder_row(page, name)).to_be_visible()

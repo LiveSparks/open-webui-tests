@@ -30,6 +30,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.channel_chat import enable_channels, mention, model_reply
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.sidebar_folders import folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -264,7 +265,7 @@ def edit_folder_with_files(page: Page, folder_name: str, *names: str) -> Locator
     folders = sidebar.get_by_role("button", name="Folders", exact=True)
     if folders.get_attribute("aria-expanded") != "true":
         folders.click()
-    row = sidebar.get_by_role("button", name=folder_name, exact=True)
+    row = folder_row(sidebar, folder_name)
     row.hover()
     # the row's menu button carries only a tooltip
     row.get_by_role("button").last.click()

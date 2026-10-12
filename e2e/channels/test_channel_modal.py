@@ -31,6 +31,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.channel_quotes import enable_channels, group_channel, post_message
 from utils.chat_ui import chat_input, send
+from utils.member_picker import pick_member
 from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -135,7 +136,7 @@ def test_a_direct_message_created_in_the_modal_reaches_the_person_picked(
         label="Direct Message"
     )
     modal.get_by_placeholder("Search").fill(other.name)
-    modal.get_by_role("button", name=other.name).click()
+    pick_member(modal, other.name)
     modal.get_by_role("button", name="Create", exact=True).click()
 
     expect(page).to_have_url(re.compile("/channels/"))

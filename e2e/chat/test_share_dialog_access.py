@@ -33,6 +33,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from utils.access_control import choose_visibility, visibility
 from utils.chat_ui import expect_reply, send
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -89,7 +90,7 @@ def grant(dialog: Locator, account) -> None:
     dialog.get_by_role("button", name="Add Access").click()
     picker = dialog.page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(account.name)
-    picker.get_by_role("button", name=account.name).click()
+    pick_member(picker, account.name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(dialog.get_by_text(account.name)).to_be_visible()
 

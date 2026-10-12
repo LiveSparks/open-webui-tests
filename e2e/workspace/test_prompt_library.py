@@ -30,6 +30,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness.access import grant, make_group
 from harness.actors import Actor
 from utils.chat_ui import chat_input
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -194,7 +195,7 @@ def test_a_prompt_shared_with_a_group_in_the_access_dialog_is_offered_until_the_
     dialog.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(group_name)
-    picker.get_by_role("button", name=group_name).click()
+    pick_member(picker, group_name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text("Saved").first).to_be_visible()
     expect(dialog.get_by_text(group_name)).to_be_visible()

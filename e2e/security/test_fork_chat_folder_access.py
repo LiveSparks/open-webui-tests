@@ -18,6 +18,8 @@ import uuid
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from utils.sidebar_folders import folder_row
+
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 TITLE = "Packing list"
@@ -64,7 +66,7 @@ def _expanded_shared_folder(page: Page, name: str, folder_id: str) -> Locator:
     expect(section).to_be_visible()
     if section.get_attribute("aria-expanded") != "true":
         section.click()
-    sidebar.get_by_role("button", name=name, exact=True).get_by_role("button").first.click()
+    folder_row(sidebar, name).get_by_role("button").first.click()
     folder = sidebar.locator(f"#folder-{folder_id}-button").locator(
         "xpath=ancestor::div[@draggable][1]"
     )

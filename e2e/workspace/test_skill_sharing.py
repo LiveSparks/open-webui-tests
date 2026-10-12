@@ -27,6 +27,7 @@ from harness import upstream as reply
 from harness.access import make_group
 from harness.actors import Actor
 from utils.chat_ui import chat_input, expect_reply
+from utils.member_picker import pick_member
 from utils.skill_editor import code_editor, replace_text
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -94,7 +95,7 @@ def _add_access(page: Page, dialog: Locator, name: str) -> None:
     dialog.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(name)
-    picker.get_by_role("button", name=name).click()
+    pick_member(picker, name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text("Saved").first).to_be_visible()
     expect(dialog.get_by_text(name)).to_be_visible()

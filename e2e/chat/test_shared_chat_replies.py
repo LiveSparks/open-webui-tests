@@ -45,6 +45,8 @@ from harness import upstream as reply
 from harness.access import grant, make_group
 from harness.chat_history import seed_chat
 from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.member_picker import pick_member
+from utils.sidebar_folders import folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -91,7 +93,7 @@ def _add_to_access_list(dialog: Locator, name: str) -> None:
     dialog.get_by_role("button", name="Add Access").click()
     picker = dialog.page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(name)
-    picker.get_by_role("button", name=name).last.click()
+    pick_member(picker, name)
     with dialog.page.expect_response(re.compile(r"/access/update")):
         picker.get_by_role("button", name="Add", exact=True).click()
 
@@ -353,12 +355,8 @@ def _open_sidebar(page: Page) -> Locator:
     return sidebar
 
 
-def _folder_row(sidebar: Locator, name: str) -> Locator:
-    return sidebar.get_by_role("button", name=re.compile(f"^{re.escape(name)}"))
-
-
 def _folder_menu(page: Page, name: str) -> Locator:
-    row = _folder_row(_open_sidebar(page), name)
+    row = folder_row(_open_sidebar(page), name)
     row.hover()
     row.get_by_role("button").last.click()
     menu = page.get_by_role("menu")

@@ -25,6 +25,7 @@ from harness.chat_history import seed_chat
 from harness.python_tools import EVERYONE_READS, python_tool
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.sidebar_folders import folder_link
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -103,7 +104,7 @@ def open_sidebar(page: Page) -> Locator:
 
 def visit_folder_and_return(page: Page, last_reply: str) -> None:
     """Click the folder's name, then go back to the chat with the browser's Back button."""
-    open_sidebar(page).get_by_role("button", name=FOLDER, exact=True).click()
+    folder_link(open_sidebar(page), FOLDER).click()
     expect(page).to_have_url(re.compile(r"/folders/"))
     page.wait_for_timeout(1000)  # a person's glance at the folder; the draft saves after 500 ms
     page.go_back()
@@ -163,7 +164,7 @@ def test_a_new_chat_in_the_folder_still_uses_the_folder_model_and_its_tools(
     page_for, owner, upstream, folder_model, folder_tool
 ):
     page = page_for(owner)
-    open_sidebar(page).get_by_role("button", name=FOLDER, exact=True).click()
+    folder_link(open_sidebar(page), FOLDER).click()
     expect(page).to_have_url(re.compile(r"/folders/"))
 
     upstream.queue(reply.text("in the folder", match=reply.answering("new in folder")))

@@ -29,6 +29,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.channel_quotes import enable_channels, group_channel, post_message
 from utils.chat_ui import chat_input, send
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -194,7 +195,7 @@ def test_a_group_direct_message_lists_under_the_other_names_and_reaches_both(
     )
     for person in (second, third):
         modal.get_by_placeholder("Search").fill(person.name)
-        modal.get_by_role("button", name=person.name).click()
+        pick_member(modal, person.name)
     modal.get_by_role("button", name="Create", exact=True).click()
 
     expect(page).to_have_url(re.compile("/channels/"))

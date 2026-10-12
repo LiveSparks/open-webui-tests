@@ -64,6 +64,7 @@ from harness.chat import ask
 from harness.knowledge_bases import add_text_file
 from harness.listener import listening, text_answer
 from harness.web_retrieval import LOCAL_WEB_FETCH, RETRIEVAL_CONFIG
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -601,7 +602,7 @@ def _share_with_group(page: Page, base: Locator, group_name: str) -> Locator:
     dialog.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has_text="Add Access").last
     picker.get_by_placeholder("Search").fill(group_name)
-    picker.get_by_role("button", name=group_name).click()
+    pick_member(picker, group_name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text("Saved").first).to_be_visible()
     expect(dialog.get_by_role("combobox", name="Access level")).to_have_value("read")
