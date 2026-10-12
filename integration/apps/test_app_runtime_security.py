@@ -1,12 +1,16 @@
-"""Journey: the runtime API trusts only a live app's own signature, and only inside its channels.
+"""Journey: an app's runtime calls are trusted only inside the channels and scopes it was given.
 
-The app's calls carry a 60-second EdDSA token signed by its private key, for this instance's
-audience. These tests sign their own tokens with the reference app's key (or a wrong one) and
-call the runtime API directly, as a misbehaving or stolen-credential app would.
+An app has no HTTP route into Open WebUI any more: it calls the runtime (`get_me`,
+`list_channels`, `list_messages`, `create_message`, `update_message`, `authorize`,
+`verify_event`) as `app:request` packets over the Socket.IO connection Open WebUI opened to
+it. These tests drive a scripted app endpoint (`harness.apps.RawApp`) that sends exactly the
+packets a misbehaving app could, and read the `{status, error}` answers.
 
-Discriminates: mutation, `verify_app_token` not checking `aud`, turns
-test_a_token_for_another_instance_is_refused red; `check_app_channel_membership` skipped in
-`get_app_channel_messages` turns test_an_app_cannot_read_a_channel_it_was_not_invited_into red.
+Discriminates: mutation, `check_app_channel_membership` returning without checking the
+invitation, turns test_an_app_cannot_read_a_channel_it_was_not_invited_into red;
+`update_app_message` skipping the If-Match comparison turns
+test_an_edit_with_a_stale_etag_is_refused red; `AppConnection.request` serving requests
+before `app:ready` turns test_nothing_but_a_ping_is_served_before_the_connection_is_ready red.
 """
 
 from __future__ import annotations
@@ -14,300 +18,281 @@ from __future__ import annotations
 import time
 
 import httpx
-import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
 
 from harness.apps import (
-    answering_as_an_app,
-    install_bare_app,
-    installed,
+    ALL_SCOPES,
+    connect,
+    install_raw_app,
     invite,
     new_channel,
     post,
-    private_key_pem,
-    unused_app_port,
+    serving_raw_app,
 )
-from harness.listener import listening
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
 
-def _token(app_id, private_pem, audience, lifetime=60, issued=None, typ="webui-app+jwt", **extra):
-    now = issued if issued is not None else int(time.time())
-    claims = {"sub": app_id, "aud": audience, "iat": now, "exp": now + lifetime, **extra}
-    key = serialization.load_pem_private_key(private_pem.encode(), password=None)
-    return jwt.encode(claims, key, algorithm="EdDSA", headers={"typ": typ})
+@pytest.fixture
+def raw_app(apps_admin):
+    """The scripted app, installed with every scope and connected."""
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            raw.installed = install_raw_app(client, raw)
+            connected = connect(client, raw.installed["id"])
+        assert connected.status_code == 200, connected.text
+        raw.wait_until_ready()
+        yield raw
 
 
-def _runtime(instance, token, method="get", path="/me", headers=None, **kwargs):
-    return httpx.request(
-        method.upper(),
-        f"{instance.base_url}/api/v1/apps/runtime{path}",
-        headers={"Authorization": f"Bearer {token}", **(headers or {})},
-        timeout=30,
-        **kwargs,
-    )
+def _joined_channel(admin, raw) -> str:
+    with admin.client() as client:
+        channel_id = new_channel(client)
+        assert invite(client, channel_id, raw.installed["id"]).status_code == 200
+    return channel_id
 
 
-def _audience(instance):
-    return instance.base_url + "/api/v1/apps/runtime"
+def _event_for(raw, message_id: str, timeout: float = 20.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for event in list(raw.events):
+            if (event.get("message") or {}).get("id") == message_id:
+                return event
+        time.sleep(0.1)
+    raise AssertionError(f"the app never received message {message_id}")
 
 
-def test_a_correctly_signed_token_reads_the_installation(
-    apps_instance, installed_app, reference_app
-):
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    me = _runtime(apps_instance, token)
-    assert me.status_code == 200, me.text
-    assert me.json()["id"] == installed_app["id"]
-    assert reference_app.api_key not in me.text
+def test_get_me_answers_with_the_installation_and_no_secret(raw_app):
+    answer = raw_app.request("get_me")
+    assert answer["status"] == 200
+    assert answer["data"]["id"] == raw_app.installed["id"]
+    assert raw_app.api_key not in str(answer)
+    assert "connection_token" not in str(answer)
 
 
-def test_a_token_signed_by_another_key_is_refused(apps_instance, installed_app):
-    token = _token(installed_app["id"], private_key_pem(), _audience(apps_instance))
-    assert _runtime(apps_instance, token).status_code == 401
+def test_an_unknown_operation_is_refused(raw_app):
+    assert raw_app.request("drop_tables") == {"status": 400, "error": "Unknown app operation"}
 
 
-def test_a_token_for_another_instance_is_refused(apps_instance, installed_app, reference_app):
-    token = _token(
-        installed_app["id"],
-        reference_app.private_key,
-        "https://elsewhere.example/api/v1/apps/runtime",
-    )
-    assert _runtime(apps_instance, token).status_code == 401
+def test_malformed_arguments_are_refused(raw_app, apps_admin):
+    channel_id = _joined_channel(apps_admin, raw_app)
+    answers = [
+        raw_app.request("get_me", surprise=True),
+        raw_app.request("list_messages", channel_id=channel_id, limit=1000),
+        raw_app.request("create_message", content="no channel"),
+        raw_app.request("create_message", channel_id=channel_id, content="x", admin=True),
+    ]
+    assert [answer["status"] for answer in answers] == [400, 400, 400, 400]
 
 
-@pytest.mark.parametrize(
-    "shape",
-    [
-        {"lifetime": 61},
-        {"lifetime": 0},
-        {"issued": int(time.time()) - 600},
-        {"typ": "JWT"},
-        {"typ": "webui-app-connect+jwt"},
-    ],
-    ids=["too-long", "zero-lifetime", "expired", "plain-jwt", "connect-proof"],
-)
-def test_badly_shaped_tokens_are_refused(apps_instance, installed_app, reference_app, shape):
-    token = _token(
-        installed_app["id"], reference_app.private_key, _audience(apps_instance), **shape
-    )
-    assert _runtime(apps_instance, token).status_code == 401
-
-
-def test_a_token_naming_another_installation_is_refused(apps_instance, apps_admin, reference_app):
+def test_an_app_reads_and_writes_a_channel_it_joined(raw_app, apps_admin):
+    channel_id = _joined_channel(apps_admin, raw_app)
     with apps_admin.client() as client:
-        first = installed(client, reference_app)
-        second = installed(client, reference_app)
-    # same key signs both installs, but each token is bound to its own subject
-    token = _token(first["id"], reference_app.private_key, _audience(apps_instance))
-    me = _runtime(apps_instance, token)
-    assert me.json()["id"] == first["id"] != second["id"]
+        human = post(client, channel_id, "hello app")
+    listed = raw_app.request("list_messages", channel_id=channel_id)
+    written = raw_app.request("create_message", channel_id=channel_id, content="hello human")
+    assert listed["status"] == 200
+    assert [m["id"] for m in listed["data"]["messages"]] == [human["id"]]
+    assert written["status"] == 200
+    assert written["data"]["app_id"] == raw_app.installed["id"]
 
 
-def test_missing_or_garbage_credentials_are_refused(apps_instance):
-    for header in ("", "Bearer x", "Bearer not.a.jwt", "Basic abc"):
-        response = httpx.get(
-            f"{apps_instance.base_url}/api/v1/apps/runtime/me",
-            headers={"Authorization": header} if header else {},
-            timeout=30,
-        )
-        assert response.status_code == 401, header
-
-
-def test_a_user_session_token_is_not_an_app_credential(apps_instance, apps_admin):
-    assert _runtime(apps_instance, apps_admin.token).status_code == 401
-
-
-def test_a_disabled_app_loses_runtime_access(
-    apps_instance, apps_admin, installed_app, reference_app
-):
-    with apps_admin.client() as client:
-        client.patch(f"/api/v1/apps/{installed_app['id']}", json={"is_active": False})
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    assert _runtime(apps_instance, token).status_code == 401
-
-
-def test_an_app_cannot_read_a_channel_it_was_not_invited_into(
-    apps_instance, apps_admin, installed_app, reference_app
-):
+def test_an_app_cannot_read_a_channel_it_was_not_invited_into(raw_app, apps_admin):
     with apps_admin.client() as client:
         channel_id = new_channel(client)
         post(client, channel_id, "secret")
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    read = _runtime(apps_instance, token, path=f"/channels/{channel_id}/messages")
-    written = _runtime(
-        apps_instance, token, "post", f"/channels/{channel_id}/messages", json={"content": "hi"}
-    )
-    assert read.status_code == 403
-    assert read.json()["detail"] == "Invite the app into this channel first"
-    assert written.status_code == 403
+    read = raw_app.request("list_messages", channel_id=channel_id)
+    written = raw_app.request("create_message", channel_id=channel_id, content="hi")
+    assert read == {"status": 403, "error": "Invite the app into this channel first"}
+    assert written["status"] == 403
 
 
-def test_an_app_cannot_edit_messages_it_did_not_write(
-    apps_instance, apps_admin, installed_app, reference_app
-):
+def test_list_channels_names_only_joined_channels(raw_app, apps_admin):
+    joined = _joined_channel(apps_admin, raw_app)
     with apps_admin.client() as client:
-        channel_id = new_channel(client)
-        invite(client, channel_id, installed_app["id"])
+        new_channel(client)
+    listed = raw_app.request("list_channels")
+    assert listed["status"] == 200
+    assert [channel["id"] for channel in listed["data"]] == [joined]
+
+
+def test_an_app_cannot_edit_messages_it_did_not_write(raw_app, apps_admin):
+    channel_id = _joined_channel(apps_admin, raw_app)
+    with apps_admin.client() as client:
         human = post(client, channel_id, "mine")
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    edited = _runtime(
-        apps_instance,
-        token,
-        "patch",
-        f"/messages/{human['id']}",
-        json={"content": "hijacked"},
-        headers={"If-Match": f'"{human["updated_at"]}"'},
+    edited = raw_app.request(
+        "update_message", message_id=human["id"], content="hijacked", etag=str(human["updated_at"])
     )
-    assert edited.status_code == 404
+    assert edited == {"status": 404, "error": "App message not found"}
 
 
-def test_an_edit_without_if_match_is_refused(
-    apps_instance, apps_admin, installed_app, reference_app
-):
+def test_an_edit_with_a_stale_etag_is_refused(raw_app, apps_admin):
+    channel_id = _joined_channel(apps_admin, raw_app)
+    first = raw_app.request("create_message", channel_id=channel_id, content="v1")["data"]
+    etag = str(first["updated_at"])
+    second = raw_app.request("update_message", message_id=first["id"], content="v2", etag=etag)
+    stale = raw_app.request("update_message", message_id=first["id"], content="v3", etag=etag)
+    missing = raw_app.request("update_message", message_id=first["id"], content="v4")
+    assert second["status"] == 200
+    assert stale == {"status": 412, "error": "Message changed"}
+    assert missing == {"status": 400, "error": "If-Match is required"}
+
+
+def test_a_reply_to_a_message_from_another_channel_is_refused(raw_app, apps_admin):
+    joined = _joined_channel(apps_admin, raw_app)
     with apps_admin.client() as client:
-        channel_id = new_channel(client)
-        invite(client, channel_id, installed_app["id"])
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    created = _runtime(
-        apps_instance, token, "post", f"/channels/{channel_id}/messages", json={"content": "v1"}
-    )
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    edited = _runtime(
-        apps_instance, token, "patch", f"/messages/{created.json()['id']}", json={"content": "v2"}
-    )
-    assert created.status_code == 201, created.text
-    assert edited.status_code == 428
-
-
-def test_a_reply_to_a_message_from_another_channel_is_refused(
-    apps_instance, apps_admin, installed_app, reference_app
-):
-    with apps_admin.client() as client:
-        joined = new_channel(client)
-        invite(client, joined, installed_app["id"])
         foreign = post(client, new_channel(client), "elsewhere")
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
     for field in ("reply_to_id", "parent_id"):
-        token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-        created = _runtime(
-            apps_instance,
-            token,
-            "post",
-            f"/channels/{joined}/messages",
-            json={"content": "x", field: foreign["id"]},
+        created = raw_app.request(
+            "create_message", channel_id=joined, content="x", **{field: foreign["id"]}
         )
-        assert created.status_code == 400, field
-        assert created.json()["detail"] == "Invalid message reference"
+        assert created == {"status": 400, "error": "Invalid message reference"}, field
 
 
-def test_history_refuses_a_cursor_from_another_channel(
-    apps_instance, apps_admin, installed_app, reference_app
-):
+def test_history_refuses_a_cursor_from_another_channel(raw_app, apps_admin):
+    joined = _joined_channel(apps_admin, raw_app)
     with apps_admin.client() as client:
-        joined = new_channel(client)
-        invite(client, joined, installed_app["id"])
         foreign = post(client, new_channel(client), "elsewhere")
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    paged = _runtime(
-        apps_instance, token, path=f"/channels/{joined}/messages", params={"before": foreign["id"]}
-    )
-    assert paged.status_code == 400
+    paged = raw_app.request("list_messages", channel_id=joined, before=foreign["id"])
+    assert paged == {"status": 400, "error": "Invalid message cursor"}
 
 
-def test_a_forged_execution_token_is_refused(apps_instance, installed_app, reference_app):
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    forged = _runtime(apps_instance, token, "post", "/authorize", json={"token": "e30.AAAA"})
-    assert forged.status_code == 403
-    assert forged.json()["detail"] == "Invalid or expired app context"
+def test_a_forged_execution_token_is_refused(raw_app):
+    forged = raw_app.request("authorize", token="e30.AAAA")
+    assert forged == {"status": 403, "error": "Invalid or expired app context"}
 
 
-def test_an_event_token_verifies_only_for_the_installation_it_was_sent_to(
-    apps_instance, apps_admin, installed_app, reference_app
-):
-    private_pem = private_key_pem()
-    with listening(port=unused_app_port()) as door:
-        door.route("POST", "/events", answering_as_an_app(private_pem))
-        door.route("GET", "/events", lambda _request: (401, {}, b""))
+def test_an_event_token_verifies_only_while_the_app_is_in_the_channel(raw_app, apps_admin):
+    channel_id = _joined_channel(apps_admin, raw_app)
+    with apps_admin.client() as client:
+        posted = post(client, channel_id, "seen by the app")
+    event = _event_for(raw_app, posted["id"])
+    verified = raw_app.request("verify_event", token=event["event_token"])
+    with apps_admin.client() as client:
+        client.delete(f"/api/v1/channels/{channel_id}/apps/{raw_app.installed['id']}")
+    after_leaving = raw_app.request("verify_event", token=event["event_token"])
+    assert verified["status"] == 200
+    assert verified["data"]["message"]["id"] == posted["id"]
+    assert after_leaving["status"] == 403
+
+
+def test_an_event_token_of_one_installation_does_not_verify_for_another(apps_admin):
+    with serving_raw_app() as first, serving_raw_app() as second:
         with apps_admin.client() as client:
-            recorder = install_bare_app(client, door, private_pem)
+            for raw in (first, second):
+                raw.installed = install_raw_app(client, raw)
+                assert connect(client, raw.installed["id"]).status_code == 200
+                raw.wait_until_ready()
             channel_id = new_channel(client)
-            invite(client, channel_id, recorder["id"])
-            invite(client, channel_id, installed_app["id"])
+            invite(client, channel_id, first.installed["id"])
+            invite(client, channel_id, second.installed["id"])
             posted = post(client, channel_id, "seen by both")
-        envelope = _wait_for_envelope(door, posted["id"])
-    own = _runtime(
-        apps_instance,
-        _token(recorder["id"], private_pem, _audience(apps_instance)),
-        "post",
-        "/events/verify",
-        json={"token": envelope["event_token"]},
-    )
-    replayed = _runtime(
-        apps_instance,
-        _token(installed_app["id"], reference_app.private_key, _audience(apps_instance)),
-        "post",
-        "/events/verify",
-        json={"token": envelope["event_token"]},
-    )
-    assert own.status_code == 200, own.text
-    assert own.json()["message"]["id"] == posted["id"]
-    assert replayed.status_code == 403
+        token = _event_for(first, posted["id"])["event_token"]
+        own = first.request("verify_event", token=token)
+        replayed = second.request("verify_event", token=token)
+    assert own["status"] == 200
+    assert replayed["status"] == 403
 
 
-def test_an_event_token_stops_verifying_once_the_app_leaves_the_channel(apps_instance, apps_admin):
-    private_pem = private_key_pem()
-    with listening(port=unused_app_port()) as door:
-        door.route("POST", "/events", answering_as_an_app(private_pem))
+def test_scopes_limit_the_runtime(apps_admin):
+    with serving_raw_app() as raw:
         with apps_admin.client() as client:
-            recorder = install_bare_app(client, door, private_pem)
+            raw.installed = install_raw_app(client, raw, scopes=["channels:mentions:read"])
+            assert connect(client, raw.installed["id"]).status_code == 200
+            raw.wait_until_ready()
             channel_id = new_channel(client)
-            invite(client, channel_id, recorder["id"])
-            posted = post(client, channel_id, "before leaving")
-            envelope = _wait_for_envelope(door, posted["id"])
-            client.delete(f"/api/v1/channels/{channel_id}/apps/{recorder['id']}")
-    verified = _runtime(
-        apps_instance,
-        _token(recorder["id"], private_pem, _audience(apps_instance)),
-        "post",
-        "/events/verify",
-        json={"token": envelope["event_token"]},
-    )
-    assert verified.status_code == 403
+            invite(client, channel_id, raw.installed["id"])
+        answers = {
+            "list_channels": raw.request("list_channels"),
+            "list_messages": raw.request("list_messages", channel_id=channel_id),
+            "create_message": raw.request("create_message", channel_id=channel_id, content="x"),
+        }
+    for operation, answer in answers.items():
+        assert answer == {"status": 403, "error": "App scope was not granted"}, operation
 
 
-def test_disabling_apps_cuts_runtime_access(
-    apps_instance, apps_admin, installed_app, reference_app, preserve
-):
-    preserve("admin_config", on=apps_instance)
-    with apps_admin.client() as client:
-        config = client.get("/api/v1/auths/admin/config").json()
-        client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_APPS": False})
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    assert _runtime(apps_instance, token).status_code == 404
+def test_scopes_granted_later_take_effect_without_reconnecting(apps_admin):
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            raw.installed = install_raw_app(client, raw)
+            client.patch(
+                f"/api/v1/apps/{raw.installed['id']}",
+                json={"granted_scopes": ["channels:mentions:read"]},
+            )
+            assert connect(client, raw.installed["id"]).status_code == 200
+            raw.wait_until_ready()
+            before = raw.request("list_channels")
+            client.patch(f"/api/v1/apps/{raw.installed['id']}", json={"granted_scopes": ALL_SCOPES})
+            after = raw.request("list_channels")
+    assert before["status"] == 403
+    assert after["status"] == 200
 
 
-def test_disabling_channels_cuts_channel_listing(
-    apps_instance, apps_admin, installed_app, reference_app, preserve
-):
-    preserve("admin_config", on=apps_instance)
-    with apps_admin.client() as client:
-        config = client.get("/api/v1/auths/admin/config").json()
-        client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_CHANNELS": False})
-    token = _token(installed_app["id"], reference_app.private_key, _audience(apps_instance))
-    listed = _runtime(apps_instance, token, path="/channels")
-    assert listed.status_code == 403
-    assert listed.json()["detail"] == "Channels are disabled"
-
-
-def _wait_for_envelope(door, message_id, timeout=20.0):
+def _runtime_after(raw, change, timeout: float = 20.0):
+    """The first answer to `get_me` that is not a success once `change` ran, or "disconnected"."""
+    change()
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        for request in door.requests_to("/events"):
-            body = request.json()
-            if (body.get("message") or {}).get("id") == message_id:
-                return body
-        time.sleep(0.1)
-    raise AssertionError(f"the recorder never received message {message_id}")
+        try:
+            answer = raw.request("get_me")
+        except Exception:
+            return "disconnected"
+        if answer["status"] != 200:
+            return answer
+        time.sleep(0.5)
+    raise AssertionError(f"the app kept its runtime for {timeout}s")
+
+
+def test_a_disabled_app_loses_its_runtime(raw_app, apps_admin):
+    def disable():
+        with apps_admin.client() as client:
+            client.patch(f"/api/v1/apps/{raw_app.installed['id']}", json={"is_active": False})
+
+    answer = _runtime_after(raw_app, disable)
+    assert answer == "disconnected" or answer["status"] == 403, answer
+
+
+def test_turning_apps_off_cuts_every_connection(raw_app, apps_admin, apps_instance, preserve):
+    preserve("admin_config", on=apps_instance)
+
+    def apps_off():
+        with apps_admin.client() as client:
+            config = client.get("/api/v1/auths/admin/config").json()
+            client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_APPS": False})
+
+    answer = _runtime_after(raw_app, apps_off)
+    assert answer == "disconnected" or answer["status"] in (403, 404), answer
+
+
+def test_disabling_channels_cuts_channel_listing(apps_admin, apps_instance, preserve):
+    preserve("admin_config", on=apps_instance)
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            raw.installed = install_raw_app(client, raw)
+            assert connect(client, raw.installed["id"]).status_code == 200
+            raw.wait_until_ready()
+            config = client.get("/api/v1/auths/admin/config").json()
+            client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_CHANNELS": False})
+        listed = raw.request("list_channels")
+        me = raw.request("get_me")
+    assert listed == {"status": 403, "error": "Channels are disabled"}
+    assert me["status"] == 200, "the rest of the runtime stays up"
+
+
+def test_nothing_but_a_ping_is_served_before_the_connection_is_ready(apps_admin):
+    with serving_raw_app() as raw:
+        raw.before_ready = ["get_me", "list_channels"]
+        with apps_admin.client() as client:
+            raw.installed = install_raw_app(client, raw)
+            assert connect(client, raw.installed["id"]).status_code == 200
+        raw.wait_until_ready()
+        after_ready = raw.request("get_me")
+    assert [answer["status"] for answer in raw.before_ready_answers] == [503, 503]
+    assert after_ready["status"] == 200
+
+
+def test_the_runtime_has_no_http_route_left(apps_instance):
+    with httpx.Client(base_url=apps_instance.base_url, timeout=30) as client:
+        schema = client.get("/openapi.json").json()
+    runtime_paths = [path for path in schema["paths"] if path.startswith("/api/v1/apps/runtime")]
+    assert runtime_paths == []

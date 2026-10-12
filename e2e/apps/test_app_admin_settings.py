@@ -4,7 +4,7 @@ The admin enters the app's URL and API key, presses Continue, reviews the reques
 goes back and presses Connect. The app then shows in the list with its handle and an Enable
 switch that is on. Wrong keys and unreachable URLs show the reason in the form.
 
-Discriminates: passes on dev 4ab60527e; in a frontend copy, never calling Connect after the
+Discriminates: passes on dev 1786d6cdb; in a frontend copy, never calling Connect after the
 app is created leaves its switch off and turns test_an_admin_connects_an_app_from_its_url_and_key
 red.
 """
@@ -141,7 +141,7 @@ def test_uninstalling_an_app_asks_first_and_marks_it_uninstalled(
 def test_a_manual_install_of_a_post_only_app(page_for, apps_admin, apps_instance):
     from harness.apps import serving_reference_app
 
-    with serving_reference_app([apps_instance.base_url], manifest=False, name="Manual App") as app:
+    with serving_reference_app(manifest=False, name="Manual App") as app:
         page = page_for(apps_admin)
         _open_apps(page)
         page.get_by_role("button", name="Add app").click()
@@ -149,7 +149,8 @@ def test_a_manual_install_of_a_post_only_app(page_for, apps_admin, apps_instance
         page.locator("#app-api-key").fill(app.api_key)
         page.get_by_role("button", name="Enter details manually").click()
         page.locator("#app-name").fill("Manual App")
-        page.locator("#app-handle").fill("manual-app")
+        # the handle becomes the manifest id, which the app signs into its connection proof
+        page.locator("#app-handle").fill(app.manifest_id)
         page.locator("#app-public-key").fill(app.public_key)
         page.get_by_role("button", name="Review").click()
         region = page.get_by_role("region", name="App scopes")

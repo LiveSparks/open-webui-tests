@@ -1,12 +1,15 @@
 """Journey: an admin adds an external app, Open WebUI checks its identity and the app goes live.
 
 Adding an app is two calls from the admin's Add app form: Continue reads the app's manifest with
-its API key, Connect stores the app and sends it a signed challenge, which the app answers with
-a token signed by its private key. Only a matching proof switches the app on.
+its API key, Connect stores the app and opens a Socket.IO connection to it. Open WebUI sends a
+fresh challenge; the app answers with a proof signed by its private key, naming the installation
+and a reconnect credential. Only a proof that verifies against the pinned public key and names
+this challenge switches the app on, after a ping in each direction.
 
-Discriminates: mutation, `connect_app_by_id` skipping the challenge comparison, turns
+Discriminates: mutation, `verify_connection` skipping the challenge comparison, turns
 test_a_proof_for_another_challenge_is_refused red; dropping the HTTPS check in
-`validate_app_url` turns test_a_plain_http_app_off_the_allowlist_is_refused red.
+`validate_app_url` turns test_a_plain_http_app_off_the_allowlist_is_refused red; dropping the
+saved-installation comparison turns test_a_reconnect_claiming_another_installation_is_refused red.
 """
 
 from __future__ import annotations
@@ -15,19 +18,21 @@ import pytest
 
 from harness.apps import (
     ALL_SCOPES,
-    answering_as_an_app,
     connect,
     install,
-    install_bare_app,
+    install_raw_app,
     installed,
     preview,
     private_key_pem,
+    serving_raw_app,
     serving_reference_app,
-    unused_app_port,
 )
-from harness.listener import listening
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
+# every failed connection names all three suspects at once
+GENERIC_FAILURE = (
+    "App connection failed. Check the API key, pinned public key and Socket.IO endpoint."
+)
 
 
 def test_continue_reads_the_manifest_the_app_serves(apps_admin, reference_app):
@@ -56,7 +61,7 @@ def test_continue_without_an_api_key_is_refused(apps_admin, reference_app):
 
 
 def test_continue_against_a_post_only_app_points_to_manual_details(apps_instance, apps_admin):
-    with serving_reference_app([apps_instance.base_url], manifest=False) as app:
+    with serving_reference_app(manifest=False) as app:
         with apps_admin.client() as client:
             previewed = preview(client, app)
     assert previewed.status_code == 502
@@ -85,23 +90,23 @@ def test_connect_switches_the_app_on_and_keeps_the_key_secret(apps_admin, refere
         details = client.get(f"/api/v1/apps/{app['id']}").json()
     assert connected.status_code == 200, connected.text
     assert connected.json()["is_active"] is True
-    assert connected.json()["data"]["webui_url"] == apps_admin.base_url
+    assert connected.json()["connection_status"] == "connected"
+    assert "connection_token" not in connected.text
+    assert connected.json()["data"]["installation_id"]
     for body in (created.text, connected.text, str(listed), str(details)):
         assert reference_app.api_key not in body
     assert any(entry["id"] == app["id"] and entry["is_active"] for entry in listed)
 
 
 def test_a_manual_install_of_a_post_only_app_connects(apps_instance, apps_admin):
-    with serving_reference_app([apps_instance.base_url], manifest=False) as app:
+    with serving_reference_app(manifest=False) as app:
         with apps_admin.client() as client:
             connected = installed(client, app)
     assert connected["is_active"] is True
 
 
 def test_the_fastapi_mount_connects_like_the_builtin_server(apps_instance, apps_admin):
-    with serving_reference_app(
-        [apps_instance.base_url], server="fastapi", path="/hooks/owui"
-    ) as app:
+    with serving_reference_app(server="fastapi", path="/hooks/owui") as app:
         with apps_admin.client() as client:
             connected = installed(client, app)
     assert connected["is_active"] is True
@@ -109,15 +114,82 @@ def test_the_fastapi_mount_connects_like_the_builtin_server(apps_instance, apps_
 
 
 def test_a_proof_for_another_challenge_is_refused(apps_admin):
-    private_pem = private_key_pem()
-    with listening(port=unused_app_port()) as door:
-        door.route("POST", "/events", answering_as_an_app(private_pem, challenge="x" * 36))
+    with serving_raw_app() as raw:
+        raw.answer_connect = lambda data: raw.signed_proof(data, challenge="x" * 36)
         with apps_admin.client() as client:
-            created = install_bare_app(client, door, private_pem, connect_it=False)
+            created = install_raw_app(client, raw)
             connected = connect(client, created["id"])
             after = client.get(f"/api/v1/apps/{created['id']}").json()
+    assert raw.connects, "the instance never opened the connection"
     assert connected.status_code == 502
-    assert "identity proof is invalid" in connected.json()["detail"]
+    assert after["is_active"] is False
+
+
+def test_an_honest_proof_from_the_scripted_app_connects(apps_admin):
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            created = install_raw_app(client, raw)
+            connected = connect(client, created["id"])
+        raw.wait_until_ready()
+    assert connected.status_code == 200, connected.text
+    assert connected.json()["data"]["installation_id"] == raw.installation_id
+    assert raw.connects[0]["connection_token"] is None, "a first connection has no credential yet"
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        {"manifest_id": "someone-else"},
+        {"app_id": "another-installation"},
+        {"aud": "oix:connection"},
+        {"exp": 4102444800},
+        {"token_hash": "0" * 64},
+    ],
+    ids=["manifest", "app-id", "audience", "lifetime", "token-hash"],
+)
+def test_a_proof_with_a_forged_claim_is_refused(apps_admin, forged):
+    with serving_raw_app() as raw:
+        raw.answer_connect = lambda data: raw.signed_proof(data, **forged)
+        with apps_admin.client() as client:
+            created = install_raw_app(client, raw)
+            connected = connect(client, created["id"])
+    assert connected.status_code == 502, connected.text
+
+
+def test_an_app_that_refuses_the_handshake_is_reported(apps_admin):
+    with serving_raw_app() as raw:
+        raw.answer_connect = lambda data: {"status": 403, "error": "no"}
+        with apps_admin.client() as client:
+            created = install_raw_app(client, raw)
+            connected = connect(client, created["id"])
+    assert connected.status_code == 403
+    assert "rejected its connection credential" in connected.json()["detail"]
+
+
+def test_a_reconnect_presents_the_saved_credential_and_keeps_the_installation(apps_admin):
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            created = install_raw_app(client, raw)
+            first = connect(client, created["id"]).json()
+            client.patch(f"/api/v1/apps/{created['id']}", json={"is_active": False})
+            again = connect(client, created["id"])
+    assert again.status_code == 200, again.text
+    assert raw.connects[-1]["connection_token"] == raw.connects[0]["connection_token"] or (
+        raw.connects[-1]["connection_token"] is not None
+    )
+    assert again.json()["data"]["installation_id"] == first["data"]["installation_id"]
+
+
+def test_a_reconnect_claiming_another_installation_is_refused(apps_admin):
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            created = install_raw_app(client, raw)
+            assert connect(client, created["id"]).status_code == 200
+            client.patch(f"/api/v1/apps/{created['id']}", json={"is_active": False})
+            raw.installation_id = "00000000-0000-4000-8000-000000000000"
+            again = connect(client, created["id"])
+            after = client.get(f"/api/v1/apps/{created['id']}").json()
+    assert again.status_code == 502
     assert after["is_active"] is False
 
 
@@ -129,7 +201,7 @@ def test_a_proof_signed_by_another_key_is_refused(apps_admin, reference_app):
         connected = connect(client, created.json()["id"])
         after = client.get(f"/api/v1/apps/{created.json()['id']}").json()
     assert connected.status_code == 502
-    assert "public key does not match" in connected.json()["detail"]
+    assert connected.json()["detail"] == GENERIC_FAILURE
     assert after["is_active"] is False
 
 
@@ -139,7 +211,7 @@ def test_connect_with_a_wrong_stored_key_says_the_app_rejected_it(apps_admin, re
         connected = connect(client, created.json()["id"], api_key="wrong-" + "k" * 32)
         after = client.get(f"/api/v1/apps/{created.json()['id']}").json()
     assert connected.status_code == 502
-    assert "rejected the API key" in connected.json()["detail"]
+    assert connected.json()["detail"] == GENERIC_FAILURE
     assert after["is_active"] is False
 
 
@@ -153,13 +225,13 @@ def test_reconnecting_with_the_right_key_after_a_failure_goes_live(apps_admin, r
 
 
 def test_connect_to_an_app_that_went_away_reports_it_unreachable(apps_instance, apps_admin):
-    with serving_reference_app([apps_instance.base_url]) as app:
+    with serving_reference_app() as app:
         with apps_admin.client() as client:
             created = install(client, app)
     with apps_admin.client() as client:
         connected = connect(client, created.json()["id"])
     assert connected.status_code == 502
-    assert "Could not reach the app server" in connected.json()["detail"]
+    assert connected.json()["detail"] == GENERIC_FAILURE
 
 
 def test_a_plain_http_app_off_the_allowlist_is_refused(apps_admin, reference_app):
@@ -189,7 +261,7 @@ def test_a_plain_http_app_off_the_allowlist_is_refused(apps_admin, reference_app
 
 
 def test_an_install_refuses_scopes_the_app_never_requested(apps_instance, apps_admin):
-    with serving_reference_app([apps_instance.base_url], scopes=["channels:mentions:read"]) as app:
+    with serving_reference_app(scopes=["channels:mentions:read"]) as app:
         with apps_admin.client() as client:
             created = install(client, app, scopes=["channels:mentions:read", "channels:read"])
     assert created.status_code == 400

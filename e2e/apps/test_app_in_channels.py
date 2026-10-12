@@ -6,7 +6,7 @@ visible to you" for them alone, while a channel answer and the app's own posts s
 under the app's name. Buttons on an app message call the app; deferred work shows "Working…"
 until the app has finished, and a download answer offers its file.
 
-Discriminates: passes on dev 4ab60527e; in a frontend copy, never polling a deferred answer
+Discriminates: passes on dev 1786d6cdb; in a frontend copy, never polling a deferred answer
 leaves it on "Working…" and turns test_deferred_work_shows_working_then_the_result red.
 """
 

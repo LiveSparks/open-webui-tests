@@ -2,21 +2,23 @@
 
 `serving_reference_app(...)` starts `harness/reference_app/app.py` on a free port with a fresh
 API key and Ed25519 key, and yields it once it answers. It runs from an environment of its own
-with `oix[fastapi]` and `uvicorn`: `OIX_PYTHON` names that interpreter, else `oix` importable
-next to the suite is used, and without either the tests that need it skip. CI builds that
-environment from `open-webui/oix` at the `oix-ref` input, a 0.4 release: 0.5 moved delivery
-to Socket.IO connections Open WebUI opens, which Open WebUI does not do yet. The app appends
-every event it handles to a record file, which `app.records(...)` and `app.wait_for(...)` read.
+with `oix[fastapi,redis]` and `uvicorn`: `OIX_PYTHON` names that interpreter, else `oix`
+importable next to the suite is used, and without either the tests that need it skip. CI builds
+that environment from `open-webui/oix` at the `oix-ref` input. Open WebUI connects out to the
+app over Socket.IO, so the app never calls the instance back. The app appends every event it
+handles to a record file, which `app.records(...)` and `app.wait_for(...)` read.
 
 `APPS_ENV` turns Apps and Channels on and lets the instance reach apps on the reserved ports
-over plain HTTP; an app's own `allowed_origins` lets it call that instance back. `install(...)`
-and `connect(...)` are the admin's Add app steps, `invite(...)` is a channel manager's, and
-`post(...)` and `mention_text(...)` are what the channel input sends.
+over plain HTTP. `install(...)` and `connect(...)` are the admin's Add app steps, `invite(...)`
+is a channel manager's, and `post(...)` and `mention_text(...)` are what the channel input
+sends. `RawApp` is an app endpoint the test scripts by hand, for handshakes no SDK would send.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import secrets
@@ -25,6 +27,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -38,7 +41,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from harness.instance import free_port
-from harness.listener import json_answer
 
 APP_SOURCE = Path(__file__).parent / "reference_app" / "app.py"
 ALL_SCOPES = [
@@ -54,9 +56,7 @@ APP_PORTS = [free_port() for _ in range(6)]
 APPS_ENV = {
     "ENABLE_APPS": "true",
     "ENABLE_CHANNELS": "true",
-    "APP_ALLOWED_PRIVATE_ORIGINS": ",".join(
-        ["{base_url}", *(f"http://127.0.0.1:{port}" for port in APP_PORTS)]
-    ),
+    "APP_ALLOWED_PRIVATE_ORIGINS": ",".join(f"http://127.0.0.1:{port}" for port in APP_PORTS),
 }
 
 
@@ -154,7 +154,6 @@ class ReferenceApp:
 
 @contextlib.contextmanager
 def serving_reference_app(
-    allowed_origins: list[str],
     scopes: list[str] | None = None,
     name: str = "Reference App",
     manifest_id: str | None = None,
@@ -165,6 +164,8 @@ def serving_reference_app(
     api_key: str | None = None,
     private_key: str | None = None,
     port: int | None = None,
+    profile_image: Path | None = None,
+    redis_url: str | None = None,
 ) -> Iterator[ReferenceApp]:
     """The reference app answering on a free loopback port until the block ends."""
     python = oix_python()
@@ -187,9 +188,8 @@ def serving_reference_app(
         **os.environ,
         "API_KEY": reference.api_key,
         "APP_PRIVATE_KEY_FILE": str(key_file),
-        # 0.4.3 calls it OPEN_WEBUI_ALLOWED_PRIVATE_ORIGINS, 0.4.4 OPEN_WEBUI_ALLOWED_ORIGINS
-        "OPEN_WEBUI_ALLOWED_PRIVATE_ORIGINS": ",".join(allowed_origins),
-        "OPEN_WEBUI_ALLOWED_ORIGINS": ",".join(allowed_origins),
+        "APP_PROFILE_IMAGE": str(profile_image) if profile_image else "",
+        "APP_REDIS_URL": redis_url or "",
         "APP_PORT": str(port),
         "APP_PATH": path,
         "APP_SCOPES": ",".join(scopes),
@@ -273,9 +273,10 @@ def installed(
     app: ReferenceApp,
     scopes: list[str] | None = None,
     access_grants: list[dict] | None = None,
+    manifest: dict | None = None,
 ) -> dict:
     """Install and connect, as one press of Connect does; returns the connected app."""
-    created = install(client, app, scopes=scopes, access_grants=access_grants)
+    created = install(client, app, scopes=scopes, access_grants=access_grants, manifest=manifest)
     assert created.status_code == 200, f"installing the app failed: {created.text}"
     connected = connect(client, created.json()["id"])
     assert connected.status_code == 200, f"connecting the app failed: {connected.text}"
@@ -350,52 +351,160 @@ def reply_events(socket, timeout: float = 20.0, **match) -> dict:
     raise AssertionError(f"no private app reply {match} within {timeout}s: {socket.app_events}")
 
 
-def answering_as_an_app(private_pem: str, challenge: str | None = None):
-    """A bare app endpoint for a `listener`: proves its identity on connect, acknowledges events.
+class RawApp:
+    """An app endpoint the test scripts by hand: a Socket.IO server on a reserved port.
 
-    `challenge` makes it sign that challenge instead of the one it was sent.
+    It answers `app:connect` through `answer_connect(data)` (an honest, signed answer by
+    default; `signed_proof(data, **claims)` forges single claims), acknowledges `app:ready` once
+    the instance answers its ping, and records every event. `request(operation, **arguments)`
+    calls the instance's runtime over the connection the instance opened, as an app's client does.
     """
 
-    def answer(request):
-        body = request.json()
-        if body.get("type") != "connect":
-            return json_answer({"received": True})
+    def __init__(self, private_pem: str):
+        self.private_pem = private_pem
+        # its own key: the instance keeps reconnecting earlier installs to these reused ports
+        self.api_key = secrets.token_hex(32)
+        self.port = unused_app_port()
+        self.url = f"http://127.0.0.1:{self.port}/events"
+        self.events: list[dict] = []
+        self.connects: list[dict] = []
+        self.installation_id = str(uuid.uuid4())
+        self.sid: str | None = None
+        self.ready = False
+        self.answer_connect = self.signed_proof
+        # operations sent while the instance still waits for `app:ready`, and their answers
+        self.before_ready: list[str] = []
+        self.before_ready_answers: list[dict] = []
+
+    def manifest(self, scopes: list[str] | None = None) -> dict:
+        return {
+            "id": "raw",
+            "name": "Raw App",
+            "public_key": public_key_pem(self.private_pem),
+            "requested_scopes": scopes if scopes is not None else ALL_SCOPES,
+        }
+
+    def signed_proof(self, data: dict, **claims) -> dict:
+        """The connection answer an honest app gives; `claims` replace single signed claims."""
+        key = serialization.load_pem_private_key(self.private_pem.encode(), password=None)
+        token = data.get("connection_token") or jwt.encode(
+            {"sub": self.installation_id, "aud": "oix:connection"},
+            key,
+            algorithm="EdDSA",
+            headers={"typ": "oix-connection+jwt"},
+        )
         now = int(time.time())
-        claims = {
-            "sub": body["app_id"],
-            "aud": body["webui_url"] + "/api/v1/apps/runtime",
+        signed = {
+            "sub": self.installation_id,
+            "app_id": data["app_id"],
+            "manifest_id": "raw",
+            "challenge": data["challenge"],
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
             "iat": now,
             "exp": now + 60,
-            "challenge": challenge or body["data"]["challenge"],
+            "aud": "oix:connect",
+            **claims,
         }
-        key = serialization.load_pem_private_key(private_pem.encode(), password=None)
-        headers = {"typ": "webui-app-connect+jwt"}
-        return json_answer({"proof": jwt.encode(claims, key, algorithm="EdDSA", headers=headers)})
+        proof = jwt.encode(signed, key, algorithm="EdDSA", headers={"typ": "oix-connect+jwt"})
+        answer = {"installation_id": self.installation_id, "connection_token": token}
+        return {"status": 200, "data": {**answer, "proof": proof}}
 
-    return answer
+    def request(self, operation: str, **arguments) -> dict:
+        """Call the instance's runtime over its connection; returns its `{status, data}` answer."""
+        call = self.server.call(
+            "app:request",
+            {"operation": operation, "arguments": arguments},
+            to=self.sid,
+            namespace="/apps",
+            timeout=10,
+        )
+        return asyncio.run_coroutine_threadsafe(call, self.loop).result(timeout=15)
+
+    def wait_until_ready(self, timeout: float = 20.0) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not self.ready:
+            time.sleep(0.1)
+        assert self.ready, "the instance never completed its connection to the raw app"
 
 
-def install_bare_app(client: httpx.Client, door, private_pem: str, connect_it: bool = True) -> dict:
-    """Install a `listener` answering with `answering_as_an_app`; connect it unless told not."""
-    manifest = {
-        "id": "bare",
-        "name": "Bare App",
-        "public_key": public_key_pem(private_pem),
-        "requested_scopes": ["channels:messages:read"],
-    }
+@contextlib.contextmanager
+def serving_raw_app(private_pem: str | None = None) -> Iterator[RawApp]:
+    import socketio
+    from aiohttp import web
+
+    raw = RawApp(private_pem or private_key_pem())
+    started = threading.Event()
+    stopped: list[asyncio.Future] = []
+
+    async def serve() -> None:
+        raw.loop = asyncio.get_running_loop()
+        raw.server = socketio.AsyncServer(async_mode="aiohttp", transports=["websocket"])
+
+        async def connect(sid, environ, auth):
+            return environ.get("HTTP_AUTHORIZATION") == "Bearer " + raw.api_key
+
+        async def enroll(sid, data):
+            raw.connects.append(data)
+            return raw.answer_connect(data)
+
+        async def ready(sid, data):
+            for operation in raw.before_ready:
+                request = {"operation": operation, "arguments": {}}
+                answer = await raw.server.call("app:request", request, to=sid, namespace="/apps")
+                raw.before_ready_answers.append(answer)
+            ping = {"operation": "ping", "arguments": {}}
+            pong = await raw.server.call("app:request", ping, to=sid, namespace="/apps")
+            if pong == {"status": 200, "data": {"received": True}}:
+                raw.sid, raw.ready = sid, True
+            return {"status": 200, "data": {"received": True}}
+
+        async def event(sid, payload):
+            raw.events.append(payload)
+            return {"status": 200, "data": {"received": True}}
+
+        for name, handler in (
+            ("connect", connect),
+            ("app:connect", enroll),
+            ("app:ready", ready),
+            ("app:event", event),
+        ):
+            raw.server.on(name, handler, namespace="/apps")
+        application = web.Application()
+        raw.server.attach(application, socketio_path="events/socket.io")
+        runner = web.AppRunner(application)
+        await runner.setup()
+        await web.TCPSite(runner, "127.0.0.1", raw.port).start()
+        stopped.append(raw.loop.create_future())
+        started.set()
+        await stopped[0]
+        # the instance keeps its socket open; drop it so the runner stops at once
+        for sid in list(raw.server.manager.get_participants("/apps", None)):
+            await raw.server.disconnect(sid[0], namespace="/apps")
+        await runner.shutdown()
+        await runner.cleanup()
+
+    thread = threading.Thread(target=asyncio.run, args=(serve(),), daemon=True)
+    thread.start()
+    assert started.wait(10), "the raw app did not start"
+    try:
+        yield raw
+    finally:
+        raw.loop.call_soon_threadsafe(stopped[0].set_result, None)
+        thread.join(10)
+
+
+def install_raw_app(client: httpx.Client, raw: RawApp, scopes: list[str] | None = None) -> dict:
+    """The raw app installed with every scope it requests; not yet connected."""
+    manifest = raw.manifest(scopes)
     created = client.post(
         "/api/v1/apps",
         json={
             "manifest": manifest,
-            "url": door.base_url + "/events",
-            "api_key": "bare-app-key-" + "x" * 24,
-            "slug": f"bare-{uuid.uuid4().hex[:8]}",
-            "granted_scopes": ["channels:messages:read"],
+            "url": raw.url,
+            "api_key": raw.api_key,
+            "slug": f"raw-{uuid.uuid4().hex[:8]}",
+            "granted_scopes": manifest["requested_scopes"],
         },
     )
     assert created.status_code == 200, created.text
-    if not connect_it:
-        return created.json()
-    connected = client.post(f"/api/v1/apps/{created.json()['id']}/connect", json={})
-    assert connected.status_code == 200, connected.text
-    return connected.json()
+    return created.json()

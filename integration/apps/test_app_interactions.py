@@ -139,7 +139,7 @@ def test_the_app_rechecks_the_execution_token(apps_admin, make_apps_user, instal
 def test_mentioning_two_apps_asks_both(apps_instance, apps_admin, reference_app):
     from harness.apps import serving_reference_app
 
-    with serving_reference_app([apps_instance.base_url], name="Other App") as other:
+    with serving_reference_app(name="Other App") as other:
         with apps_admin.client() as client:
             first = installed(client, reference_app)
             second = installed(client, other)
@@ -214,7 +214,7 @@ def test_an_app_without_channel_scope_cannot_list_channels(apps_admin, reference
         post(client, channel_id, "!channels")
     refused = reference_app.wait_for("api_error", app_id=app["id"], channel_id=channel_id)
     assert refused["status"] == 403
-    assert refused["path"] == "/channels"
+    assert refused["method"] == "list_channels"
 
 
 def test_a_channel_message_with_buttons_stores_them(apps_admin, installed_app, channel):

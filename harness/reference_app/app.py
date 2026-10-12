@@ -1,13 +1,14 @@
 """The reference Open WebUI app: every oix feature behind a channel command or a mention word.
 
-Runs in an environment of its own with `oix[fastapi]` and `uvicorn` installed, started by
-`harness.apps`. Every verified event it handles, and every API error it meets, is appended as a
-JSON line to `APP_RECORD_FILE`, so a test reads what the app saw and did. Configuration comes
-from the environment: `API_KEY`, `APP_PRIVATE_KEY_FILE`, `OPEN_WEBUI_ALLOWED_ORIGINS`
-(read by oix), `APP_PORT`, `APP_PATH`, `APP_SCOPES`, `APP_NAME`, `APP_MANIFEST_ID`,
-`APP_SERVER` (`builtin` for `App.run`, `fastapi` for the router plus a proactive-message route),
-`APP_MANIFEST` (`false` serves POST only) and `APP_IGNORE_SELF` (`false` hands the app its own
-messages).
+Runs in an environment of its own with `oix[fastapi,redis]` and `uvicorn` installed, started
+by `harness.apps`. Open WebUI connects to it over Socket.IO (oix 0.5). Every verified event it
+handles, and every API error it meets, is appended as a JSON line to `APP_RECORD_FILE`, so a
+test reads what the app saw and did. Configuration comes from the environment: `API_KEY` and
+`APP_PRIVATE_KEY_FILE` (read by oix), `APP_PORT`, `APP_PATH`, `APP_SCOPES`, `APP_NAME`,
+`APP_MANIFEST_ID`, `APP_PROFILE_IMAGE` (a PNG file the manifest embeds), `APP_REDIS_URL` (routes
+calls between replicas), `APP_SERVER` (`builtin` for `App.run`, `fastapi` for the router plus a
+proactive-message route), `APP_MANIFEST` (`false` disables discovery) and `APP_IGNORE_SELF`
+(`false` hands the app its own messages).
 
 Channel commands, in any message the app can read:
   !echo <text>     reply to the message           !send <text>    post in the channel or thread
@@ -26,8 +27,9 @@ import asyncio
 import json
 import os
 import time
+from pathlib import Path
 
-from oix import Action, APIError, App, AppChannelReply
+from oix import Action, APIError, App, AppChannelReply, ConnectionLost, ConnectionUnavailable
 
 ALL_SCOPES = "channels:mentions:read,channels:messages:read,channels:messages:write,channels:read"
 BUTTONS = [
@@ -41,7 +43,11 @@ app = App(
     manifest_id=os.environ.get("APP_MANIFEST_ID", "reference"),
     name=os.environ.get("APP_NAME", "Reference App"),
     description="The regression suite's reference app.",
-    scopes=os.environ.get("APP_SCOPES", ALL_SCOPES).split(","),
+    scopes=[scope for scope in os.environ.get("APP_SCOPES", ALL_SCOPES).split(",") if scope],
+    profile_image_url=Path(os.environ["APP_PROFILE_IMAGE"])
+    if os.environ.get("APP_PROFILE_IMAGE")
+    else None,
+    redis_url=os.environ.get("APP_REDIS_URL") or None,
     ignore_self_events=os.environ.get("APP_IGNORE_SELF", "true") == "true",
 )
 jobs: dict[str, float] = {}
@@ -54,7 +60,7 @@ def record(kind: str, event=None, **details) -> None:
             event_id=event.id,
             type=event.type,
             app_id=event.app_id,
-            webui_url=event.webui_url,
+            installation_id=event.installation_id,
             channel_id=event.channel_id,
             actor=event.actor,
             message=event.message,
@@ -186,6 +192,7 @@ async def any_action(event):
 def serve_with_fastapi(port: int, path: str, manifest: bool) -> None:
     import uvicorn
     from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
     from oix.fastapi import create_router
 
     server = FastAPI()
@@ -193,11 +200,14 @@ def serve_with_fastapi(port: int, path: str, manifest: bool) -> None:
 
     @server.post("/proactive")
     async def proactive(form: dict):
-        # a message nobody asked for, from a destination saved before a restart
-        client = app.client(form["webui_url"], form["app_id"])
-        return await client.create_message(form["channel_id"], content=form["content"])
+        # a message nobody asked for, to an installation saved before a restart
+        client = app.client(form["installation_id"])
+        try:
+            return await client.create_message(form["channel_id"], content=form["content"])
+        except (ConnectionUnavailable, ConnectionLost) as error:
+            return JSONResponse({"error": type(error).__name__}, status_code=503)
 
-    uvicorn.run(server, host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(server, host="127.0.0.1", port=port, log_level="warning", ws_max_size=1048576)
 
 
 if __name__ == "__main__":

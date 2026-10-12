@@ -72,7 +72,7 @@ def test_narrowing_scopes_keeps_the_app_connected(apps_admin, installed_app):
 def test_granting_a_scope_the_app_did_not_request_is_refused(apps_instance, apps_admin):
     from harness.apps import serving_reference_app
 
-    with serving_reference_app([apps_instance.base_url], scopes=["channels:mentions:read"]) as app:
+    with serving_reference_app(scopes=["channels:mentions:read"]) as app:
         with apps_admin.client() as client:
             connected = installed(client, app)
             widened = client.patch(

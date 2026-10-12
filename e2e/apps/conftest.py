@@ -40,7 +40,7 @@ def make_apps_user(apps_instance: LaunchedInstance) -> Callable[..., Actor]:
 
 @pytest.fixture(scope="package")
 def reference_app(apps_instance: LaunchedInstance) -> Generator[ReferenceApp, None, None]:
-    with serving_reference_app([apps_instance.base_url]) as app:
+    with serving_reference_app() as app:
         yield app
 
 

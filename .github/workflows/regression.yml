@@ -6,10 +6,10 @@ on:
   workflow_call:
     inputs:
       oix-ref:
-        description: Ref of open-webui/oix the reference app is built from (a 0.4 release)
+        description: Ref of open-webui/oix the reference app is built from
         required: false
         type: string
-        default: v0.4.4
+        default: main
       open-webui-ref:
         description: Ref of open-webui/open-webui to test (tag, branch or SHA)
         required: true
@@ -27,10 +27,10 @@ on:
   workflow_dispatch:
     inputs:
       oix-ref:
-        description: Ref of open-webui/oix the reference app is built from (a 0.4 release)
+        description: Ref of open-webui/oix the reference app is built from
         required: false
         type: string
-        default: v0.4.4
+        default: main
       open-webui-ref:
         description: Ref of open-webui/open-webui to test (tag, branch or SHA)
         required: true
@@ -175,7 +175,7 @@ jobs:
           git clone --quiet https://github.com/open-webui/oix "$RUNNER_TEMP/oix"
           git -C "$RUNNER_TEMP/oix" checkout --quiet "${{ inputs.oix-ref }}"
           uv venv "$RUNNER_TEMP/oix-env"
-          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi]" uvicorn
+          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi,redis]" uvicorn
           echo "OIX_PYTHON=$RUNNER_TEMP/oix-env/bin/python" >> "$GITHUB_ENV"
           openssl genpkey -algorithm ED25519 > "$RUNNER_TEMP/app-key.pem"
           export API_KEY=$(openssl rand -hex 32)
@@ -275,7 +275,7 @@ jobs:
           git clone --quiet https://github.com/open-webui/oix "$RUNNER_TEMP/oix"
           git -C "$RUNNER_TEMP/oix" checkout --quiet "${{ inputs.oix-ref }}"
           uv venv "$RUNNER_TEMP/oix-env"
-          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi]" uvicorn
+          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi,redis]" uvicorn
           echo "OIX_PYTHON=$RUNNER_TEMP/oix-env/bin/python" >> "$GITHUB_ENV"
           openssl genpkey -algorithm ED25519 > "$RUNNER_TEMP/app-key.pem"
           export API_KEY=$(openssl rand -hex 32)
@@ -459,7 +459,7 @@ jobs:
           git clone --quiet https://github.com/open-webui/oix "$RUNNER_TEMP/oix"
           git -C "$RUNNER_TEMP/oix" checkout --quiet "${{ inputs.oix-ref }}"
           uv venv "$RUNNER_TEMP/oix-env"
-          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi]" uvicorn
+          uv pip install --python "$RUNNER_TEMP/oix-env" "$RUNNER_TEMP/oix[fastapi,redis]" uvicorn
           echo "OIX_PYTHON=$RUNNER_TEMP/oix-env/bin/python" >> "$GITHUB_ENV"
           openssl genpkey -algorithm ED25519 > "$RUNNER_TEMP/app-key.pem"
           export API_KEY=$(openssl rand -hex 32)

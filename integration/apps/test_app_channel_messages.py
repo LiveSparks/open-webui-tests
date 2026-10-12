@@ -53,7 +53,7 @@ def test_a_new_message_reaches_the_app_with_its_author(
     assert seen["message"]["id"] == posted["id"]
     assert seen["message"]["content"] == "hello app"
     assert seen["message"]["author"] == {"type": "user", "id": apps_admin.id}
-    assert seen["webui_url"] == apps_admin.base_url
+    assert seen["installation_id"] == installed_app["data"]["installation_id"]
 
 
 def test_the_app_replies_to_a_message_it_heard(apps_admin, installed_app, channel):
@@ -157,7 +157,7 @@ def test_an_edit_with_a_stale_etag_is_refused(apps_admin, installed_app, referen
         wait_for_message(client, channel, "Done.")
     refused = reference_app.wait_for("api_error", app_id=installed_app["id"], channel_id=channel)
     assert refused["status"] == 412
-    assert refused["method"] == "PATCH"
+    assert refused["method"] == "update_message"
     with apps_admin.client() as client:
         contents = [message["content"] for message in channel_messages(client, channel)]
     assert "Stale edit." not in contents
@@ -183,7 +183,7 @@ def test_the_app_ignores_its_own_messages_by_default(
 def test_an_app_hearing_itself_answers_its_own_message_once(apps_instance, apps_admin):
     from harness.apps import installed, serving_reference_app
 
-    with serving_reference_app([apps_instance.base_url], ignore_self=False) as app:
+    with serving_reference_app(ignore_self=False) as app:
         with apps_admin.client() as client:
             loud = installed(client, app)
             channel_id = new_channel(client)
@@ -245,7 +245,7 @@ def test_several_people_each_get_their_own_answer(apps_admin, make_apps_user, in
 def test_one_message_reaches_every_app_in_the_channel(apps_instance, apps_admin, reference_app):
     from harness.apps import installed, serving_reference_app
 
-    with serving_reference_app([apps_instance.base_url], name="Second App") as second:
+    with serving_reference_app(name="Second App") as second:
         with apps_admin.client() as client:
             first_install = installed(client, reference_app)
             second_install = installed(client, second)
@@ -260,7 +260,7 @@ def test_one_message_reaches_every_app_in_the_channel(apps_instance, apps_admin,
 def test_apps_hear_each_others_messages(apps_instance, apps_admin, reference_app):
     from harness.apps import installed, serving_reference_app
 
-    with serving_reference_app([apps_instance.base_url], name="Listener App") as listener_app:
+    with serving_reference_app(name="Listener App") as listener_app:
         with apps_admin.client() as client:
             speaker = installed(client, reference_app)
             listener_install = installed(client, listener_app)
