@@ -2,9 +2,10 @@
 
 python scripts/refresh_durations.py .test_durations reports/*/junit.xml
 
-Every test a report measured gets that time (setup, call and teardown, so a module's instance
-boot counts against its first test); tests no report ran keep their old entry. Shards split on
-these times, so times measured on the CI runners balance the shards the CI runners run.
+Every test a report measured gets the mean of that time and its previous one (setup, call and
+teardown, so a module's instance boot counts against its first test); tests no report ran keep
+their old entry. Shards split on these times, so times measured on the CI runners balance the
+shards the CI runners run.
 """
 
 from __future__ import annotations
@@ -48,7 +49,11 @@ def main() -> None:
     target, *reports = (Path(argument) for argument in sys.argv[1:])
     durations = json.loads(target.read_text()) if target.is_file() else {}
     times = measured(reports)
-    durations.update(times)
+    # the same module runs up to twice as long from one run to the next; averaging with the
+    # previous time keeps one slow run from reshuffling every shard
+    for test, seconds in times.items():
+        previous = durations.get(test)
+        durations[test] = round((previous + seconds) / 2, 3) if previous else seconds
     target.write_text(json.dumps(durations, indent=4, sort_keys=True) + "\n")
     print(f"{len(times)} measured times from {len(reports)} reports written to {target}")
 
