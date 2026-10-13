@@ -16,6 +16,43 @@ dependencies = [
     "allure-pytest>=2.13.0",
     "httpx==0.28.1",
     "python-dotenv>=1.0.0",
+    # Imported at load time by the harness and the integration and browser
+    # tests, so the suite collects against an instance without the Open WebUI
+    # source installed. Unpinned, so a shared environment keeps Open WebUI's versions.
+    "aiohttp",
+    "av",
+    "bcrypt",
+    "brotli",
+    "cryptography",
+    "googleapis-common-protos",
+    "grpcio",
+    "ldap3",
+    # mcp 2 renamed FastMCP, which the harness MCP server is built on.
+    "mcp<2",
+    "numpy",
+    "openai",
+    "opentelemetry-proto",
+    "packaging",
+    "pillow",
+    "protobuf",
+    "psutil",
+    "psycopg[binary]",
+    "pyasn1",
+    "pycrdt",
+    "pydantic",
+    "PyJWT",
+    "pymilvus",
+    "pyotp",
+    "pypdf",
+    "python-engineio",
+    "python-socketio",
+    "redis",
+    "soundfile",
+    "sqlalchemy",
+    "tokenizers",
+    "uvicorn",
+    "weaviate-client",
+    "websockets",
 ]
 
 # This is a test suite, not an importable library: tell setuptools there
