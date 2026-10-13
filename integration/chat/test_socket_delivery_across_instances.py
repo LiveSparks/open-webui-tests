@@ -1238,9 +1238,21 @@ def _subscriptions(url: str) -> list[tuple[int, int]]:
         client.close()
 
 
-def _listen_again(url: str, fleet: dict, before: dict[str, tuple[int, int]]) -> bool:
+# What an instance listens on once settled: the socket manager, the event listener and the task
+# command listener each on a channel, and with room channels on the manager on a pattern as well.
+# Right after a loss the counts pass through other values while each listener reconnects (an old
+# connection still open next to its new one, or one not back yet), so they are only compared once
+# settled, never against a count read while an earlier loss was still being reconnected from.
+SETTLED = {"on-a": (3, 1), "on-b": (3, 1), "off-a": (3, 0), "off-b": (3, 0)}
+
+
+def _pair_listens(url: str, fleet: dict, mode: str) -> bool:
     now = _listeners(url, fleet)
-    return all(current >= then for name in before for current, then in zip(now[name], before[name]))
+    return all(
+        current >= settled
+        for name in PAIRS[mode]
+        for current, settled in zip(now[name], SETTLED[name])
+    )
 
 
 # Open WebUI's own Redis clients fail the first command on each connection Redis closed, and a
@@ -1323,15 +1335,16 @@ def test_tabs_open_through_a_redis_loss_hear_the_account_again(
         registered_tab(account),
     ):
         _answer_inputs(tab, "Ada")
-        # an instance listens once its first socket connects, so both of the pair listen by now
-        listening_before = _listeners(shared_redis.url, fleet)
+        listening = lambda: _pair_listens(shared_redis.url, fleet, mode)  # noqa: E731
+        assert backends.wait_until(listening, timeout=60), (
+            f"the instances did not all listen before the Redis {loss}: "
+            f"(on a channel, on a pattern) {_listeners(shared_redis.url, fleet)}"
+        )
         _lose_redis(shared_redis, loss)
-        assert backends.wait_until(
-            lambda: _listen_again(shared_redis.url, fleet, listening_before), timeout=60
-        ), (
+        assert backends.wait_until(listening, timeout=60), (
             f"after the Redis {loss} the instances did not all listen again: "
-            f"(on a channel, on a pattern) went from {listening_before} "
-            f"to {_listeners(shared_redis.url, fleet)}"
+            f"(on a channel, on a pattern) {_listeners(shared_redis.url, fleet)}, "
+            f"settled is {SETTLED}"
         )
         heard = _heard_again(account, tab, provider, loss)
         answered = _answered_again(account, tool_id, tab, provider, loss)
