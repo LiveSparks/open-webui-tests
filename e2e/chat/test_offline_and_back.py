@@ -6,8 +6,14 @@ answers the next message. A reply that keeps streaming on the server while the p
 shows whole and finished at its end, whether it was still streaming when the network returned or
 had finished meanwhile.
 
+One test pins a fixed bug (issue open-webui/open-webui#32338, fix c92bc089b, PR
+open-webui/open-webui#32341): a page signed in on the form without a reload reconnected with the
+signed-out state it loaded with, the server dropped that connection as soon as the open chat
+joined its room, and the page reconnected in a loop until reloaded.
+
 Discriminates: passes on dev ebc6add67; every test fails on a build whose socket does not
-reconnect.
+reconnect. The sign-in test passes on the dev 5032e834e build and fails on that build with
+c92bc089b reverted (over 300 more sockets in the 5 s after reconnecting).
 """
 
 from __future__ import annotations
@@ -98,3 +104,26 @@ def test_a_reply_that_finished_while_offline_shows_whole(page_for, make_user, up
 
     expect(chat_page.get_by_text(RECONNECTED)).to_be_visible(timeout=RECONNECT_TIMEOUT_MS)
     _expect_whole_and_finished(chat_page)
+
+
+@pytest.mark.regression
+def test_a_page_signed_in_on_the_form_reconnects_once_and_stays(page, make_user, upstream):
+    account = make_user()
+    sockets: list[str] = []
+    page.on("websocket", lambda socket: sockets.append(socket.url))
+    page.goto("/auth")
+    page.get_by_label("Email").fill(account.email)
+    page.get_by_label("Password", exact=True).fill(account.password)
+    page.get_by_role("button", name="Sign in", exact=True).click()
+    upstream.queue(reply.text("Signed in and here.", match=reply.answering("hello after sign in")))
+    send(page, "hello after sign in")
+    expect_reply(page, "Signed in and here.")
+    expect(page).to_have_url(re.compile(r"/c/[\w-]+$"))
+
+    _go_offline_and_back(page)
+    reconnected = len(sockets)
+    page.wait_for_timeout(5000)  # bounded: a reconnect loop opens several sockets a second
+
+    assert len(sockets) == reconnected, (
+        f"the page opened {len(sockets) - reconnected} more sockets after it reconnected"
+    )

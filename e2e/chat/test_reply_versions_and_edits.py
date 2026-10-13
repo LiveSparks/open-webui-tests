@@ -12,6 +12,11 @@ removed, the edit-and-send branch replacing the question, an edited reply not sa
 sent without its marker or a deleted version not stored, the matching tests turn red; in the
 build with de9234a2b reverted (saving leaves the reply's plain text empty) the two search tests
 fail on the search finding nothing.
+
+One test pins a fixed bug: a model added to the chat before pressing Regenerate answered side by
+side, but a reload showed one column with its reply as another version, since the server kept
+the question's old model list (PR open-webui/open-webui#32326, fix 99a9f60b9). It fails on a
+backend copy of dev 5032e834e with 99a9f60b9 reverted (the reload shows one reply and `3/3`).
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
-from utils.chat_ui import conversation, expect_reply, last_reply, send
+from harness.python_tools import EVERYONE_READS
+from harness.upstream import MOCK_MODEL_ID
+from utils.chat_ui import conversation, expect_reply, last_reply, replies, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -176,6 +183,58 @@ def test_deleting_a_reply_version_leaves_the_other_one_after_a_reload(chat_page,
     chat_page.reload()
     expect_reply(chat_page, "version to keep")
     expect(conversation(chat_page).get_by_text("version to delete")).to_be_hidden()
+
+
+@pytest.fixture
+def second_model(admin):
+    """A preset on the scripted model that every account may add to a chat."""
+    model_id = f"second-{uuid.uuid4().hex[:8]}"
+    form = {
+        "id": model_id,
+        "base_model_id": MOCK_MODEL_ID,
+        "name": model_id,
+        "meta": {},
+        "params": {},
+        "access_grants": [EVERYONE_READS],
+    }
+    with admin.client() as client:
+        saved = client.post("/api/v1/models/create", json=form)
+        assert saved.status_code == 200, saved.text
+        yield model_id
+        client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+
+def _add_model(page: Page, model_id: str) -> None:
+    page.get_by_role("button", name=f"Selected model: {MOCK_MODEL_ID}").click()
+    page.get_by_role("button", name="Compare").click()
+    page.get_by_role("textbox", name="Search In Models").fill(model_id)
+    page.get_by_role("option", name=f"Select {model_id} model").click()
+    page.keyboard.press("Escape")
+    expect(page.get_by_role("button", name=f"Selected model: {MOCK_MODEL_ID} +1")).to_be_visible()
+
+
+@pytest.mark.regression
+def test_a_model_added_before_regenerate_stays_side_by_side_after_a_reload(
+    chat_page, upstream, second_model
+):
+    question = f"name a river {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        reply.text("the only answer", match=reply.answering(question)),
+        reply.text("the left answer", match=reply.answering(question)),
+        reply.text("the right answer", match=reply.answering(question)),
+    )
+    send(chat_page, question)
+    expect_reply(chat_page, "the only answer")
+
+    _add_model(chat_page, second_model)
+    _regenerate(chat_page)
+    for answer in ("the left answer", "the right answer"):
+        expect(conversation(chat_page).get_by_text(answer)).to_be_visible()
+
+    chat_page.reload()
+    for answer in ("the left answer", "the right answer"):
+        expect(conversation(chat_page).get_by_text(answer)).to_be_visible()
+    expect(replies(chat_page)).to_have_count(2)
 
 
 def _edit_reply(page: Page, text: str) -> Locator:

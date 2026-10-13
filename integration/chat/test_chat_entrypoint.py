@@ -9,6 +9,11 @@ Discriminates: in a backend copy, dropping the ownership check on an existing ch
 `chat_completion` fails the foreign-chat test (the stranger's message is stored in the chat),
 fanning out to the first model only fails the two-model test, and keeping `tool_servers` for
 every caller fails the barred tool server test.
+
+The regenerate test pins a fixed bug (PR open-webui/open-webui#32326, fix 99a9f60b9): Regenerate
+after adding a model resends the stored question with both models on it, and the server kept the
+old model list, so a reload laid the replies out as versions of one. It passes on dev 5032e834e
+and fails on a backend copy with 99a9f60b9 reverted (the question keeps one model).
 """
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ from typing import Iterator
 import pytest
 
 from harness import upstream as reply
-from harness.chat import ChatTurn, ask, send_message, wait_for_reply
+from harness.chat import NO_BACKGROUND_TASKS, ChatTurn, ask, send_message, wait_for_reply
 from harness.upstream import MOCK_MODEL_ID
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
@@ -128,6 +133,57 @@ def test_one_message_to_two_models_stores_both_replies(make_user, upstream, seco
     assert (second["model"], second["content"]) == (second_model, "second model's answer")
     user_message = stored["history"]["messages"][turn.user_message_id]
     assert set(user_message["childrenIds"]) >= {first_id, second_id}
+
+
+@pytest.mark.regression
+def test_a_model_added_on_regenerate_is_stored_on_the_question(make_user, upstream, second_model):
+    account = make_user()
+    question = "compare yourselves again"
+    upstream.queue(
+        reply.text("the only answer", match=_answering_model(MOCK_MODEL_ID)),
+        reply.text("first model's answer", match=_answering_model(MOCK_MODEL_ID)),
+        reply.text("second model's answer", match=_answering_model(second_model)),
+    )
+    with account.client() as client:
+        client.get("/api/models").raise_for_status()
+        turn, _ = ask(client, question)
+        first_id, second_id = str(uuid.uuid4()), str(uuid.uuid4())
+        # Regenerate with a model added resends the stored question with both models on it
+        regenerated = client.post(
+            "/api/chat/completions",
+            json={
+                "model": MOCK_MODEL_ID,
+                "messages": [{"role": "user", "content": question}],
+                "stream": True,
+                "chat_id": turn.chat_id,
+                "parent_id": None,
+                "id": first_id,
+                "message_ids": [
+                    {"model_id": MOCK_MODEL_ID, "message_id": first_id, "modelIdx": 0},
+                    {"model_id": second_model, "message_id": second_id, "modelIdx": 1},
+                ],
+                "user_message": {
+                    "id": turn.user_message_id,
+                    "parentId": None,
+                    "childrenIds": [turn.assistant_message_id, first_id, second_id],
+                    "role": "user",
+                    "content": question,
+                    "models": [MOCK_MODEL_ID, second_model],
+                },
+                "session_id": f"harness-{uuid.uuid4().hex[:8]}",
+                "background_tasks": NO_BACKGROUND_TASKS,
+            },
+        )
+        assert regenerated.status_code == 200, regenerated.text
+        wait_for_reply(client, ChatTurn(turn.chat_id, turn.user_message_id, first_id))
+        wait_for_reply(client, ChatTurn(turn.chat_id, turn.user_message_id, second_id))
+        stored = client.get(f"/api/v1/chats/{turn.chat_id}").json()["chat"]
+
+    question_message = stored["history"]["messages"][turn.user_message_id]
+    assert question_message["models"] == [MOCK_MODEL_ID, second_model], (
+        "the question kept its old model list, so a reload shows one column of versions"
+    )
+    assert question_message["content"] == question
 
 
 def test_tool_servers_in_the_request_are_dropped_without_the_permission(make_user, upstream):

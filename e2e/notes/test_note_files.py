@@ -20,6 +20,12 @@ build whose file dialog shows "No content" for the text, whose note chip offers 
 to a reader and never saves a writer's removal, whose note upload skips the size check and whose
 note paste skips image compression, every test but the owner's chat fails; in a backend copy
 whose note chat leaves out the note's files the owner's chat test fails.
+
+One test pins a fixed bug (PR open-webui/open-webui#32328, fix 998ad4c9f): when the note saved
+while a file was still uploading, the server's echo of that save replaced the page's file list,
+and the finished upload then updated an entry no longer in it. The note kept the file as
+uploading with no id, even after a reload. The upload is held until the echo arrives. It passes
+on the dev 5032e834e build and fails on that build with 998ad4c9f reverted.
 """
 
 from __future__ import annotations
@@ -31,10 +37,11 @@ import time
 import uuid
 from dataclasses import dataclass
 from typing import Callable
+from urllib.parse import urlparse
 
 import pytest
 from PIL import Image
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, Page, Request, Route, expect
 
 from harness import upstream as reply
 from harness.access import grant
@@ -237,6 +244,68 @@ def test_a_writer_detaches_the_file_for_everyone(note_with_file, page_for):
     owner_page = page_for(note_with_file.owner)
     open_note(owner_page, note_with_file.note_id)
     expect(owner_page.get_by_role("main").get_by_text(FILE_NAME)).to_have_count(0)
+
+
+def _is_upload(request: Request) -> bool:
+    return request.method == "POST" and urlparse(request.url).path == "/api/v1/files/"
+
+
+def stored_upload_states(owner: Actor, note_id: str) -> list[tuple[str, bool]]:
+    return [(entry["status"], bool(entry["id"])) for entry in stored_files(owner, note_id)]
+
+
+def _wait_on_page(page: Page, check: Callable[[], bool]) -> None:
+    """Wait up to 15 s for `check()` while the page keeps running its routes and socket frames."""
+    for _ in range(75):
+        if check():
+            return
+        page.wait_for_timeout(200)
+
+
+@pytest.mark.regression
+def test_a_file_still_uploading_when_the_note_saves_finishes_attaching(page_for, make_user):
+    owner = make_user()
+    note_id = create_note(owner)
+    page = page_for(owner)
+    note_echoes: list[str] = []
+    page.on(
+        "websocket",
+        lambda socket: socket.on(
+            "framereceived",
+            lambda frame: note_echoes.append(str(frame)) if "events:note" in str(frame) else None,
+        ),
+    )
+    held_uploads: list[Route] = []
+
+    def hold_uploads(route: Route) -> None:
+        if _is_upload(route.request):
+            held_uploads.append(route)
+        else:
+            route.continue_()
+
+    page.route("**/api/v1/files/**", hold_uploads)
+    open_note(page, note_id)
+    with page.expect_request(_is_upload):
+        upload_to_note(page, FILE_NAME, FILE_TEXT.encode())
+
+    # the title saves the note while the upload is held, and the server echoes that save back
+    title = page.get_by_role("main").get_by_placeholder("Title")
+    title.fill("Harbour pilots")
+    title.press("Tab")
+    _wait_on_page(page, lambda: any("Harbour pilots" in frame for frame in note_echoes))
+    assert any("Harbour pilots" in frame for frame in note_echoes), "the save was never echoed"
+    for upload in held_uploads:
+        upload.continue_()
+
+    page.unroute("**/api/v1/files/**")
+    _wait_on_page(page, lambda: stored_upload_states(owner, note_id) == [("uploaded", True)])
+    assert stored_upload_states(owner, note_id) == [("uploaded", True)], (
+        "the note keeps the file as still uploading, with no file id"
+    )
+    open_note(page, note_id)
+    file_chip(page, FILE_NAME).click()
+    dialog = page.get_by_role("dialog").filter(has_text=FILE_NAME)
+    expect(dialog.get_by_text(FILE_TEXT)).to_be_visible()
 
 
 def test_a_file_over_the_max_upload_size_is_refused_on_a_note(page_for, make_user, admin, preserve):
