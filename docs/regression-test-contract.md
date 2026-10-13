@@ -10,7 +10,7 @@ Regression tests for Open WebUI at three distances from the product. `integratio
 
 1. If the symptom shows over HTTP (a status code, a response body, what a later GET returns, what the model provider or an outside service was sent, a server log line), write an integration test.
 2. If it also shows in the UI, or only there, add a browser test as well. Duplication across the two is fine.
-3. No new unit tests. When neither integration nor e2e can see a bug, it gets no new test; existing unit tests stay until an integration or e2e twin replaces them.
+3. **Never write a unit test.** Every new test is an integration or a browser test, with no exceptions. When neither of them can see a bug, the bug gets no new test. The unit tests in `unit/` are left over from before this rule; they only shrink, as integration and browser twins replace them, and none are added or extended.
 
 Once an integration twin covers a unit test's narrow layer, delete the unit test: two copies of one guard double the repair work and add no coverage.
 
@@ -112,9 +112,9 @@ An unproven regression test is decoration, so every narrow test is shown to fail
 - **Skip only for a genuinely absent dependency, and name it.** A blanket `except Exception: pytest.skip(...)` turns real breakage into a green run. When the code a test targets is gone, fail and name what to retarget.
 - **A regression stays red until its fix merges.** Write it as a plain failing test that names the issue and the fix PR, so every run shows it. A strict `xfail` is for a known bug nobody is fixing yet: it flips to XPASS on its own once upstream fixes it. Keep allowlists out of the suite, since an allowlist sits there until someone remembers it.
 
-## Unit tests that survive refactors
+## Keeping the remaining unit tests alive
 
-A unit test breaks whenever upstream renames something the test knows about, so a unit test knows only what its bug requires. It:
+Nothing here is a reason to write a new unit test. It applies only to repairing the ones that are left until a twin replaces them. A unit test breaks whenever upstream renames something the test knows about, so a unit test knows only what its bug requires. It:
 
 - **Calls the most public function that shows the bug.** A route handler called as a Python function, or a private helper that has a public caller, breaks on every signature change.
 - **Drives the real code and patches only what it talks to:** the HTTP client, the clock, the filesystem. The database is a real in-memory SQLite with the real tables. When the thing you patched makes the decision, or the test reimplements the logic it checks, the test measures itself and the product goes unchecked.
