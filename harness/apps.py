@@ -2,9 +2,9 @@
 
 `serving_reference_app(...)` starts `harness/reference_app/app.py` on a free port with a fresh
 API key and Ed25519 key, and yields it once it answers. It runs from an environment of its own
-with `oix[fastapi,redis]` and `uvicorn`: `OIX_PYTHON` names that interpreter, else `oix`
-importable next to the suite is used, and without either the tests that need it skip. CI builds
-that environment from `open-webui/oix` at the `oix-ref` input. Open WebUI connects out to the
+with `oix[fastapi,redis]` 0.8 or later and `uvicorn`: `OIX_PYTHON` names that interpreter, else
+`oix` importable next to the suite is used, and without either the tests that need it skip. CI
+builds that environment from `open-webui/oix` at the `oix-ref` input. Open WebUI connects out to the
 app over Socket.IO, so the app never calls the instance back. The app appends every event it
 handles to a record file, which `app.records(...)` and `app.wait_for(...)` read.
 
@@ -166,6 +166,7 @@ def serving_reference_app(
     port: int | None = None,
     profile_image: Path | None = None,
     redis_url: str | None = None,
+    admission: bool = False,
 ) -> Iterator[ReferenceApp]:
     """The reference app answering on a free loopback port until the block ends."""
     python = oix_python()
@@ -198,6 +199,7 @@ def serving_reference_app(
         "APP_SERVER": server,
         "APP_MANIFEST": "true" if manifest else "false",
         "APP_IGNORE_SELF": "true" if ignore_self else "false",
+        "APP_ADMISSION": "true" if admission else "false",
         "APP_RECORD_FILE": str(reference.record_file),
         "PYTHONUNBUFFERED": "1",
     }
@@ -356,9 +358,9 @@ class RawApp:
 
     It answers `app:connect` through `answer_connect(data)` (an honest, signed answer by
     default; `signed_proof(data, **claims)` forges single claims), acknowledges `app:ready` once
-    the instance answers its ping, and records every event, answering interactions with
-    `event_answer`. `request(operation, **arguments)` calls the instance's runtime over the
-    connection the instance opened, as an app's client does.
+    the instance answers its ping, and records every event, answering mentions with
+    `mention_answer` and button presses with `event_answer`. `request(operation, **arguments)`
+    calls the instance's runtime over the connection the instance opened, as an app's client does.
     """
 
     def __init__(self, private_pem: str):
@@ -373,8 +375,10 @@ class RawApp:
         self.sid: str | None = None
         self.ready = False
         self.answer_connect = self.signed_proof
-        # what the app answers an interaction with; message events always get `received`
+        # what the app answers a button press with; message events always get `received`
         self.event_answer: dict = {"type": "ack"}
+        # the whole socket answer to a mention, status included
+        self.mention_answer: dict = {"status": 200, "data": {"received": True}}
         # operations sent while the instance still waits for `app:ready`, and their answers
         self.before_ready: list[str] = []
         self.before_ready_answers: list[dict] = []
@@ -465,6 +469,8 @@ def serving_raw_app(private_pem: str | None = None) -> Iterator[RawApp]:
             raw.events.append(payload)
             if str(payload.get("type", "")).startswith("channel.message."):
                 return {"status": 200, "data": {"received": True}}
+            if payload.get("type") == "channel.mention":
+                return raw.mention_answer
             return {"status": 200, "data": raw.event_answer}
 
         for name, handler in (

@@ -1,15 +1,21 @@
 """Journey: people use an app inside a channel, from inviting it to pressing its buttons.
 
 A channel manager invites the app through Add Member in the channel's member list. People then
-mention it from the `@` picker; a private answer appears under their message marked "Only
-visible to you" for them alone, while a channel answer and the app's own posts show to everyone
-under the app's name. Buttons on an app message call the app. Longer work is acknowledged with
-nothing shown, and its result arrives later as an ordinary app message; a download answer offers
-its file.
+mention it from the `@` picker; the app answers as an ordinary message everyone sees under its
+name, and when a mention cannot be delivered, the reason appears under the asker's message marked
+"Only visible to you" for them alone. Buttons on an app message call the app: a private answer,
+a download or an error shows only to whoever pressed it, an acknowledgement shows nothing, and
+the result of longer work arrives later as an ordinary app message.
+
+An app can name a person as `<@U:id>`; the channel shows them by name, or as Unknown when the
+account is gone.
 
 Discriminates: passes on dev 4ca8fdc3f; in a frontend copy that drops both acknowledgement
 checks (the button handler's and the reply list's), the private reply row the acknowledgement
 then gets turns test_a_button_the_app_acknowledges_shows_nothing red. Either check alone holds.
+Retargeted for dev c7193760b with oix 0.8, where a mention only gets a delivery receipt; passes
+there except the `bare` cases of the two person mention tests: a mention written without a name
+shows as `@U:<id>`, while `<@U:id|id>` resolves.
 """
 
 from __future__ import annotations
@@ -17,7 +23,16 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
-from harness.apps import installed, invite, new_channel, post, wait_for_message
+from harness.apps import (
+    connect,
+    install_raw_app,
+    installed,
+    invite,
+    new_channel,
+    post,
+    serving_raw_app,
+    wait_for_message,
+)
 from utils.chat_ui import chat_input
 from utils.tooltips import tooltip_button
 
@@ -31,12 +46,15 @@ def _open_channel(page: Page, channel_id: str) -> None:
     expect(chat_input(page)).to_be_visible()
 
 
-def _type_mention(page: Page, app_name: str, text: str) -> None:
+def _type_mention(page: Page, app_name: str, text: str, send: bool = True) -> None:
     chat_input(page).click()
     page.keyboard.type("@" + app_name.split()[0])
     page.get_by_role("button", name=app_name).first.click()
+    expect(chat_input(page)).to_contain_text("@" + app_name)
     page.keyboard.type(" " + text)
-    page.keyboard.press("Enter")
+    expect(chat_input(page)).to_contain_text(text)
+    if send:
+        page.keyboard.press("Enter")
 
 
 def _private_reply(page: Page, app_id: str):
@@ -113,19 +131,25 @@ def test_the_app_answers_a_command_for_everyone_under_its_name(
         expect(page.get_by_text(installed_app["name"]).last).to_be_visible()
 
 
-def test_a_mention_from_the_picker_gets_a_private_answer(page_for, apps_admin, installed_app):
-    channel_id = _channel_with_app(apps_admin, installed_app)
-    page = page_for(apps_admin)
-    _open_channel(page, channel_id)
-    _type_mention(page, installed_app["name"], "hello")
-    reply = _private_reply(page, installed_app["id"])
-    expect(reply).to_contain_text("pong:", timeout=ANSWER_TIMEOUT_MS)
-    expect(reply).to_contain_text("Only visible to you")
-    reply.get_by_role("button", name="Dismiss").click()
-    expect(reply).to_have_count(0)
+def test_a_mention_from_the_picker_is_answered_for_everyone(
+    page_for, apps_admin, make_apps_user, installed_app, reference_app
+):
+    member = make_apps_user()
+    channel_id = _channel_with_app(apps_admin, installed_app, type="group", user_ids=[member.id])
+    asker, watcher = page_for(apps_admin), page_for(member)
+    _open_channel(asker, channel_id)
+    _open_channel(watcher, channel_id)
+    _type_mention(asker, installed_app["name"], "hello")
+    for page in (asker, watcher):
+        expect(page.get_by_text("hello").last).to_be_visible()
+        answer = page.locator("[id^='message-']").filter(has_text="pong:").last
+        expect(answer).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
+        expect(answer).to_contain_text(installed_app["name"])
+    reference_app.wait_for("mention", app_id=installed_app["id"], channel_id=channel_id)
+    expect(_private_reply(asker, installed_app["id"])).to_have_count(0)
 
 
-def test_a_private_answer_shows_only_to_the_person_who_asked(
+def test_a_mention_that_cannot_be_delivered_tells_only_the_asker(
     page_for, apps_admin, make_apps_user, installed_app
 ):
     asker_account, watcher_account = make_apps_user(), make_apps_user()
@@ -135,12 +159,20 @@ def test_a_private_answer_shows_only_to_the_person_who_asked(
     asker, watcher = page_for(asker_account), page_for(watcher_account)
     _open_channel(asker, channel_id)
     _open_channel(watcher, channel_id)
-    _type_mention(asker, installed_app["name"], "secret question")
-    expect(_private_reply(asker, installed_app["id"])).to_contain_text(
-        "pong:", timeout=ANSWER_TIMEOUT_MS
+    _type_mention(asker, installed_app["name"], "secret question", send=False)
+    with apps_admin.client() as client:
+        client.patch(f"/api/v1/apps/{installed_app['id']}", json={"access_grants": []})
+    asker.keyboard.press("Enter")
+    reply = _private_reply(asker, installed_app["id"])
+    expect(reply).to_contain_text(
+        "App access was denied. Check permissions before retrying.", timeout=ANSWER_TIMEOUT_MS
     )
+    expect(reply).to_contain_text("Only visible to you")
+    expect(reply).not_to_contain_text("could not complete")
     expect(watcher.get_by_text("secret question")).to_be_visible()
     expect(_private_reply(watcher, installed_app["id"])).to_have_count(0)
+    reply.get_by_role("button", name="Dismiss").click()
+    expect(reply).to_have_count(0)
 
 
 def test_a_public_mention_answer_shows_to_everyone(
@@ -223,11 +255,18 @@ def test_a_button_the_app_acknowledges_shows_nothing(
     expect(page.get_by_role("alert")).to_have_count(0)
 
 
+def _tools(page: Page, admin, channel_id: str) -> None:
+    with admin.client() as client:
+        post(client, channel_id, "!tools")
+        wait_for_message(client, channel_id, "Tools")
+    _open_channel(page, channel_id)
+
+
 def test_a_download_answer_offers_its_file(page_for, apps_admin, installed_app):
     channel_id = _channel_with_app(apps_admin, installed_app)
     page = page_for(apps_admin)
-    _open_channel(page, channel_id)
-    _type_mention(page, installed_app["name"], "report")
+    _tools(page, apps_admin, channel_id)
+    page.get_by_role("button", name="Report", exact=True).click()
     reply = _private_reply(page, installed_app["id"])
     button = reply.get_by_role("button", name="Download weekly-report.md")
     expect(button).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
@@ -236,15 +275,22 @@ def test_a_download_answer_offers_its_file(page_for, apps_admin, installed_app):
     assert download.value.suggested_filename == "weekly-report.md"
 
 
-def test_an_app_failure_tells_the_asker(page_for, apps_admin, installed_app):
+def test_an_error_answer_tells_the_presser_why(page_for, apps_admin, installed_app):
     channel_id = _channel_with_app(apps_admin, installed_app)
     page = page_for(apps_admin)
-    _open_channel(page, channel_id)
-    _type_mention(page, installed_app["name"], "fail")
+    _tools(page, apps_admin, channel_id)
+    page.get_by_role("button", name="Fail", exact=True).click()
     reply = _private_reply(page, installed_app["id"])
-    expect(reply.get_by_role("alert")).to_contain_text(
-        "could not complete", timeout=ANSWER_TIMEOUT_MS
-    )
+    expect(reply).to_contain_text("It broke", timeout=ANSWER_TIMEOUT_MS)
+    expect(reply).not_to_contain_text("could not complete")
+
+
+def test_a_button_that_times_out_shows_an_error(page_for, apps_admin, installed_app):
+    channel_id = _channel_with_app(apps_admin, installed_app)
+    page = page_for(apps_admin)
+    _tools(page, apps_admin, channel_id)
+    page.get_by_role("button", name="Slow", exact=True).click()
+    expect(page.get_by_role("alert").first).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
 
 
 def test_the_picker_offers_only_apps_in_this_channel(
@@ -280,3 +326,47 @@ def test_the_app_starts_a_thread_people_can_open(page_for, apps_admin, installed
         has_text="written in a thread"
     )
     expect(in_thread.first).to_be_visible()
+
+
+@pytest.fixture
+def raw_app_channel(apps_admin):
+    with serving_raw_app() as raw:
+        with apps_admin.client() as client:
+            raw.installed = install_raw_app(client, raw)
+            assert connect(client, raw.installed["id"]).status_code == 200
+            raw.wait_until_ready()
+            channel_id = new_channel(client)
+            invite(client, channel_id, raw.installed["id"])
+        yield raw, channel_id
+
+
+@pytest.mark.parametrize("form", ["<@U:{id}>", "<@U:{id}|{id}>"], ids=["bare", "id-as-label"])
+def test_a_person_an_app_mentions_by_id_is_shown_by_name(
+    page_for, apps_admin, make_apps_user, raw_app_channel, form
+):
+    raw, channel_id = raw_app_channel
+    mentioned = make_apps_user()
+    content = f"over to {form.format(id=mentioned.id)} now"
+    created = raw.request("create_message", channel_id=channel_id, content=content)
+    assert created["status"] == 200, created
+    page = page_for(apps_admin)
+    _open_channel(page, channel_id)
+    expect(page.get_by_text("over to")).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
+    expect(page.locator(".mention").first).to_have_text(
+        f"@{mentioned.name}", timeout=ANSWER_TIMEOUT_MS
+    )
+
+
+@pytest.mark.parametrize("form", ["<@U:{id}>", "<@U:{id}|{id}>"], ids=["bare", "id-as-label"])
+def test_a_person_who_no_longer_exists_is_shown_as_unknown(
+    page_for, apps_admin, raw_app_channel, form
+):
+    raw, channel_id = raw_app_channel
+    missing = "00000000-0000-4000-8000-000000000000"
+    content = f"ask {form.format(id=missing)}"
+    created = raw.request("create_message", channel_id=channel_id, content=content)
+    assert created["status"] == 200, created
+    page = page_for(apps_admin)
+    _open_channel(page, channel_id)
+    expect(page.get_by_text("ask")).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
+    expect(page.locator(".mention").first).to_have_text("@Unknown", timeout=ANSWER_TIMEOUT_MS)

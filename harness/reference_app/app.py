@@ -1,14 +1,15 @@
 """The reference Open WebUI app: every oix feature behind a channel command or a mention word.
 
 Runs in an environment of its own with `oix[fastapi,redis]` and `uvicorn` installed, started
-by `harness.apps`. Open WebUI connects to it over Socket.IO (oix 0.5). Every verified event it
+by `harness.apps`. Open WebUI connects to it over Socket.IO (oix 0.8). Every verified event it
 handles, and every API error it meets, is appended as a JSON line to `APP_RECORD_FILE`, so a
 test reads what the app saw and did. Configuration comes from the environment: `API_KEY` and
 `APP_PRIVATE_KEY_FILE` (read by oix), `APP_PORT`, `APP_PATH`, `APP_SCOPES`, `APP_NAME`,
 `APP_MANIFEST_ID`, `APP_PROFILE_IMAGE` (a PNG file the manifest embeds), `APP_REDIS_URL` (routes
 calls between replicas), `APP_SERVER` (`builtin` for `App.run`, `fastapi` for the router plus a
-proactive-message route), `APP_MANIFEST` (`false` disables discovery) and `APP_IGNORE_SELF`
-(`false` hands the app its own messages).
+proactive-message route), `APP_MANIFEST` (`false` disables discovery), `APP_IGNORE_SELF`
+(`false` hands the app its own messages) and `APP_ADMISSION` (`true` accepts a mention only once
+its handler has stored it, oix's `background=False`).
 
 Channel commands, in any message the app can read:
   !echo <text>     reply to the message           !send <text>    post in the channel or thread
@@ -16,12 +17,19 @@ Channel commands, in any message the app can read:
   !page            read two pages of one message  !channels       list the channels it joined
   !me              read its own installation      !progress       post, edit, then edit stale
   !buttons         post a message with buttons    !loop           answer its own messages once
+  !tools           buttons for the other answers  !card           post a card with a link button
+  !recard          post a card, swap it, clear it
 
-Mention words, after `@App`:
-  public  answer in the channel     buttons  channel message with buttons    report  a download
-  ack     acknowledge, say nothing  fail     an error reply                  slow    exceed 2.5 s
-  later   ack, post a result ~3 s later in the thread, after rechecking the execution token
-  crash   raise in the handler      authorize  recheck the execution token   (else)  private pong
+Mention words, after `@App`. Open WebUI only learns that the app received a mention; whatever
+the app says, it posts as an ordinary message:
+  public  post in the channel       buttons  post a message with buttons     card  reply with a card
+  later   post a result ~3 s later in the thread, after rechecking the execution token
+  crash   raise in the handler      authorize  recheck the execution token   (else)  reply pong
+With `APP_ADMISSION`, `refuse` raises and `stall` outlasts the acceptance budget instead.
+
+Buttons: approve (update for all), whoami (private), reject (no handler of its own), noted (ack),
+and on `!tools` report (a download), fail (an error), slow (exceed 2.5 s), card (a private card),
+crash (raise), plus a link button that never reaches the app.
 """
 
 import asyncio
@@ -30,7 +38,16 @@ import os
 import time
 from pathlib import Path
 
-from oix import Action, APIError, App, AppChannelReply, ConnectionLost, ConnectionUnavailable
+from oix import (
+    Action,
+    APIError,
+    App,
+    AppChannelReply,
+    ConnectionLost,
+    ConnectionUnavailable,
+    Embed,
+    EmbedField,
+)
 
 ALL_SCOPES = "channels:mentions:read,channels:messages:read,channels:messages:write,channels:read"
 BUTTONS = [
@@ -39,7 +56,32 @@ BUTTONS = [
     Action(action_id="reject", label="Reject", context={"reason": "unhandled"}),
     Action(action_id="noted", label="Noted"),
 ]
+TOOLS = [
+    Action(action_id="report", label="Report"),
+    Action(action_id="fail", label="Fail"),
+    Action(action_id="slow", label="Slow"),
+    Action(action_id="card", label="Card"),
+    Action(action_id="crash", label="Crash"),
+    Action(label="Docs", url="https://docs.openwebui.com/"),
+]
+CARD = Embed(
+    title="Advisory reported",
+    url="https://example.com/advisories/1",
+    description="Review **the** reported issue.",
+    color=0xDA3633,
+    author={"name": "Security Desk"},
+    footer={"text": "Filed by the reference app"},
+    thumbnail={"url": "https://example.com/thumbnail.png"},
+    fields=[
+        EmbedField(name="Severity", value="High", inline=True),
+        EmbedField(name="Package", value="oix", inline=True),
+        EmbedField(name="Summary", value="A field across the whole card"),
+    ],
+)
+SWAPPED_CARD = Embed(title="Advisory resolved", description="Nothing left to do.")
+LINK = Action(label="View Full Report", url="https://example.com/advisories/1")
 LATER_SECONDS = 3.0
+STALL_SECONDS = 12.0
 
 app = App(
     manifest_id=os.environ.get("APP_MANIFEST_ID", "reference"),
@@ -52,7 +94,6 @@ app = App(
     redis_url=os.environ.get("APP_REDIS_URL") or None,
     ignore_self_events=os.environ.get("APP_IGNORE_SELF", "true") == "true",
 )
-background: set[asyncio.Task] = set()
 
 
 def record(kind: str, event=None, **details) -> None:
@@ -105,6 +146,16 @@ async def run_command(event) -> None:
         await event.send("Pick one", actions=BUTTONS)
     elif command == "!loop":
         await event.send("loop: first")
+    elif command == "!tools":
+        await event.send("Tools", actions=TOOLS)
+    elif command == "!card":
+        await event.send(embeds=[CARD], actions=[LINK])
+    elif command == "!recard":
+        posted = await client.create_message(event.channel_id, content="Card", embeds=[CARD])
+        swapped = await client.update_message(
+            posted["id"], content="Card", embeds=[SWAPPED_CARD], etag=posted["etag"]
+        )
+        record("recard", event, message_id=posted["id"], etag=swapped["etag"])
 
 
 @app.on("channel.message.created")
@@ -131,41 +182,53 @@ async def message_deleted(event) -> None:
     record("message.deleted", event)
 
 
-@app.on("channel.mention")
-async def mentioned(event):
+async def mentioned(event) -> None:
     record("mention", event)
+    try:
+        await answer_mention(event)
+    except APIError as error:
+        record("api_error", event, status=error.status, method=error.method, path=error.path)
+
+
+async def answer_mention(event) -> None:
     words = event.content.split()
     if "public" in words:
-        return AppChannelReply(
-            visibility="channel", content=f"public answer for {event.actor['id']}"
-        )
-    if "buttons" in words:
-        return AppChannelReply(visibility="channel", content="Choose", actions=BUTTONS)
-    if "report" in words:
-        return AppChannelReply(
-            type="download", title="Weekly report", filename="weekly-report.md", content="# Report"
-        )
-    if "ack" in words:
-        return AppChannelReply(type="ack")
-    if "later" in words:
-        task = asyncio.create_task(finish_later(event))
-        background.add(task)
-        task.add_done_callback(background.discard)
-        return AppChannelReply(type="ack")
-    if "fail" in words:
-        return AppChannelReply(type="error", content="It broke")
-    if "slow" in words:
-        await asyncio.sleep(5)
-    if "crash" in words:
+        await event.send(f"public answer for {event.actor['id']}")
+    elif "buttons" in words:
+        await event.send("Choose", actions=BUTTONS)
+    elif "card" in words:
+        await event.reply(embeds=[CARD], actions=[LINK])
+    elif "later" in words:
+        await finish_later(event)
+    elif "crash" in words:
         raise RuntimeError("the reference app crashed on purpose")
-    if "authorize" in words:
+    elif "authorize" in words:
         verified = await event.client.authorize(event.execution_token)
-        return f"authorized {verified['actor']['id']} admin={verified['actor']['is_admin']}"
-    return f"pong: {event.content}"
+        await event.reply(
+            f"authorized {verified['actor']['id']} admin={verified['actor']['is_admin']}"
+        )
+    else:
+        await event.reply(f"pong: {event.content}")
+
+
+async def admit(event) -> None:
+    """Durable acceptance: only store the mention; the receipt waits for this to return."""
+    words = event.content.split()
+    if "refuse" in words:
+        raise RuntimeError("the reference app refused to store the mention")
+    if "stall" in words:
+        await asyncio.sleep(STALL_SECONDS)
+    record("admitted", event)
+
+
+if os.environ.get("APP_ADMISSION") == "true":
+    app.on("channel.mention", background=False)(admit)
+else:
+    app.on("channel.mention")(mentioned)
 
 
 async def finish_later(event) -> None:
-    """Background work after an ack: recheck the asker's access, then publish the result."""
+    """Slow work after the receipt: recheck the asker's access, then publish the result."""
     await asyncio.sleep(LATER_SECONDS)
     try:
         verified = await event.client.authorize(event.execution_token)
@@ -200,6 +263,33 @@ async def noted(event):
     return AppChannelReply(type="ack")
 
 
+@app.action("report")
+async def report(event):
+    return AppChannelReply(
+        type="download", title="Weekly report", filename="weekly-report.md", content="# Report"
+    )
+
+
+@app.action("fail")
+async def fail(event):
+    return AppChannelReply(type="error", content="It broke")
+
+
+@app.action("slow")
+async def slow(event):
+    await asyncio.sleep(5)
+
+
+@app.action("card")
+async def card(event):
+    return AppChannelReply(embeds=[CARD])
+
+
+@app.action("crash")
+async def crash(event):
+    raise RuntimeError("the reference app crashed on purpose")
+
+
 @app.on("channel.action")
 async def any_action(event):
     record("action.generic", event)
@@ -224,7 +314,9 @@ def serve_with_fastapi(port: int, path: str, manifest: bool) -> None:
         except (ConnectionUnavailable, ConnectionLost) as error:
             return JSONResponse({"error": type(error).__name__}, status_code=503)
 
-    uvicorn.run(server, host="127.0.0.1", port=port, log_level="warning", ws_max_size=1048576)
+    uvicorn.run(
+        server, host="127.0.0.1", port=port, log_level="warning", ws_max_size=16 * 1024 * 1024
+    )
 
 
 if __name__ == "__main__":
