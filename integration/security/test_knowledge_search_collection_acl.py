@@ -8,17 +8,16 @@ knowledge bases included: Qdrant sent no `query_filter` in either storage mode a
 only the collection term. The default Chroma store always applied it.
 
 The same search runs on the shared instance (Chroma) and on instances booted on the local Qdrant
-stand-in, in both storage modes, and on the Elasticsearch stand-in, each of which applies the
-filter it is sent. Pinecone stays a unit test: its client only reaches an index over TLS against
-the certificates it ships with, so no local stand-in can answer it.
+stand-in, in both storage modes, the Elasticsearch stand-in and the Pinecone stand-in, each of
+which applies the filter it is sent.
 
 Twin of unit/security/test_knowledge_search_collection_acl.py, which keeps the audit that no
-vector backend ignores a `filter` argument and the Pinecone case.
+vector backend ignores a `filter` argument.
 
 Discriminates: passes on ef67cc3fa; with the filter dropped from `search` in the Qdrant, Qdrant
-multitenancy or Elasticsearch backend the reader is shown the owner's private knowledge base on
-that store, and with the `filter` argument removed from the search in `query_knowledge_bases`
-on every store.
+multitenancy, Elasticsearch or Pinecone backend the reader is shown the owner's private knowledge
+base on that store, and with the `filter` argument removed from the search in
+`query_knowledge_bases` on every store.
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ from harness.access import make_group
 from harness.actors import Actor, admin_of, create_user
 from harness.chat import ask
 from harness.elasticsearch_server import elasticsearch_env, serving_elasticsearch
+from harness.pinecone_server import pinecone_env, serving_pinecone
 from harness.qdrant_server import qdrant_env, serving_qdrant
 
 pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_source]
@@ -44,6 +44,7 @@ STORES = [
     pytest.param("qdrant-multitenancy", marks=pytest.mark.slow),
     pytest.param("qdrant-collections", marks=pytest.mark.slow),
     pytest.param("elasticsearch", marks=pytest.mark.slow),
+    pytest.param("pinecone", marks=pytest.mark.slow),
 ]
 
 
@@ -57,13 +58,19 @@ class KnowledgeBases:
 
 
 @pytest.fixture(scope="module")
-def outside_stores(instance_with):
-    """Instances on the Qdrant and Elasticsearch stand-ins, booted when a test first asks."""
-    with serving_qdrant() as qdrant, serving_elasticsearch() as elasticsearch:
+def outside_stores(instance_with, tmp_path_factory):
+    """Instances on the Qdrant, Elasticsearch and Pinecone stand-ins, booted when a test asks."""
+    with (
+        serving_qdrant() as qdrant,
+        serving_elasticsearch() as elasticsearch,
+        serving_pinecone() as pinecone,
+    ):
         envs = {
             "qdrant-multitenancy": qdrant_env(qdrant, multitenancy=True),
             "qdrant-collections": qdrant_env(qdrant, multitenancy=False),
             "elasticsearch": elasticsearch_env(elasticsearch),
+            # the scripted provider embeds every text as three numbers
+            "pinecone": pinecone_env(pinecone, tmp_path_factory.mktemp("pinecone"), dimension=3),
         }
         yield lambda store: instance_with(envs[store])
 

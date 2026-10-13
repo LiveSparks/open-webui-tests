@@ -11,7 +11,7 @@
 * #26986 (`b9d7274`): selected skills were injected in set order, which varies per process.
 * #27426 / #27411 (`8ab44ed`): a follow-up after a tool call that raised (a provider hanging up)
   was logged at debug and the turn ended silently. An HTTP error status takes a later branch
-  (`a610d7713`), pinned here as nearby.
+  (`a610d7713`), pinned in integration/chat/test_stream_event_handling.py.
 * #27365 / #27074 (`dd514ee20`): a plain JSON error line (no `data:` prefix) was stored with an
   unawaited upsert, so the error vanished on reload.
 * #29053 / #29035 (`3749e7dc7`): a delta carrying reasoning text and `reasoning_details`, as
@@ -335,17 +335,6 @@ def test_a_provider_that_hangs_up_after_a_tool_call_leaves_an_error(owner, secon
         "a reply that raised while continuing after a tool call was logged at debug and the "
         "turn ended with nothing said and nothing stored (#27411)"
     )
-
-
-def test_a_provider_error_after_a_tool_call_is_stored(make_user, upstream):
-    upstream.queue(
-        reply.tool_call("get_current_timestamp", {}),
-        reply.error(500, "provider exploded after the tool"),
-    )
-    with make_user().client() as client:
-        _, message = ask(client, "what time is it?")
-
-    assert "provider exploded after the tool" in str(message.get("error"))
 
 
 def test_a_tool_round_that_succeeds_stores_no_error(make_user, upstream):

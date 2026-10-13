@@ -1,18 +1,19 @@
 """Dependency smoke: FastAPI, through the requests every client of Open WebUI makes.
 
-Every route is FastAPI's: `Depends` hands it the signed-in account, which the auth dependency
-reads from an `HTTPBearer` header or, failing that, the `token` cookie, and an `HTTPException`
-turns into the status and detail a client sees. Query, path, form and JSON body values are
-validated into their declared types (a 422 names the one that failed), a declared response
-model trims what a route returns to the fields it lists, and `UploadFile` with a `Form` field
-takes an upload whose processing a `BackgroundTasks` runs after the answer. Chat completions
-stream as a `StreamingResponse`, a provider's error comes back as a `PlainTextResponse` or
-`JSONResponse`, Open WebUI's own middleware stamps every answer and redirects legacy links,
-`CORSMiddleware` answers other origins, `StaticFiles` serves the static directory and, in
-development, `/docs` is FastAPI's Swagger page with Open WebUI's bundled assets. The terminal
-WebSocket route is driven in integration/security/test_terminal_connection_gating.py and a SCIM
-`Header` with its `WWW-Authenticate` answer here. The development instance and the SCIM instance
-are env-only, so those tests boot instances of their own.
+Every route is FastAPI's: `Depends` hands it the signed-in account, which the auth dependency reads
+from an `HTTPBearer` header or, failing that, the `token` cookie, and an `HTTPException` turns into
+the status and detail a client sees. Query, path, form and JSON body values are validated into their
+declared types (the 422 that names the one that failed is pinned in
+integration/deps/test_request_bodies.py), a declared response model trims what a route returns to
+the fields it lists, and `UploadFile` with a `Form` field takes an upload whose processing a
+`BackgroundTasks` runs after the answer. Chat completions stream as a `StreamingResponse`, a
+provider's error comes back as a `PlainTextResponse` or `JSONResponse`, Open WebUI's own middleware
+stamps every answer and redirects legacy links, `CORSMiddleware` answers other origins,
+`StaticFiles` serves the static directory and, in development, `/docs` is FastAPI's Swagger page
+with Open WebUI's bundled assets. The terminal WebSocket route is driven in
+integration/security/test_terminal_connection_gating.py and a SCIM `Header` with its
+`WWW-Authenticate` answer here. The development instance and the SCIM instance are env-only, so
+those tests boot instances of their own.
 
 Discriminates: passes on dev ef67cc3fa; in a backend copy, an `HTTPBearer` with `auto_error=True`
 refuses the cookie session, the user search without its response model leaks another account's
@@ -73,25 +74,7 @@ def test_the_session_is_read_from_the_bearer_header_or_the_token_cookie(instance
     assert by_cookie.json()["email"] == account.email
 
 
-# ---------------------------------------------------------------- request validation
-
-
-def test_a_query_value_of_the_wrong_type_is_refused_with_422(make_user):
-    with make_user().client() as client:
-        refused = client.get("/api/v1/users/search", params={"page": "second"})
-        accepted = client.get("/api/v1/users/search", params={"page": "1"})
-
-    assert refused.status_code == 422, refused.text
-    assert [error["loc"] for error in refused.json()["detail"]] == [["query", "page"]]
-    assert accepted.status_code == 200, accepted.text
-
-
-def test_a_json_body_without_a_required_field_is_refused_with_422(make_user):
-    with make_user().client() as client:
-        refused = client.post("/api/v1/knowledge/create", json={"name": "harbour notes"})
-
-    assert refused.status_code == 422, refused.text
-    assert [error["loc"] for error in refused.json()["detail"]] == [["body", "description"]]
+# ---------------------------------------------------------------- response models
 
 
 def test_the_user_search_answers_only_the_fields_its_response_model_lists(make_user):

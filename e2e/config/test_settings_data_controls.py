@@ -1,25 +1,22 @@
-"""Journey: Settings > Data Controls exports a person's chats and manages their links and files.
+"""Journey: Settings > Data Controls manages a person's shared links and files.
 
-Export Chats downloads every chat of the account as JSON and nobody else's. Shared Chats lists
-the chats the account shared by link: unsharing one there closes its link at once, so the
-account it was shared with is sent home from it, and Unshare All Shared Chats closes every link.
-Manage Files lists the files the account uploaded and no one else's, with their number, narrows
-them by a search on part of the name and opens one to show its text; a file deleted there is
-gone, at once and without asking when Shift is held.
+Export Chats is driven in e2e/chat/test_bulk_chat_actions.py. Shared Chats lists the chats the
+account shared by link: unsharing one there closes its link at once, so the account it was shared
+with is sent home from it, and Unshare All Shared Chats closes every link. Manage Files lists the
+files the account uploaded and no one else's, with their number, narrows them by a search on part of
+the name and opens one to show its text; a file deleted there is gone, at once and without asking
+when Shift is held.
 
-Discriminates: passes on dev 30f3f6a8f; in a frontend build whose Export Chats saves an empty
-list, whose unshare and Unshare All handlers skip their requests and whose file delete skips its
-request, every test up to the deleted file fails. On dev ebc6add67, in a frontend build whose
-Manage Files search ignores the query, whose rows open nothing and whose Shift delete still asks,
-the search, open and Shift tests fail.
+Discriminates: passes on dev 30f3f6a8f; in a frontend build whose unshare and Unshare All handlers
+skip their requests and whose file delete skips its request, every test up to the deleted file
+fails. On dev ebc6add67, in a frontend build whose Manage Files search ignores the query, whose rows
+open nothing and whose Shift delete still asks, the search, open and Shift tests fail.
 """
 
 from __future__ import annotations
 
-import json
 import re
 import uuid
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -65,25 +62,6 @@ def share(client, chat_id: str, *readers) -> str:
 
 def link_status(client, share_id: str) -> int:
     return client.get(f"/api/v1/chats/share/{share_id}").status_code
-
-
-def test_export_chats_downloads_the_accounts_chats_and_no_one_elses(page_for, make_user):
-    account, other = make_user(), make_user()
-    titles = [f"Tide table {uuid.uuid4().hex[:6]}", f"Ferry plan {uuid.uuid4().hex[:6]}"]
-    with account.client() as client:
-        for title in titles:
-            new_chat(client, title)
-    with other.client() as client:
-        foreign = new_chat(client, "Someone else's chat")
-    page = page_for(account)
-    settings = data_controls(page)
-
-    with page.expect_download() as downloaded:
-        row_button(settings, "Export Chats", "Export").click()
-    exported = json.loads(Path(downloaded.value.path()).read_text())
-
-    assert sorted(chat["title"] for chat in exported) == sorted(titles)
-    assert foreign not in [chat["id"] for chat in exported]
 
 
 def open_shared_chats(page: Page) -> Locator:

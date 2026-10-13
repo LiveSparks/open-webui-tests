@@ -1,11 +1,11 @@
 """Regression: deleting a folder with its chats left the share links of those chats working.
 
-Fix `ffe21bef8` (open-webui/open-webui#31306, issue open-webui/open-webui#31305): deleting a
-folder together with its contents removed the chats and their messages but not their shared
-snapshots, so everyone holding a share link could still open a conversation its owner had
-deleted. The share rows of those chats now go with them. Deleting one chat, or all chats, already
-removed the shares; those routes are pinned here too, as is a folder deleted without its
-contents, whose chats and shares stay.
+Fix `ffe21bef8` (open-webui/open-webui#31306, issue open-webui/open-webui#31305): deleting a folder
+together with its contents removed the chats and their messages but not their shared snapshots, so
+everyone holding a share link could still open a conversation its owner had deleted. The share rows
+of those chats now go with them. Deleting all chats, loose and filed, already removed the shares and
+is pinned here too, as is a folder deleted without its contents, whose chats and shares stay.
+Deleting one chat is pinned in integration/chat/test_chat_sharing.py.
 
 Discriminates: passes on dev efe63bd34; with ffe21bef8 reverted in a backend copy both folder
 tests with contents fail (the share still opens). The other tests pass on both.
@@ -109,17 +109,6 @@ def test_a_folder_deleted_without_its_contents_keeps_the_share_links(make_user):
     assert _share_opens(reader, share_id), "the chats were kept but their share links were not"
     with owner.client() as client:
         assert client.get(f"/api/v1/chats/{chat_id}").status_code == 200
-
-
-def test_deleting_one_chat_revokes_its_share_link(make_user):
-    owner, reader = make_user(), make_user()
-    chat_id, share_id = _shared_chat(owner, reader)
-
-    with owner.client() as client:
-        deleted = client.delete(f"/api/v1/chats/{chat_id}")
-    assert deleted.status_code == 200, deleted.text
-
-    assert not _share_opens(reader, share_id)
 
 
 def test_deleting_all_chats_revokes_their_share_links(make_user):

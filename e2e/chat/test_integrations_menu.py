@@ -1,16 +1,16 @@
 """Journey: what the chat input's Integrations menu offers, and to whom.
 
-With web search on for the instance, the menu offers Web Search to every account; the admin's
-Web Search switch under Default permissions > Features takes it from users while an admin keeps
-it, and a model whose Web Search capability is off is offered no Web Search either. Tools and
-Skills each open a list with a search box that narrows it by name or description and says when
-nothing matches; a tool picked from the narrowed list is offered to the model with the next
-message.
+With web search on for the instance, the menu offers Web Search to every account; the admin's Web
+Search switch under Default permissions > Features takes it from users (an admin keeping it is
+pinned in e2e/admin/test_search_and_image_switches.py), and a model whose Web Search capability is
+off is offered no Web Search either. Tools and Skills each open a list with a search box that
+narrows it by name or description and says when nothing matches; a tool picked from the narrowed
+list is offered to the model with the next message.
 
-Discriminates: passes on dev ebc6add67. On a build whose Web Search item ignores the permission
-and the model's capabilities the withdrawn and capability tests fail; on one that never offers Web
-Search the offered and admin tests fail; on one whose tool and skill search boxes filter nothing
-both search tests fail; on one where a picked tool stays off the picked tool test fails.
+Discriminates: passes on dev ebc6add67. On a build whose Web Search item ignores the permission and
+the model's capabilities the withdrawn and capability tests fail; on one that never offers Web
+Search the offered test fails; on one whose tool and skill search boxes filter nothing both search
+tests fail; on one where a picked tool stays off the picked tool test fails.
 """
 
 from __future__ import annotations
@@ -92,13 +92,6 @@ def test_web_search_is_withdrawn_from_a_user_without_the_permission(
     save_default_permission(page_for(admin), "Web Search", turn_on=False)
 
     assert not offers_web_search(page_for(make_user()))
-
-
-def test_an_admin_keeps_web_search_without_the_permission(page_for, admin, web_search_on, preserve):
-    preserve("permissions")
-    save_default_permission(page_for(admin), "Web Search", turn_on=False)
-
-    assert offers_web_search(page_for(admin))
 
 
 @pytest.fixture
