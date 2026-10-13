@@ -12,6 +12,8 @@ Regression tests for Open WebUI at three distances from the product. `integratio
 2. If it also shows in the UI, or only there, add a browser test as well. Duplication across the two is fine.
 3. **Never write a unit test.** Every new test is an integration or a browser test, with no exceptions. When neither of them can see a bug, the bug gets no new test. The unit tests in `unit/` are left over from before this rule; they only shrink, as integration and browser twins replace them, and none are added or extended.
 
+4. **Extend an existing test first.** Every new test function and every new module costs CI time (setup, accounts, a browser page, often a whole instance), so a new check goes into what already exists, in this order: add the assertion to an existing test that already walks the same path; failing that, add a test function to the existing module of that area so it reuses its fixtures and instance; only when no module fits, write a new module. Extending must keep the existing test's own check intact and its name still true.
+
 Once an integration twin covers a unit test's narrow layer, delete the unit test: two copies of one guard double the repair work and add no coverage.
 
 ## The harness
