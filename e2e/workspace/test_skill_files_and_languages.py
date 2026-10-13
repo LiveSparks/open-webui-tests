@@ -10,17 +10,18 @@ English interface keeps the default name; the German name also finds the skill i
 search. The round trip through Export JSON and Import JSON is
 e2e/workspace/test_workspace_import_export.py.
 
-The German-name search test is red on purpose: the Translations docs page says Workspace search
-matches the translated name as well as the original, but the skill list's search goes to the
-server, which matches only the original name, description and id, so typing the name a German
-user is shown finds nothing (open-webui/open-webui#32018, fixed by 1579af28a).
+The German-name search test pins open-webui/open-webui#32018: the Translations docs page says
+Workspace search matches the translated name as well as the original, but the skill list's search
+went to the server, which matched only the original name, description and id, so typing the name a
+German user is shown found nothing. Fixed by 1579af28a, so it passes on dev c7193760b.
 
 Discriminates: passes on the dev ebc6add67 build apart from the search test; in a frontend copy
 that never resolves a translated name the German name test goes red. Retargeted for 9bbb95048,
 where import moved into a dialog backed by the server and Export became Export JSON with the
 skill's files: passes on dev 178de3666 apart from the search test; in a backend copy whose import
 ignores the front matter the SKILL.md test goes red (the skill is named "Imported skill"), and in
-one whose export leaves out the files the export test goes red.
+one whose export leaves out the files the export test goes red. Retargeted for 303cf180f, where a
+saved row in the import dialog reads "Saved"; passes on dev c7193760b.
 """
 
 from __future__ import annotations
@@ -82,7 +83,7 @@ def _import_selected(page: Page, count: int) -> None:
     dialog = page.get_by_role("dialog")
     expect(dialog.get_by_role("textbox", name="Skill ID")).to_have_count(count)
     dialog.get_by_role("button", name="Import selected").click()
-    expect(dialog.get_by_text("saved", exact=True)).to_have_count(count)
+    expect(dialog.get_by_text("Saved", exact=True)).to_have_count(count)
     dialog.get_by_role("button", name="Close").click()
 
 

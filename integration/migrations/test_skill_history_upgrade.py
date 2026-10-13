@@ -24,7 +24,9 @@ first-save tests. A copy whose every startup writes another first version for ea
 the restart test, along with the history, first-save, rename and orphan tests. Retargeted for
 24ee1cb16, where the first-save test goes back to the migrated version by setting it as
 production in place of restoring it; it passes on dev 206bf9723 and fails in a backend copy
-whose version switch keeps the current version.
+whose version switch keeps the current version. Retargeted for c7193760b, where the mentioned
+skill's tag no longer carries a `version_id`: the mention tests check the skill's own tag and
+its first version's instructions; passes on dev c7193760b.
 """
 
 from __future__ import annotations
@@ -227,12 +229,10 @@ def test_a_reader_mentions_an_old_skill_and_the_model_gets_its_first_version(
 ):
     upgraded = migrated.upgraded
     saved = upgraded.manifest["skills"][skill_id]
-    version_id = upgraded.get("admin", f"/api/v1/skills/id/{skill_id}").json()["version_id"]
-
     system = _system_prompt(upgraded, who, f"<${skill_id}|{saved['name']}>")
 
+    assert f'<skill id="{skill_id}"' in system, system
     assert saved["content"] in system, system
-    assert f'version_id="{version_id}"' in system, system
 
 
 def _save(upgraded: Upgraded, who: str, skill_id: str, changes: dict) -> dict:

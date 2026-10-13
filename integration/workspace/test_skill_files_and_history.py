@@ -29,7 +29,9 @@ an empty SKILL.md alone (clone), a delete that keeps the history (delete) and a 
 without its file list (chat mention). Retargeted for 24ee1cb16, where an old version is set as
 production in place of being restored as a copy and old versions can be deleted: the set production
 and version delete tests pass on that build, and go red in a backend copy whose version switch keeps
-the current files or whose version delete answers true without deleting.
+the current files or whose version delete answers true without deleting. Retargeted for
+c7193760b, where the mentioned skill's tag no longer carries a `version_id`; passes on dev
+c7193760b.
 """
 
 from __future__ import annotations
@@ -440,7 +442,7 @@ def test_a_mentioned_skill_reaches_the_model_with_the_list_of_its_files(owner, u
     system = "\n".join(
         str(entry["content"]) for entry in request["messages"] if entry["role"] == "system"
     )
-    assert f'<skill id="{skill["id"]}" version_id="{skill["version_id"]}"' in system, system
+    assert f'<skill id="{skill["id"]}" name="{skill["name"]}">' in system, system
     assert "Read the tide table first." in system
     for path in ("references/tables.md", "references/charts.md", "scripts/check.py"):
         assert path in system, system

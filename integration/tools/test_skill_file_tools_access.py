@@ -21,7 +21,9 @@ from `read_skill_file` turned the switched-off skill test red; letting `read_ski
 a path into another skill turned the path test red; offering `create_skill` to every account
 turned the offer test red; listing every skill in the chat whatever the account may read
 turned the skill list test red; and letting every admin through regardless of the admin access
-setting turned the admin test red.
+setting turned the admin test red. Retargeted for c7193760b, where the tools no longer show the
+model a `version_id`: the reader's `view_skill` is checked by its instructions and the writer's
+save by the skill's current version; passes on dev c7193760b.
 """
 
 from __future__ import annotations
@@ -161,7 +163,8 @@ def test_view_skill_lists_the_files_only_for_those_who_may_read_it(admin, make_u
     refused, sent = _call(shared.stranger, upstream, "view_skill", id=shared.skill_id)
 
     assert [entry["path"] for entry in loaded["files"]] == ["SKILL.md", CHECKLIST], loaded
-    assert loaded["version_id"] == _version(shared.owner, shared.skill_id)
+    suffix = shared.skill_id.split("-", 1)[1]
+    assert loaded["content"] == f"Follow the harbour rules {suffix}.", loaded
     assert refused == {"error": "Access denied"}
     assert CHECKLIST not in sent and "Follow the harbour rules" not in sent
 
@@ -228,11 +231,13 @@ def test_only_write_access_saves_file_changes(admin, make_user, upstream):
 
     assert refused == {"reader": {"error": "Access denied"}, "stranger": {"error": "Access denied"}}
     assert unchanged == before
-    assert saved["version_id"] != before, saved
+    assert saved.get("id") == shared.skill_id, saved
+    after = _version(shared.owner, shared.skill_id)
+    assert after != before
     with shared.owner.client() as client:
         tides = client.get(
             f"{SKILLS}/id/{shared.skill_id}/files/content",
-            params={"version_id": saved["version_id"], "path": "references/tides.md"},
+            params={"version_id": after, "path": "references/tides.md"},
         )
     assert tides.text == "high tide at noon"
 

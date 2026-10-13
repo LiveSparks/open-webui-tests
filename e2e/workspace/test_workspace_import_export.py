@@ -7,7 +7,8 @@ content intact, with the tool asking for a confirmation first.
 Discriminates: passes on dev 176d31d1d. In a frontend copy where the prompts import sends an empty
 content, the skills import a changed content and the models import no base model, only the matching
 round trip goes red. Retargeted for 9bbb95048, where skills import through a dialog; the skill
-round trip passes on dev 178de3666.
+round trip passes on dev 178de3666. Retargeted for 303cf180f, where a saved row reads "Saved";
+passes on dev c7193760b.
 """
 
 from __future__ import annotations
@@ -178,7 +179,7 @@ def test_an_exported_skill_is_restored_by_importing_the_file(page_for, keeper):
     )
     dialog = page.get_by_role("dialog")
     dialog.get_by_role("button", name="Import selected").click()
-    expect(dialog.get_by_text("saved", exact=True)).to_be_visible()
+    expect(dialog.get_by_text("Saved", exact=True)).to_be_visible()
     dialog.get_by_role("button", name="Close").click()
     _find_in_list(page, "Search Skills", name)
     assert _fetch(keeper, f"/api/v1/skills/id/{skill_id}")["content"] == "Be brief."

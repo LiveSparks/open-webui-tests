@@ -2,7 +2,7 @@
 
 With the Skills builtin tool on, a chat offers `view_skill`, `read_skill_file` and
 `update_skill_files`, and `create_skill` to an account allowed to write skills. `view_skill`
-returns the skill's SKILL.md with the list of its files and the version it read;
+returns the skill's SKILL.md with the list of its files;
 `read_skill_file` returns one file in pages of `max_chars` with the offset of the next page, and
 for a binary file only its size and a link to it in the skill editor. A file read after
 `view_skill` in the same turn comes from the version `view_skill` loaded, even if the skill was
@@ -19,7 +19,10 @@ a chat offered `view_skill` alone (offered tools), `view_skill` without the file
 missing file as empty (missing file), reading the current version instead of the one `view_skill`
 loaded (pinning), file operations that start from SKILL.md alone (update), a SKILL.md delete that
 is skipped without a word (SKILL.md), `create_skill` dropping the supporting files (create) and
-skill authoring that still needs a terminal (`/skills:create`).
+skill authoring that still needs a terminal (`/skills:create`). Retargeted for c7193760b, where the
+tools no longer show the model a `version_id`: pinning is read from the file text the model gets
+and the saved version from the skill's history; passes on dev c7193760b and the pinning edit
+still turns it red.
 """
 
 from __future__ import annotations
@@ -107,7 +110,6 @@ def test_view_skill_returns_the_instructions_and_the_file_list(owner, upstream):
     viewed = _call(owner, upstream, "view_skill", id=skill["id"])
 
     assert viewed["id"] == skill["id"]
-    assert viewed["version_id"] == skill["version_id"]
     assert viewed["content"] == skill_md(skill["id"], "Use the knot book.")
     assert {entry["path"]: entry["size"] for entry in viewed["files"]} == files(owner, skill["id"])
 
@@ -191,7 +193,7 @@ def test_a_file_read_after_view_skill_comes_from_the_version_it_loaded(owner, up
         for entry in sent_back
         if entry["role"] == "tool"
     }
-    assert results["call_read"]["version_id"] == skill["version_id"]
+    assert read(owner, skill["id"], "references/hitch.md") == b"Changed.\n"
     assert results["call_read"]["content"] == "Two turns and a hitch.\n"
 
 
@@ -210,8 +212,9 @@ def test_update_skill_files_saves_a_version_and_keeps_untouched_files(owner, ups
         commit_message="Tighter hitch",
     )
 
-    assert updated.get("version_id") not in (None, skill["version_id"]), updated
-    assert current(owner, skill["id"])["version_id"] == updated["version_id"]
+    assert updated.get("id") == skill["id"], updated
+    saved_version = current(owner, skill["id"])["version_id"]
+    assert saved_version != skill["version_id"]
     assert set(files(owner, skill["id"])) == {
         "SKILL.md",
         "assets/knot.png",
@@ -220,9 +223,8 @@ def test_update_skill_files_saves_a_version_and_keeps_untouched_files(owner, ups
     }
     assert read(owner, skill["id"], "references/hitch.md") == b"Three turns and a hitch.\n"
     assert read(owner, skill["id"], "assets/knot.png") == PNG
-    latest = next(
-        entry for entry in history(owner, skill["id"]) if entry["id"] == updated["version_id"]
-    )
+    latest = next(entry for entry in history(owner, skill["id"]) if entry["id"] == saved_version)
+    assert latest["parent_id"] == skill["version_id"]
     assert latest["commit_message"] == "Tighter hitch"
     assert latest["user_id"] == owner.id
 
