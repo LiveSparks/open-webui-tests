@@ -9,6 +9,9 @@
 * The reminder poll compared a user-writable `meta.alert_minutes` to a number, so one event
   holding text there raised on every poll and no reminder went out for anyone (`abc69000b`,
   #28790). A sent reminder shows as `meta.alerted_at` on the event.
+* The reminder poll skipped any event that had `meta.alerted_at` at all, so an event moved to a
+  new time after its reminder went out was never reminded again. It now records the start time
+  it reminded for and skips only while that is still the start (`5032e834e`, PR #32358).
 * Searching a JSON column matches the text a JSON encoder wrote, and a row holds non-ASCII raw
   or escaped: stdlib json escaped it until #31615 (321a24dfe) had every codec write it raw, so
   rows saved before an upgrade keep the escapes. Automation search matched only the raw spelling
@@ -36,6 +39,7 @@ server's clock, the COUNT check removed, `alert_minutes` compared unchecked, the
 searches restored): occurrences move by the zone gap, a COUNT rule without DTSTART is stored, no
 reminder is sent while a text window exists, and a CJK prompt or tag is missed in one spelling. On
 dev ef67cc3fa, claiming timers by `meta.timer_at` again fires the forked timer a second time.
+The moved event passes on dev 5032e834e and fails with that commit reverted (no second reminder).
 """
 
 from __future__ import annotations
@@ -62,6 +66,7 @@ from harness.calendar_api import (
     events_between,
     set_timezone,
     to_ns,
+    update_event,
 )
 from harness.chat import ask
 from harness.json_codecs import stored_text
@@ -269,15 +274,20 @@ def remind(second_instance):
         client.close()
 
 
-def _alerted(client: httpx.Client, event_id: str) -> bool:
+def _alerted_at(client: httpx.Client, event_id: str):
     event = client.get(f"/api/v1/calendars/events/{event_id}").json()
-    return bool((event.get("meta") or {}).get("alerted_at"))
+    return (event.get("meta") or {}).get("alerted_at")
 
 
-def _wait_until_alerted(client: httpx.Client, event_id: str) -> bool:
+def _alerted(client: httpx.Client, event_id: str) -> bool:
+    return bool(_alerted_at(client, event_id))
+
+
+def _wait_until_alerted(client: httpx.Client, event_id: str, after=None) -> bool:
+    """Whether a reminder other than the one marked `after` goes out in time."""
     deadline = time.monotonic() + REMINDER_WAIT_SECONDS
     while time.monotonic() < deadline:
-        if _alerted(client, event_id):
+        if _alerted_at(client, event_id) not in (None, after):
             return True
         time.sleep(0.2)
     return False
@@ -316,6 +326,23 @@ def test_a_negative_alert_window_still_means_no_reminder(remind):
 
     assert _wait_until_alerted(control_client, control_event)
     assert not _alerted(muted_client, muted_event)
+
+
+def test_an_event_moved_after_its_reminder_is_reminded_again(remind):
+    client, event_id = remind(5)
+    assert _wait_until_alerted(client, event_id)
+    first_reminder = _alerted_at(client, event_id)
+    # a few polls, so a reminder repeated for an unmoved event would show
+    time.sleep(3)
+    assert _alerted_at(client, event_id) == first_reminder, "the unmoved event was reminded again"
+
+    moved = update_event(client, event_id, start_at=time.time_ns() + 7 * MINUTE_NS)
+    assert moved.status_code == 200, moved.text
+
+    assert _wait_until_alerted(client, event_id, after=first_reminder), (
+        f"no reminder went out within {REMINDER_WAIT_SECONDS}s for the event's new time: the "
+        "reminder for its old time still counted (#32358)"
+    )
 
 
 # ---------------------------------------------------------------- narrow: both JSON spellings

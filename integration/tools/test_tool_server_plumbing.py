@@ -13,6 +13,10 @@
   error, and an empty cached list was taken for a miss, so every request fetched every server's
   spec again. These run on an instance of their own with a real Redis, whose MONITOR stream shows
   each rebuild as the list being written back.
+* PR 32229 (`ee1d9255f`, issue 32213): an MCP server that failed to connect during a chat (a
+  refused connection, a 401) was logged at debug level only, so at the default log level the
+  chat lost its tools with nothing in the log saying why. The failure is now an error line
+  naming the server, with the reason.
 
 Twin of unit/tools/test_tool_server_plumbing.py. The empty cached terminal list with no terminal
 able to serve stays in unit/tools/test_tool_server_auth_and_terminal_cache.py: a chat on a
@@ -23,12 +27,15 @@ continuation parsing, the per-connection cookies, the connection-error arm of th
 the proxy's connection-error arm and the body read inside the `try`, one mutation each). On dev
 ef67cc3fa, with `f1a64ccfc2` reverted the empty-list and absent-key cases fail for both lists
 (the empty tool list is written back, the absent key logs a decode error); the populated and
-corrupt cases pass on both.
+corrupt cases pass on both. The MCP failure lines pass on dev 5032e834e and are missing with
+`ee1d9255f` reverted.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import secrets
 import socket
 import time
 import uuid
@@ -41,11 +48,14 @@ from harness import backends
 from harness import upstream as reply
 from harness.actors import admin_of
 from harness.chat import ask
+from harness.instance import free_port
 from harness.listener import json_answer
+from harness.mcp_server import mcp_connection, serving_mcp
 from harness.redis_monitor import recording
 from harness.terminal_server import (
     TERMINAL_SERVERS_CONFIG,
     configure_terminals,
+    read_grant,
     serving_terminal,
 )
 
@@ -295,6 +305,59 @@ def test_an_unknown_terminal_is_still_refused(admin, dead_terminal):
         proxied = client.post("/api/v1/terminals/no-such-terminal/api/files", json={})
 
     assert proxied.status_code == 404
+
+
+# --- ee1d9255f: an MCP server that fails to connect in a chat is logged with the reason -----
+
+# the reason as the traceback under the error line names it
+MCP_FAILURES = {
+    "refused": "httpx.ConnectError",
+    "unauthorized": "Client error '401 Unauthorized'",
+}
+
+
+@contextlib.contextmanager
+def _failing_mcp_url(failure: str):
+    if failure == "refused":
+        yield f"http://127.0.0.1:{free_port()}/mcp"
+        return
+    with serving_mcp(bearer_key=secrets.token_hex(8)) as url:
+        yield url
+
+
+@pytest.mark.parametrize("failure", list(MCP_FAILURES))
+def test_an_mcp_server_that_fails_in_a_chat_is_logged_with_the_reason(
+    instance, admin, make_user, preserve, upstream, failure
+):
+    person = make_user()
+    server_id = f"lighthouse_{secrets.token_hex(4)}"
+    preserve(TOOL_SERVERS_CONFIG)
+    with _failing_mcp_url(failure) as url:
+        connection = mcp_connection(url, server_id, [read_grant(person.id)])
+        with admin.client() as client:
+            saved = client.post(
+                TOOL_SERVERS_CONFIG[1], json={"TOOL_SERVER_CONNECTIONS": [connection]}
+            )
+        assert saved.status_code == 200, saved.text
+
+        offset = instance.log_size()
+        upstream.queue(
+            reply.text("answered without the tools", match=reply.answering("light the lamp"))
+        )
+        with person.client() as client:
+            _, message = ask(client, "light the lamp", tool_ids=[f"server:mcp:{server_id}"])
+
+    assert message["content"] == "answered without the tools", message
+    log = instance.log_since(offset)
+    marker = f"Failed to connect to MCP server '{server_id}'"
+    error_lines = [line for line in log.splitlines() if marker in line and "ERROR" in line]
+    assert error_lines, (
+        f"a {failure} MCP connection in a chat left no error line at the default level "
+        f"(#32213): {log}"
+    )
+    assert MCP_FAILURES[failure] in log[log.index(marker) :], (
+        f"the error line does not say why the connection failed: {log}"
+    )
 
 
 # --- f1a64ccfc2: an empty cache is a hit, an absent one is no error ------------------------

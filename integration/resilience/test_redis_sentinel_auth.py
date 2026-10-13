@@ -10,8 +10,14 @@ The master and the Sentinel here both require the password. The instance boots i
 so a boot that fails on Redis fails the test. Signing out writes the revoked token to Redis, and
 the next request with that token is refused only when the instance can read it back.
 
+Issue #31918 (fix 0309c9ad1, PR #32234): Sentinel service names are case-sensitive, but Open WebUI
+lowercased the one in `REDIS_URL`, so a master named `myMaster` was asked for as `mymaster` and
+every Redis call failed with "No master found". The Sentinel here watches `myMaster` for that
+reason; the lowercase name stays covered in test_redis_sentinel_failover.py.
+
 Discriminates: fails on dev 0309c9ad1 (signing out answers 500, Redis is never reached), and
-passes on that dev with the password from `REDIS_URL` also given to the Sentinels.
+passes on that dev with the password from `REDIS_URL` also given to the Sentinels. Passes on dev
+5032e834e and fails with 0309c9ad1 reverted (signing out answers 500).
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ pytestmark = [
     pytest.mark.slow,
 ]
 
-SERVICE = "mymaster"
+SERVICE = "myMaster"
 PASSWORD = "harbour-pass"
 
 

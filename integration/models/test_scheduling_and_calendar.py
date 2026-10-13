@@ -11,6 +11,11 @@
 * The next runs were computed from the server's clock while the user's clock decided which were
   in the future, so for a user in a zone behind the server a quarter-hourly schedule's next run
   lay hours ahead (`b3aead2`, #26954).
+* A Daily, Weekly or Monthly schedule from the picker carries no DTSTART, and dateutil anchored
+  it on the server's clock at parse time, seconds included. So runs fell a few seconds past the
+  chosen minute, and for a user behind the server's zone the first run moved to the next day,
+  week or month (`c89336da5`, #32263, PR #32264). Such a rule is now anchored on the user's
+  clock at the whole minute.
 
 Automations are created switched off, so the scheduler never runs them.
 
@@ -20,7 +25,8 @@ Discriminates: passes on dev bbfa876af; fails with each fix reverted (the form's
 the declined filter dropped, FREQ scraped case-sensitively, the three refusals removed, the rule
 anchored on the server's clock): an organiser's "accepted" sticks, an edit resets the RSVP, the
 declined event stays listed, a lowercase rule runs off the clock, the unsupported rules are
-stored or refused for another reason and the next run lies hours ahead.
+stored or refused for another reason and the next run lies hours ahead. The picker schedules pass
+on dev 5032e834e and fail with `c89336da5` reverted (the first run is a day, week or month late).
 """
 
 from __future__ import annotations
@@ -272,7 +278,44 @@ def test_a_rule_the_scheduler_cannot_run_is_refused_by_name(scheduler, rule, ref
     assert refusal in response.json()["detail"]
 
 
-def test_a_daily_rule_still_steps_a_day(scheduler):
-    runs = _next_runs(scheduler("RRULE:FREQ=DAILY"), "UTC")
+def _picked_minute(zone: str) -> dt.datetime:
+    """A whole minute an hour from now on the user's clock, as the picker would choose it."""
+    return (dt.datetime.now(ZoneInfo(zone)) + dt.timedelta(hours=1)).replace(
+        second=0, microsecond=0
+    )
 
+
+def _assert_first_run_is_the_picked_minute(runs: list[dt.datetime], picked: dt.datetime) -> None:
+    assert runs[0] == picked, (
+        f"the schedule picked for {picked} first runs at {runs[0]}: anchored on the server's "
+        "clock instead of the user's (#32263)"
+    )
+    assert {(run.minute, run.second) for run in runs} == {(picked.minute, 0)}
+
+
+def test_a_daily_rule_still_steps_a_day(scheduler):
+    picked = _picked_minute(ZONE_BEHIND)
+    rule = f"RRULE:FREQ=DAILY;BYHOUR={picked.hour};BYMINUTE={picked.minute}"
+
+    runs = _next_runs(scheduler(rule, ZONE_BEHIND), ZONE_BEHIND)
+
+    _assert_first_run_is_the_picked_minute(runs, picked)
     assert {later - earlier for earlier, later in zip(runs, runs[1:])} == {dt.timedelta(days=1)}
+
+
+WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+
+@pytest.mark.parametrize("frequency", ["WEEKLY", "MONTHLY"])
+def test_a_weekly_or_monthly_rule_first_runs_at_the_picked_minute(scheduler, frequency):
+    picked = _picked_minute(ZONE_BEHIND)
+    day = (
+        f"BYDAY={WEEKDAYS[picked.weekday()]}"
+        if frequency == "WEEKLY"
+        else f"BYMONTHDAY={picked.day}"
+    )
+    rule = f"RRULE:FREQ={frequency};{day};BYHOUR={picked.hour};BYMINUTE={picked.minute}"
+
+    runs = _next_runs(scheduler(rule, ZONE_BEHIND), ZONE_BEHIND)
+
+    _assert_first_run_is_the_picked_minute(runs, picked)
