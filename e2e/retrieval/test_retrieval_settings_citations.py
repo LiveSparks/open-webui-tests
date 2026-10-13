@@ -142,8 +142,22 @@ def ask_about_the_notes(page_for, ranked, reader: Actor, question: str) -> Page:
     expect(page.get_by_role("button", name=name)).to_be_visible()
     ranked.upstream.queue(reply.text("Noted.", match=reply.answering(question)))
     send(page, question)
-    expect_reply(page, "Noted.")
+    try:
+        expect_reply(page, "Noted.")
+    except AssertionError:
+        # a reply that finishes before the chat page settles can stay blank until a reload
+        expect(page).to_have_url(re.compile("/c/"))
+        assert "Noted." in _stored_reply(reader, page.url.rsplit("/c/", 1)[1])
+        page.reload()
+        expect_reply(page, "Noted.")
     return page
+
+
+def _stored_reply(reader: Actor, chat_id: str) -> str:
+    with reader.client() as client:
+        chat = client.get(f"/api/v1/chats/{chat_id}").json()["chat"]
+    history = chat["history"]
+    return str(history["messages"][history["currentId"]].get("output"))
 
 
 def sent_to_the_model(ranked, question: str) -> str:

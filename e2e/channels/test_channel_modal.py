@@ -76,8 +76,16 @@ def _message(page: Page, text: str) -> Locator:
 
 def _open_create_modal(page: Page) -> Locator:
     expect(chat_input(page)).to_be_visible()
-    _sidebar(page).get_by_role("button", name="Create Channel").click()
+    create = _sidebar(page).get_by_role("button", name="Create Channel")
     modal = page.get_by_role("dialog").filter(has_text="Create Channel")
+    # a click while the sidebar is still opening can be lost; the next one opens the dialog
+    for _ in range(3):
+        create.click()
+        try:
+            expect(modal).to_be_visible(timeout=2_000)
+            return modal
+        except AssertionError:
+            continue
     expect(modal).to_be_visible()
     return modal
 
