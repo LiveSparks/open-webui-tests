@@ -10,7 +10,7 @@ dropped from the group that held the grant loses access in the next chat. A swit
 is still open to those who may edit it. Only accounts with the workspace skills permission are
 offered `create_skill`, and what it writes is private. A path that steps out of the skill or
 into another one finds nothing, and the skill list the model sees names only skills the
-account may read.
+account may read. An account that can use no skill is not offered the file tools at all.
 
 Discriminates: passes on dev 178de3666. In a backend copy, making the skills router's shared
 access check always pass turned the stranger rows, `view_skill` and the dropped reader red (the
@@ -23,7 +23,12 @@ turned the offer test red; listing every skill in the chat whatever the account 
 turned the skill list test red; and letting every admin through regardless of the admin access
 setting turned the admin test red. Retargeted for c7193760b, where the tools no longer show the
 model a `version_id`: the reader's `view_skill` is checked by its instructions and the writer's
-save by the skill's current version; passes on dev c7193760b.
+save by the skill's current version; passes on dev c7193760b. Retargeted for 5032e834e, which
+offers the file tools only in a chat that resolves a skill: every account whose chat calls a tool
+is granted another skill first (the admin too, whose chat lists only skills granted to it), so the
+call still reaches the tool's access check, and the admin without admin access is first checked to
+be offered none of the file tools; passes on dev 5032e834e, and offering the file tools whatever
+skills the chat resolves turns the admin test red.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
 SKILLS = "/api/v1/skills"
 CHECKLIST = "references/checklist.md"
+FILE_TOOLS = {"view_skill", "read_skill_file", "grep_skill_files", "update_skill_files"}
 
 
 @dataclass
@@ -78,6 +84,12 @@ def _create(owner: Actor, secret: str, grants: list[dict] | None = None) -> str:
     return body["id"]
 
 
+def _give_a_skill(owner: Actor, *accounts: Actor) -> None:
+    """Another of the owner's skills that `accounts` may read, so their chats offer the tools."""
+    readers = [grant("user", account.id, "read") for account in accounts]
+    _create(owner, f"logbook {uuid.uuid4().hex[:8]}", readers)
+
+
 def _owner(admin: Actor, account: Actor) -> Actor:
     permissions = {"workspace": {"skills": True}, "sharing": {"public_skills": True}}
     make_group(admin, [account], permissions)
@@ -101,6 +113,7 @@ def _shared(admin: Actor, make_user, via: str = "user") -> Shared:
             grant(via, writer_id, "write"),
         ],
     )
+    _give_a_skill(owner, reader, writer, stranger)
     return Shared(owner, reader, writer, stranger, skill_id, secret)
 
 
@@ -132,6 +145,8 @@ def test_a_skill_file_reaches_the_model_only_for_those_who_may_read_it(
     via, admin, make_user, upstream
 ):
     shared = _shared(admin, make_user, via)
+    # the admin reads through its bypass, but its chat lists only skills granted to it
+    _give_a_skill(shared.owner, admin)
     actors = {
         "owner": shared.owner,
         "reader": shared.reader,
@@ -184,6 +199,7 @@ def test_a_reader_dropped_from_the_group_can_no_longer_read_the_file(admin, make
     group_id = make_group(admin, [reader])
     secret = f"group berth {uuid.uuid4().hex[:8]}"
     skill_id = _create(owner, secret, [grant("group", group_id, "read")])
+    _give_a_skill(owner, reader)
 
     before, _ = _call(reader, upstream, "read_skill_file", id=skill_id, path=CHECKLIST)
     with admin.client() as client:
@@ -244,6 +260,7 @@ def test_only_write_access_saves_file_changes(admin, make_user, upstream):
 
 def test_create_skill_is_offered_only_with_the_skills_permission(admin, make_user, upstream):
     without, author = make_user(), _owner(admin, make_user())
+    _give_a_skill(author, without)
 
     with without.client() as client:
         offered_without = offered_tools(client, upstream)
@@ -316,8 +333,18 @@ def test_without_admin_access_to_workspace_content_the_admins_model_reads_nothin
     secret = f"closed berth {uuid.uuid4().hex[:8]}"
     skill_id = _create(owner, secret)
 
+    with admin.client() as client:
+        offered = offered_tools(client, closed.upstream)
+        unoffered = run_tool(
+            client, closed.upstream, "read_skill_file", {"id": skill_id, "path": CHECKLIST}
+        )
+    unoffered_sent = json.dumps(closed.upstream.chat_requests()[-1])
+    _create(admin, f"admin berth {uuid.uuid4().hex[:8]}")
     result, sent = _call(admin, closed.upstream, "read_skill_file", id=skill_id, path=CHECKLIST)
     own, _ = _call(owner, closed.upstream, "read_skill_file", id=skill_id, path=CHECKLIST)
 
+    # the admin can use no skill yet, so no file tool is offered
+    assert offered.isdisjoint(FILE_TOOLS) and "create_skill" in offered, sorted(offered)
+    assert secret not in unoffered and secret not in unoffered_sent
     assert result == {"error": "Access denied"} and secret not in sent
     assert own.get("content") == secret, own

@@ -1,10 +1,10 @@
 """Journey: the model reads a skill's files, edits them and writes a new skill in a chat.
 
-With the Skills builtin tool on, a chat offers `view_skill`, `read_skill_file` and
-`update_skill_files`, and `create_skill` to an account allowed to write skills. `view_skill`
-returns the skill's SKILL.md with the list of its files;
-`read_skill_file` returns one file in pages of `max_chars` with the offset of the next page, and
-for a binary file only its size and a link to it in the skill editor. A file read after
+With the Skills builtin tool on, a chat that resolves one of the account's skills offers
+`view_skill`, `read_skill_file`, `grep_skill_files` and `update_skill_files`, and `create_skill`
+to an account allowed to write skills. `view_skill` returns the skill's SKILL.md with the list of
+its files; `read_skill_file` returns one file in pages of `max_chars` with the offset of the next
+page, and for a binary file only its size and a link to it in the skill editor. A file read after
 `view_skill` in the same turn comes from the version `view_skill` loaded, even if the skill was
 saved again in between. `update_skill_files` saves put, move and delete operations as a new
 version with the commit message and keeps the files it did not touch; it refuses to remove
@@ -22,7 +22,9 @@ is skipped without a word (SKILL.md), `create_skill` dropping the supporting fil
 skill authoring that still needs a terminal (`/skills:create`). Retargeted for c7193760b, where the
 tools no longer show the model a `version_id`: pinning is read from the file text the model gets
 and the saved version from the skill's history; passes on dev c7193760b and the pinning edit
-still turns it red.
+still turns it red. Retargeted for 5032e834e, which offers the file tools only in a chat that
+resolves a skill: the offered tools are read with one of the owner's skills in place, and
+`grep_skill_files` joins them; passes on dev 5032e834e.
 """
 
 from __future__ import annotations
@@ -59,7 +61,13 @@ def owner(make_user):
     delete_skills_of(account)
 
 
-SKILL_TOOLS = {"view_skill", "read_skill_file", "update_skill_files", "create_skill"}
+SKILL_TOOLS = {
+    "view_skill",
+    "read_skill_file",
+    "grep_skill_files",
+    "update_skill_files",
+    "create_skill",
+}
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
@@ -98,6 +106,7 @@ def _knots(owner) -> dict:
 
 
 def test_a_chat_offers_the_skill_file_tools(owner, upstream):
+    _knots(owner)
     with owner.client() as client:
         offered = offered_tools(client, upstream)
 

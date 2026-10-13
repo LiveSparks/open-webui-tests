@@ -30,7 +30,9 @@ model's system prompt every positive test failed, and so did the controls whose 
 the system message, since the clock moved the first break into it; the other controls passed.
 Retargeted for 9bbb95048, which offers the skill tools from the first turn: a skill saved in the
 terminal between turns now breaks the prefix in the system message's skill list, not in the tool
-list.
+list. Retargeted again for 5032e834e, which offers the skill tools only once the chat resolves a
+skill: the skill saved between turns adds them, so the break falls in the tool list again; passes
+on dev 5032e834e.
 The builtin tool test was retargeted for 8d0ff76f2, whose Builtin Tools categories are switches in a
 section that opens on a click: passes on dev 76ad6f97c (3 of 3) and fails in a build of it whose
 editor saves the model's settings as they were loaded.
@@ -392,11 +394,11 @@ def test_a_skill_saved_between_turns_rewrites_the_prefix(terminal_chat, skill_di
     ask(page, upstream, "when is high tide?", reply.text("At noon."))
 
     requests = chat_requests(upstream)
-    # the skill tools are offered from the first turn; the new skill joins the system message
-    assert "view_skill" in offered_tools(requests[0])
+    # the skill tools come with the first skill the chat resolves
+    assert "view_skill" not in offered_tools(requests[0])
     assert "view_skill" in offered_tools(requests[1])
     broken = first_break(requests)
-    assert broken is not None and "in messages[0] (system)" in broken, broken
+    assert broken is not None and "in tools" in broken, broken
 
 
 # --- The model's tools and the Integrations menu --------------------------------------------
