@@ -8,7 +8,9 @@ is searched the same way through a local gRPC service, from the column names the
 the connection's token and database; a Milvus source without a vector column is refused. The admin
 also reads, renames, health-checks and deletes a connection, whose key never comes back and
 survives an update that leaves it out; a connection a knowledge base uses is kept. A user is
-refused every external knowledge route, and Qdrant is never queried for them.
+refused every external knowledge route, and Qdrant is never queried for them. The points a
+chat cites, through attached knowledge or the knowledge search tool, carry no file id, so no
+citation links to an Open WebUI file that does not exist (open-webui#32231).
 
 Discriminates: fails with the Qdrant branch of `retrieve_external_knowledge_for_connection`
 querying `limit=1` (the connection test and the chat each see one point of two). In a backend
@@ -18,7 +20,9 @@ dropping the in-use check from the connection delete turns its test red, and swi
 queried for the user). With the Milvus search leaving out the database name the Milvus retrieval
 test goes red, with its output fields emptied the Milvus chat test does, and with the vector field
 no longer required for Milvus the refusal test does, and with the source's column names ignored
-the custom-columns test does.
+the custom-columns test does. Passes on dev 5032e834e; with 1369027db (open-webui#32233)
+reverted both chat tests cite a file id (the point id, or `external-<knowledge id>` from the
+tool), and with only its tool half reverted the tool test does.
 """
 
 from __future__ import annotations
@@ -51,7 +55,7 @@ pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
 COLLECTION = "team_docs"
 POINTS = [
-    point(11, "The harbour gate code is 4471.", 0.92, source="gates.md", page=2),
+    point(11, "The harbour gate code is 4471.", 0.92, source="gates.md", page=2, file_id="gates"),
     point(12, "Visitors sign in at the harbour office.", 0.81, source="visitors.md"),
 ]
 
@@ -120,6 +124,26 @@ def test_a_chat_with_the_knowledge_base_attached_gets_its_points(
     sent = json.dumps(chat_request["messages"])
     assert "The harbour gate code is 4471." in sent
     assert "Visitors sign in at the harbour office." in sent
+    cited = [entry for source in answer["sources"] for entry in source["metadata"]]
+    assert [entry["source"] for entry in cited] == ["gates.md", "visitors.md"]
+    # external points are not Open WebUI files, so no citation may link to one
+    assert not [entry for entry in cited if entry.get("file_id")], cited
+
+
+@pytest.mark.regression
+def test_the_knowledge_search_tool_cites_external_points_without_a_file(
+    admin, upstream, connection_id
+):
+    with admin.client() as client, external_knowledge_base(client, connection_id, COLLECTION) as kb:
+        upstream.queue(
+            reply.tool_call("query_knowledge_files", {"query": "gate code", "knowledge_ids": [kb]}),
+            reply.text("The code is 4471."),
+        )
+        _, answer = ask(client, "search the knowledge for the gate code")
+
+    cited = [entry for source in answer["sources"] for entry in source["metadata"]]
+    assert [entry["source"] for entry in cited] == ["gates.md", "visitors.md"]
+    assert not [entry for entry in cited if entry.get("file_id")], cited
 
 
 def _connections(client) -> dict[str, dict]:

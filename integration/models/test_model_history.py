@@ -8,7 +8,8 @@ a version. The Production version cannot be deleted; an older one can. Only acco
 change the model see or touch its versions: the owner, a writer and the admin, never a reader
 or a stranger, and a refused request leaves the versions and the model as they were. Restoring
 a version re-checks what it points at, so a writer cannot bring back the owner's private
-knowledge base through an old version.
+knowledge base through an old version. A version that attached a note restores with the note,
+and a writer who cannot read that note is refused (open-webui#32317).
 
 Discriminates: passes on dev 206bf9723 (3 of 3). In backend copies: creating a model without
 storing its first version turns `test_creating_a_model_records_its_first_version` red; a save
@@ -23,6 +24,9 @@ the live configuration and the delete no longer guarding Production turn
 instead of `write` and restoring without re-checking knowledge access turn every reader row of
 `test_only_accounts_that_may_change_the_model_reach_its_versions` and
 `test_a_writer_cannot_restore_a_version_pointing_at_a_knowledge_base_they_cannot_read` red.
+Passes on dev 5032e834e; with 5477d5a77 (open-webui#32317) reverted a note is looked up as a
+knowledge base, so `test_setting_an_old_version_as_production_brings_it_back` and
+`test_a_writer_cannot_restore_a_version_pointing_at_a_note_they_cannot_read` get a 400.
 """
 
 from __future__ import annotations
@@ -99,6 +103,23 @@ def _model(client: httpx.Client, model_id: str) -> dict:
     return read.json()
 
 
+def _note(client: httpx.Client, title: str) -> dict:
+    created = client.post(
+        "/api/v1/notes/create",
+        json={"title": title, "data": {"content": {"md": "Berth 4 is free on Fridays."}}},
+    )
+    assert created.status_code == 200, created.text
+    return {"type": "note", "id": created.json()["id"], "name": title}
+
+
+def _set_production(client: httpx.Client, model_id: str, version_id: str) -> httpx.Response:
+    return client.post(
+        "/api/v1/models/model/update/version",
+        params={"id": model_id},
+        json={"version_id": version_id},
+    )
+
+
 def test_creating_a_model_records_its_first_version(curator):
     with curator.client() as client:
         model = _create(client, "first draft")
@@ -148,7 +169,8 @@ def test_an_old_version_shows_the_configuration_it_was_saved_with(curator):
 
 def test_setting_an_old_version_as_production_brings_it_back(curator):
     with curator.client() as client:
-        model = _create(client, "first draft")
+        note = _note(client, "Berth plan")
+        model = _create(client, "first draft", knowledge=[note])
         _save(client, model["id"], "second draft")
         restored = client.post(
             "/api/v1/models/model/update/version",
@@ -161,6 +183,7 @@ def test_setting_an_old_version_as_production_brings_it_back(curator):
 
     assert (current["name"], current["params"]["system"]) == ("Preset first draft", "first draft")
     assert current["version_id"] == model["version_id"]
+    assert current["meta"]["knowledge"] == [note]
     assert len(versions) == 2
 
 
@@ -305,3 +328,31 @@ def test_a_writer_cannot_restore_a_version_pointing_at_a_knowledge_base_they_can
     assert not current["meta"].get("knowledge")
     assert restored_by_owner.status_code == 200, restored_by_owner.text
     assert restored_by_owner.json()["meta"]["knowledge"][0]["id"] == knowledge[0]["id"]
+
+
+@pytest.mark.regression
+def test_a_writer_cannot_restore_a_version_pointing_at_a_note_they_cannot_read(curator, make_user):
+    writer = make_user()
+    with curator.client() as client:
+        note = _note(client, "Private berth plan")
+        model = _create(client, "with the plan", knowledge=[note])
+        _save(client, model["id"], "without the plan")
+        shared = client.post(
+            "/api/v1/models/model/access/update",
+            json={
+                "id": model["id"],
+                "access_grants": [
+                    {"principal_type": "user", "principal_id": writer.id, "permission": "read"},
+                    {"principal_type": "user", "principal_id": writer.id, "permission": "write"},
+                ],
+            },
+        )
+        assert shared.status_code == 200, shared.text
+
+    with writer.client() as client:
+        refused = _set_production(client, model["id"], model["version_id"])
+    with curator.client() as client:
+        current = _model(client, model["id"])
+
+    assert refused.status_code == 403, refused.text
+    assert current["params"]["system"] == "without the plan"

@@ -6,7 +6,8 @@ afterwards finds the model gone from the selector once it is switched off, made 
 finds a new chat starting on it once it is a selected model, and finds it pinned in the sidebar
 once it is a pinned model. Disable All and Hide All in the Actions menu take only the models the
 search shows out of the selector, Enable All and Show All bring them back, and a model exported
-with Export and deleted comes back for users through Import.
+with Export and deleted comes back for users through Import. A model a connection offers with
+no settings saved yet can be switched off and back on, and hidden and shown again.
 
 Discriminates: passes on dev 30f3f6a8f; in a frontend build whose row actions save the model as
 it was (the enable switch skipping its toggle request, hide and privacy sending the stored meta
@@ -14,6 +15,10 @@ and grants, the selected and pinned saves sending the previous lists), every "sw
 "private", "hidden", "selected" and "pinned" test fails. In one whose Disable All sends nothing,
 whose Export saves an empty list and whose Import sends an empty list, the Disable All and the
 export tests fail; in one whose Enable All, Hide All and Show All send nothing, their tests fail.
+With 6e40c1714 (open-webui#32354) reverted in a frontend build both provider model tests fail (the
+second change tries to create the model again). On dev 5032e834e the switch test passes and the
+show again test is red: Show Model sends the row without `params` and gets a 422, so the model
+stays hidden.
 """
 
 from __future__ import annotations
@@ -114,6 +119,47 @@ def test_a_model_switched_off_in_its_row_leaves_the_users_selector(
 
     expect(page.get_by_role("button", name=SELECTOR_BUTTON)).to_be_visible()
     expect(offered_to(page, preset["name"])).to_have_count(0)
+
+
+@pytest.fixture
+def provider_model(upstream, admin):
+    """A model the scripted provider serves, with no settings saved for it yet."""
+    model_id = f"Harbour-{uuid.uuid4().hex[:8]}"
+    upstream.models.append(model_id)
+    with admin.client() as client:
+        client.get("/api/models", params={"refresh": "true"}).raise_for_status()
+    yield model_id
+    with admin.client() as client:
+        client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+
+def stored_model(admin, model_id: str) -> dict:
+    with admin.client() as client:
+        stored = client.get("/api/v1/models/model", params={"id": model_id})
+    assert stored.status_code == 200, stored.text
+    return stored.json()
+
+
+@pytest.mark.regression
+def test_a_provider_model_switched_off_can_be_switched_back_on(page_for, admin, provider_model):
+    # open-webui#32354: the first change saved the model, the second tried to create it again
+    page = page_for(admin)
+    switch = model_row(page, provider_model).get_by_role("switch")
+    for wanted in (False, True):
+        with page.expect_response(is_model_save):
+            switch.click()
+        expect(switch).to_have_attribute("aria-checked", str(wanted).lower())
+        assert stored_model(admin, provider_model)["is_active"] is wanted
+
+
+@pytest.mark.regression
+def test_a_hidden_provider_model_can_be_shown_again(page_for, admin, provider_model):
+    # red on dev 5032e834e: after #32354 Show Model still sends the row without params (422)
+    page = page_for(admin)
+    row = model_row(page, provider_model)
+    for wanted, entry in ((True, "Hide Model"), (False, "Show Model")):
+        choose_from_menu(page, row, entry)
+        assert stored_model(admin, provider_model)["meta"].get("hidden", False) is wanted
 
 
 def test_a_model_made_private_leaves_the_users_selector(page_for, admin, make_user, preset):

@@ -5,6 +5,8 @@ after its test query returned points, reloads to see it listed, edits it without
 API key and switches it off. A chat that attaches the resulting knowledge base with `#` is sent
 the points Qdrant found; once the connection is switched off the chat is sent none. A local
 service plays Qdrant, so the tests read the query it got and the context the model was sent.
+The reply lists a point whose source is a web address by its title, and its title and Content
+links open that page; a point with a plain source shows its name as text (open-webui#32231).
 The settings offer no way to delete a connection or its source. For Milvus the admin picks the
 provider, which fills the column names Milvus needs (a vector field among them, without which the
 test does not run), names a database and adds the source; a chat that attaches it is sent the rows
@@ -17,11 +19,15 @@ old enabled state the switch test fails (it stays on). In a backend copy, with t
 an external knowledge base skipped the chat tests fail (Qdrant and Milvus are never queried), and
 with the Milvus search leaving out the database name the Milvus add test fails. In a frontend copy,
 with the test form no longer asking for a vector field on Milvus the no-vector-field test fails.
+On dev 5032e834e the Qdrant chat test passes; it fails in a frontend build with ca3a6cf26
+(open-webui#32232) reverted (the source is listed by its address) and in a backend copy with
+1369027db (open-webui#32233) reverted (the title links to `/api/v1/files/21/content`).
 """
 
 from __future__ import annotations
 
 import json
+import re
 import uuid
 
 import pytest
@@ -43,12 +49,19 @@ from harness.external_knowledge import (
     serve_milvus,
     serve_qdrant,
 )
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import chat_input, conversation, expect_reply, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
+BOATHOUSE_PAGE = "https://harbour.example/boathouse"
 POINTS = [
-    point(21, "The boathouse key hangs behind the oar rack.", 0.93, source="boathouse.md"),
+    point(
+        21,
+        "The boathouse key hangs behind the oar rack.",
+        0.93,
+        source=BOATHOUSE_PAGE,
+        name="Boathouse rules",
+    ),
     point(22, "Oars are counted every Friday.", 0.74, source="oars.md"),
 ]
 QUESTION = "where is the boathouse key?"
@@ -227,6 +240,23 @@ def test_a_chat_with_the_source_attached_is_sent_the_points_qdrant_found(
     sent = json.dumps(chat_request["messages"])
     assert "The boathouse key hangs behind the oar rack." in sent
     assert "Oars are counted every Friday." in sent
+
+    # a web address source is listed by its title and links to that page, a plain one is text
+    chat = conversation(page)
+    chat.get_by_role("button", name="Toggle 2 sources").click()
+    listed = chat.get_by_role("button", name="View source: Boathouse rules")
+    expect(listed).to_be_visible()
+    listed.click()
+    citation = page.get_by_role("dialog")
+    expect(citation.get_by_role("link", name="Boathouse rules")).to_have_attribute(
+        "href", BOATHOUSE_PAGE
+    )
+    content_link = citation.get_by_role("link", name="Content")
+    expect(content_link).to_have_attribute("href", re.compile(f"^{re.escape(BOATHOUSE_PAGE)}"))
+    citation.get_by_role("button", name="Close citation modal").click()
+    chat.get_by_role("button", name="View source: oars.md").click()
+    expect(citation.get_by_text("oars.md", exact=True)).to_be_visible()
+    expect(citation.get_by_role("link")).to_have_count(0)
 
 
 def test_a_switched_off_source_stays_off_after_a_reload_and_a_chat_gets_no_points(

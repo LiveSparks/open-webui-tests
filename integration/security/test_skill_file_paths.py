@@ -7,7 +7,8 @@ or has an empty, `.` or `..` part is refused with a 400, whether it is a new fil
 destination or an entry in an imported archive or folder, and the skill is left as it was. A
 download is always an attachment named after the file, sent with `nosniff` and a sandboxing
 content security policy, so an uploaded HTML page never runs in the app's origin. An exported
-archive keeps every file under the skill's own folder.
+archive keeps every file under the skill's own folder. A download from a link, such as a GitHub
+repository, skips links outside the skill folders and is still refused for a link inside one.
 
 Discriminates: passes on dev 178de3666. In a backend copy, letting the path check pass every
 path turned every refused name row and the dotdot, absolute and folder import rows red (200 and
@@ -15,7 +16,8 @@ a stored path); letting it pass `..` parts turned the `..` rows and the whole li
 letting archives hold links turned the symlink import row red; sending the raw file name in the
 download header turned the typed names test red; dropping the sandbox header from downloads
 turned the HTML download test red; and writing archive entries without the skill folder turned
-the export archive test red.
+the export archive test red. Passes on dev 5032e834e; with ad77b6249 (open-webui#32313) reverted
+the repository download with a link beside the skill folder is refused with a 400.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ import pytest
 
 from harness.access import make_group
 from harness.actors import Actor
+from harness.web_retrieval import LOCAL_WEB_FETCH
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
@@ -199,10 +202,18 @@ def _archive(entries: dict[str, bytes], link: str | None = None) -> bytes:
         ("kit.zip", _archive({"SKILL.md": b"x", "../escape.md": b"x"})),
         ("kit.zip", _archive({"kit/SKILL.md": b"x", "/abs/SKILL.md": b"x"})),
         ("kit.zip", _archive({"SKILL.md": b"x"}, link="references/passwd")),
+        ("kit.zip", _archive({"kit/SKILL.md": b"x"}, link="CLAUDE.md")),
         ("../kit/SKILL.md", b"x"),
         ("kit/../../SKILL.md", b"x"),
     ],
-    ids=["dotdot entry", "absolute entry", "symlink entry", "folder dotdot", "folder escape"],
+    ids=[
+        "dotdot entry",
+        "absolute entry",
+        "symlink entry",
+        "symlink outside the skill",
+        "folder dotdot",
+        "folder escape",
+    ],
 )
 def test_an_import_with_an_unsafe_path_is_refused(upload, author):
     name, data = upload
@@ -219,6 +230,36 @@ def test_an_import_with_an_unsafe_path_is_refused(upload, author):
 
     assert (preview.status_code, imported.status_code) == (400, 400), preview.text
     assert mine == [], mine
+
+
+@pytest.mark.regression
+@pytest.mark.slow
+def test_a_repository_download_skips_links_outside_the_skills_but_not_inside(
+    instance_with, listener
+):
+    # shaped like a GitHub repository download: one top folder, a link beside the skill folder
+    skill = {
+        "harbour-main/skills/tides/SKILL.md": b"---\nname: tides\n---\nRead the table.\n",
+        "harbour-main/skills/tides/references/table.md": b"High water at noon.\n",
+        "harbour-main/AGENTS.md": b"Agent notes.\n",
+    }
+    outside = _archive(skill, link="harbour-main/CLAUDE.md")
+    inside = _archive(skill, link="harbour-main/skills/tides/references/passwd")
+    zipped = {"Content-Type": "application/zip"}
+    listener.route("GET", "/outside.zip", (200, zipped, outside))
+    listener.route("GET", "/inside.zip", (200, zipped, inside))
+
+    # the download comes from a local stand-in, which only local web fetch lets through
+    with instance_with(LOCAL_WEB_FETCH).client() as client:
+        loaded = client.post(f"{SKILLS}/load/url", json={"url": f"{listener.base_url}/outside.zip"})
+        refused = client.post(f"{SKILLS}/load/url", json={"url": f"{listener.base_url}/inside.zip"})
+
+    assert loaded.status_code == 200, loaded.text
+    [package] = loaded.json()
+    assert package["name"] == "tides"
+    assert {entry["path"] for entry in package["files"]} == {"SKILL.md", "references/table.md"}
+    assert refused.status_code == 400, refused.text
+    assert "links" in refused.json()["detail"]
 
 
 def test_an_html_file_downloads_sandboxed(author):
