@@ -25,6 +25,20 @@ the browser's word taken for a gesture the model does not have turns its case re
 c31423955 a backend copy that never offers the tool to the chat model turns the standard call
 case red, and one that drops the voice feature and call permission checks turns the typed chat
 and permission cases red.
+
+Since 3ec077450 the admin picks the provider (OpenAI or Azure OpenAI, `AUDIO_REALTIME_PROVIDER`)
+and how it signs in (an API key or Microsoft Entra ID, `AUDIO_REALTIME_AUTH_TYPE`): Azure with a
+key sends it as an `api-key` header in place of `Authorization: Bearer`, Entra ID asks the server's
+Azure credentials for a token, and Entra ID without Azure, an unknown provider or a token the server
+cannot get ends the call with a message saying so. A provider turning the connection away with 401
+or 404 now says which of the two it was.
+
+Discriminates: on dev 3ec077450, a backend copy that sends the Azure key as a bearer token turns
+the azure header case red, one that lets Entra ID through with the OpenAI provider turns that
+refusal red, one that skips the provider check turns the unknown provider case red, one that
+takes a failed Entra ID token for an empty bearer turns the Entra ID token case red, one whose
+settings form takes any provider and sign-in turns their invalid setting cases red and one that
+reports every refused connection alike turns the unauthorized and not found cases red.
 """
 
 from __future__ import annotations
@@ -35,7 +49,8 @@ import uuid
 import pytest
 
 from harness import upstream as reply
-from harness.audio_engine import AUDIO_CONFIG
+from harness.actors import admin_of
+from harness.audio_engine import AUDIO_CONFIG, CONFIG_IMPORT
 from harness.chat import send_message, wait_for_reply
 from harness.chat_history import seed_chat
 from harness.instance import free_port
@@ -61,6 +76,12 @@ from harness.voice_avatars import animation, avatar, upload
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
 EVERYONE_READS = {"principal_type": "user", "principal_id": "*", "permission": "read"}
+# only the environment credential, unset here, so no token is fetched and nothing leaves the host
+ENTRA_ID_ON_AZURE_ENV = {
+    "AUDIO_REALTIME_PROVIDER": "azure",
+    "AUDIO_REALTIME_AUTH_TYPE": "microsoft_entra_id",
+    "AZURE_TOKEN_CREDENTIALS": "EnvironmentCredential",
+}
 DEFAULT_PROMPT_START = "You are the assistant in this chat, speaking with the user."
 
 
@@ -182,7 +203,13 @@ def private_model(admin):
 def test_saved_call_settings_are_read_back_and_published_without_the_key(
     realtime_settings_restored, provider, make_user
 ):
-    settings = realtime_settings(provider, REALTIME_CALL_PROMPT_TEMPLATE="Speak briefly.")
+    settings = realtime_settings(
+        provider,
+        PROVIDER="azure",
+        AUTH_TYPE="microsoft_entra_id",
+        INPUT_PARAMS=None,
+        REALTIME_CALL_PROMPT_TEMPLATE="Speak briefly.",
+    )
     save_realtime(realtime_settings_restored, settings)
 
     stored = realtime_settings_restored.get(AUDIO_CONFIG[0]).json()["realtime"]
@@ -203,6 +230,7 @@ def test_calls_are_off_until_the_admin_turns_them_on(admin, provider, make_user)
         stored = client.get(AUDIO_CONFIG[0]).json()["realtime"]
 
     assert stored["ENABLED"] is False
+    assert (stored["PROVIDER"], stored["AUTH_TYPE"]) == ("openai", "api_key")
     assert refusal(make_user()) == "Realtime calls are disabled"
     assert provider.calls == []
 
@@ -217,17 +245,36 @@ def test_saving_tts_and_stt_alone_keeps_the_call_settings(admin, realtime):
     assert after == current["realtime"]
 
 
-def test_an_empty_voice_model_is_refused(realtime_settings_restored, provider):
+@pytest.mark.parametrize(
+    "setting",
+    [{"MODEL": ""}, {"PROVIDER": "google"}, {"AUTH_TYPE": "password"}],
+    ids=["empty-voice-model", "unknown-provider", "unknown-auth-type"],
+)
+def test_an_invalid_call_setting_is_refused(realtime_settings_restored, provider, setting):
     current = realtime_settings_restored.get(AUDIO_CONFIG[0]).json()
-    form = {**current, "realtime": realtime_settings(provider, MODEL="")}
+    form = {**current, "realtime": realtime_settings(provider, **setting)}
 
     saved = realtime_settings_restored.post(AUDIO_CONFIG[1], json=form)
 
     assert saved.status_code == 422, saved.text
 
 
-def test_a_call_opens_the_provider_session_the_admin_configured(realtime, make_user):
-    with open_call(make_user()) as session:
+@pytest.mark.parametrize(
+    ("provider_name", "sign_in"),
+    [
+        ("openai", {"authorization": f"Bearer {API_KEY}"}),
+        ("azure", {"api-key": API_KEY}),
+    ],
+    ids=["openai-bearer", "azure-api-key"],
+)
+def test_a_call_opens_the_provider_session_the_admin_configured(
+    admin, provider, make_user, provider_name, sign_in
+):
+    with (
+        admin.client() as client,
+        using_realtime(client, provider, PROVIDER=provider_name, AUTH_TYPE="api_key"),
+        open_call(make_user()) as session,
+    ):
         ready = next_event(session, "bridge.ready")
 
     assert ready == {
@@ -236,9 +283,10 @@ def test_a_call_opens_the_provider_session_the_admin_configured(realtime, make_u
         "voice": VOICE,
         "sample_rate": 24000,
     }
-    call = realtime.calls[0]
+    call = provider.calls[0]
     assert call.path == f"/v1/realtime?model={VOICE_MODEL}"
-    assert call.headers["authorization"] == f"Bearer {API_KEY}"
+    sent = {name: call.headers.get(name) for name in ("authorization", "api-key")}
+    assert sent == {"authorization": None, "api-key": None, **sign_in}
     session = call.session
     assert session["instructions"].startswith(DEFAULT_PROMPT_START)
     assert session["audio"]["input"]["transcription"] == {"model": TRANSCRIPTION_MODEL}
@@ -450,10 +498,19 @@ def test_a_provider_that_cannot_be_reached_ends_the_call(admin, provider, make_u
         assert refusal(make_user()) == "Voice connection failed"
 
 
-def test_a_provider_refusing_the_connection_ends_the_call(realtime, make_user):
-    realtime.refuse_handshake = 401
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (401, "Realtime provider authentication rejected. Check the credentials and access."),
+        (404, "Realtime endpoint not found. Check the API base URL and deployment name."),
+        (500, "Voice connection failed"),
+    ],
+    ids=["unauthorized", "not-found", "server-error"],
+)
+def test_a_provider_refusing_the_connection_ends_the_call(realtime, make_user, status, message):
+    realtime.refuse_handshake = status
 
-    assert refusal(make_user()) == "Voice connection failed"
+    assert refusal(make_user()) == message
 
 
 def test_a_provider_refusing_the_session_ends_the_call_without_its_error_text(realtime, make_user):
@@ -489,16 +546,41 @@ def test_a_provider_dropping_the_call_ends_it(realtime, make_user):
     ("setting", "message"),
     [
         ({"OPENAI_API_BASE_URL": "ftp://127.0.0.1/v1"}, "Invalid Realtime provider URL"),
+        ({"OPENAI_API_KEY": ""}, "Configure the Realtime API key"),
         (
-            {"OPENAI_API_KEY": ""},
-            "Configure the Realtime API key, model, voice, and transcription model",
+            {"PROVIDER": "openai", "AUTH_TYPE": "microsoft_entra_id"},
+            "Microsoft Entra ID requires the Azure OpenAI Realtime provider",
         ),
     ],
-    ids=["not-http", "no-key"],
+    ids=["not-http", "no-key", "entra-id-without-azure"],
 )
 def test_incomplete_provider_settings_end_the_call(admin, provider, make_user, setting, message):
     with admin.client() as client, using_realtime(client, provider, **setting):
         assert refusal(make_user()) == message
+    assert provider.calls == []
+
+
+def test_an_unknown_provider_from_an_imported_config_ends_the_call(admin, provider, make_user):
+    with admin.client() as client, using_realtime(client, provider):
+        # the settings form refuses it, but a config import or the env var still sets it
+        unknown = {"config": {"audio.realtime.provider": "google"}}
+        imported = client.post(CONFIG_IMPORT, json=unknown)
+        assert imported.status_code == 200, imported.text
+
+        assert refusal(make_user()) == "Unsupported Realtime provider or authentication method"
+    assert provider.calls == []
+
+
+@pytest.mark.slow
+def test_the_env_sets_entra_id_on_azure_and_a_missing_token_ends_the_call(instance_with, provider):
+    env_admin = admin_of(instance_with(ENTRA_ID_ON_AZURE_ENV))
+    with env_admin.client() as client:
+        stored = client.get(AUDIO_CONFIG[0]).json()["realtime"]
+        with using_realtime(client, provider):
+            message = refusal(env_admin)
+
+    assert (stored["PROVIDER"], stored["AUTH_TYPE"]) == ("azure", "microsoft_entra_id")
+    assert message == "Unable to obtain a Microsoft Entra ID token for Realtime calls"
     assert provider.calls == []
 
 

@@ -12,9 +12,14 @@ Additional Parameters, and a reply read aloud is rendered with that prompt. Here
 A realtime call's overlay reads Listening since 4f1f38541; the standard call's still reads
 Listening....
 
+Since 3ec077450 Realtime also has a Provider, OpenAI / compatible by default: choosing Azure OpenAI
+asks for the Azure base URL and deployment name, comes back on the next visit and makes a call send
+the key as an `api-key` header.
+
 Discriminates: passes on the dev 4f1f38541 build; in a frontend copy of it, the audio settings
 saved without the voice call section turn both call mode tests red. On dev ebc6add67 the
-settings saved without the speech prompt template turned the speech engine test red.
+settings saved without the speech prompt template turned the speech engine test red. On dev
+3ec077450 a backend copy that sends the Azure key as a bearer token turns the call mode test red.
 """
 
 from __future__ import annotations
@@ -107,13 +112,16 @@ def test_realtime_call_mode_saves_its_provider_and_a_users_call_uses_it(
 
     calls.get_by_role("combobox", name="Call mode").select_option(label="Realtime")
 
-    expect(field(calls, "OpenAI API Base URL")).to_have_value("https://api.openai.com/v1")
+    expect(calls.get_by_role("combobox", name="Provider")).to_have_value("openai")
+    expect(field(calls, "API Base URL")).to_have_value("https://api.openai.com/v1")
     expect(field(calls, "Voice Model")).to_have_value("gpt-realtime-2.1-mini")
     expect(field(calls, "Voice")).to_have_value("marin")
     expect(field(calls, "Input Transcription Model")).to_have_value("gpt-transcribe")
-    field(calls, "OpenAI API Base URL").fill(provider.base_url)
+    calls.get_by_role("combobox", name="Provider").select_option(label="Azure OpenAI")
+    expect(calls.get_by_role("combobox", name="Authentication")).to_have_value("api_key")
+    field(calls, "Azure OpenAI API Base URL").fill(provider.base_url)
     calls.get_by_role("textbox", name="API Key").fill(API_KEY)
-    field(calls, "Voice Model").fill(VOICE_MODEL)
+    field(calls, "Realtime Deployment Name").fill(VOICE_MODEL)
     field(calls, "Voice").fill(voice)
     field(calls, "Input Transcription Model").fill(TRANSCRIPTION_MODEL)
     field(calls, "Prompt Template").fill(prompt)
@@ -121,7 +129,8 @@ def test_realtime_call_mode_saves_its_provider_and_a_users_call_uses_it(
 
     calls = section(open_audio_tab(admin_page), "Voice calls")
     expect(calls.get_by_role("combobox", name="Call mode")).to_have_value("true")
-    expect(field(calls, "OpenAI API Base URL")).to_have_value(provider.base_url)
+    expect(calls.get_by_role("combobox", name="Provider")).to_have_value("azure")
+    expect(field(calls, "Azure OpenAI API Base URL")).to_have_value(provider.base_url)
     expect(field(calls, "Voice")).to_have_value(voice)
     expect(field(calls, "Prompt Template")).to_have_value(prompt)
 
@@ -130,7 +139,8 @@ def test_realtime_call_mode_saves_its_provider_and_a_users_call_uses_it(
     expect(call_status(page, "Listening")).to_be_visible(timeout=TURN_TIMEOUT_MS)
     call = provider.wait_for_call()
     assert call.path == f"/v1/realtime?model={VOICE_MODEL}"
-    assert call.headers["authorization"] == f"Bearer {API_KEY}"
+    assert call.headers.get("api-key") == API_KEY
+    assert "authorization" not in call.headers
     assert call.session["instructions"] == prompt
     assert call.session["audio"]["output"]["voice"] == voice
     assert call.session["audio"]["input"]["transcription"] == {"model": TRANSCRIPTION_MODEL}
