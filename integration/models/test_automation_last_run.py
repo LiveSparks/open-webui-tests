@@ -2,7 +2,8 @@
 
 `POST /api/v1/automations/{id}/run` starts a run in the background. Its record in
 `GET /api/v1/automations/{id}/runs` says `success` and names the chat it made, or `error` with
-the reason when the automation's model no longer exists.
+the reason when the automation's model no longer exists, still naming the chat it started (since
+dev de446952c a failed run keeps its chat).
 
 Bug, open-webui/open-webui#31580, fixed by PR #31583: the automation's `last_run_at` ("Last
 execution time" in the database reference) was only written when the scheduler claimed a due
@@ -93,11 +94,14 @@ def test_a_run_is_recorded_as_a_success_with_its_chat(scheduler, upstream):
 def test_a_run_whose_model_is_gone_is_recorded_as_an_error(scheduler):
     with scheduler.client() as client:
         automation = _create(client, model_id=f"retired-{uuid.uuid4().hex[:6]}")
+        prompt = automation["data"]["prompt"]
         run = _run_and_wait(client, automation["id"])
+        chat = client.get(f"/api/v1/chats/{run['chat_id']}")
 
     assert run["status"] == "error", run
     assert "Model not found" in run["error"]
-    assert run["chat_id"] is None
+    assert chat.status_code == 200, chat.text
+    assert prompt in str(chat.json()["chat"]["messages"])
 
 
 def test_a_run_now_run_sets_the_last_run_time(scheduler, upstream):

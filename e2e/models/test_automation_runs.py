@@ -4,7 +4,7 @@ A fresh admin (plain accounts need the automations permission) creates a daily a
 prompt and the scripted model, lands on its page, and presses Run now. The run is listed under
 Runs, and its chat holds the prompt and the model's answer. Every further run joins the history
 with its own chat, and a run whose model no longer exists is listed with the error it failed on
-and no chat.
+next to the chat it started (since dev de446952c a failed run keeps its chat).
 
 Bug, open-webui/open-webui#31580, fixed by PR #31583: a Run now run never set the automation's last
 run time, so after it the page still said "Last run Never" above the run it listed (the list page
@@ -107,6 +107,7 @@ def test_the_run_history_lists_every_run_with_its_chat(
 
 def test_a_run_whose_model_is_gone_is_listed_as_failed(page_for, scheduler, make_automation):
     automation = make_automation(scheduler, model_id=f"retired-{uuid.uuid4().hex[:6]}")
+    prompt = automation["data"]["prompt"]
     page = page_for(scheduler)
     page.goto(f"/automations/{automation['id']}")
     details = page.get_by_role("main")
@@ -114,7 +115,12 @@ def test_a_run_whose_model_is_gone_is_listed_as_failed(page_for, scheduler, make
 
     _run_now(page)
     expect(details.get_by_text("Model not found")).to_be_visible(timeout=RUN_TIMEOUT_MS)
-    expect(details.get_by_role("button", name="View chat")).to_have_count(0)
+    view_chat = details.get_by_role("button", name="View chat")
+    expect(view_chat).to_have_count(1)
+
+    view_chat.click()
+    expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
+    expect(conversation(page).get_by_text(prompt)).to_be_visible()
 
 
 def test_a_manual_run_shows_as_the_last_run(page_for, scheduler, make_automation, upstream):
