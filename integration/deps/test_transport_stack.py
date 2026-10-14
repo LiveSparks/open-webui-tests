@@ -156,9 +156,13 @@ def test_the_changelog_is_read_from_the_markdown(instance):
     assert not unrendered, f"links left as markdown: {unrendered[:3]}"
     # each item's text is split at its first ": " into a title and the rest
     assert all("<strong>" not in item["title"] + item["content"] for item in items)
-    titled = [item for item in items if item["title"]]
-    assert titled, "no item was split into a title and its text"
-    assert all(item["content"] and ": " not in item["title"] for item in titled)
+    for item in items:
+        text = re.sub(r"<[^>]+>", "", item["raw"])
+        if ": " in text:
+            assert item["title"] and ": " not in item["title"], item
+        else:
+            assert item["title"] == "", item
+        assert item["content"], item
 
 
 @pytest.fixture
