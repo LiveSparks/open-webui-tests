@@ -66,6 +66,10 @@ def save(page: Page, settings: Locator) -> None:
     expect(page.get_by_text("Models configuration saved successfully")).to_be_visible()
 
 
+def is_file_upload(response) -> bool:
+    return response.request.method == "POST" and "/api/v1/files/" in response.url
+
+
 def test_a_default_prompt_suggestion_shows_on_a_new_chat_and_sends(
     page_for, admin, make_user, upstream, defaults_restored
 ):
@@ -139,6 +143,12 @@ def test_an_image_attaches_while_the_default_capabilities_allow_it(page_for, mak
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
         page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
-    chooser.value.set_files({"name": "pier.png", "mimeType": "image/png", "buffer": PIXEL_PNG})
+    with page.expect_response(is_file_upload) as uploaded:
+        chooser.value.set_files({"name": "pier.png", "mimeType": "image/png", "buffer": PIXEL_PNG})
+    file_id = uploaded.value.json()["id"]
 
-    expect(page.get_by_role("button", name="pier.png")).to_be_visible()
+    # the name shows only while it uploads, then the stored image shows as its thumbnail
+    thumbnail = page.get_by_role("button", name="Show image preview").locator(
+        f"img[src*='{file_id}']"
+    )
+    expect(thumbnail).to_be_visible()

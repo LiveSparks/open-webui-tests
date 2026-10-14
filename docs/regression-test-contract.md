@@ -125,6 +125,8 @@ A test that fails without a code change costs a release its trust in the suite. 
 - **Derive expectations from data you do not control.** When a test reads data that changes between releases (the changelog, the default prompts, the model list), check each item against its own source instead of assuming some item somewhere has a property.
 - **Tie every scripted reply to its prompt** with `reply.answering(prompt)`, and every count of provider requests to the requests of this test, so a request left over from an earlier test cannot take or add a reply.
 - **Pin time.** Compute expected dates in the zone the page uses, keep clear of midnight, and assert relative wording ("a few seconds ago") only where the page promises it.
+- **Compare listeners only after the last event.** Before comparing what two tabs or sockets received, wait on both for the final event the server sends (a chat task ends with `chat:active` false, after its `done`), since a tab snapshotted at an earlier event may still be missing the rest.
+- **Assert the settled state, never a passing one.** Wait for what stays on screen once the action has finished (the stored file's thumbnail), not what shows only while it runs (the file name during the upload), which a fast server can skip before the first check.
 
 ## Checklist before committing a test
 

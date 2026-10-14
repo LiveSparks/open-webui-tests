@@ -193,8 +193,7 @@ def stream_across(fleet: dict, shared_redis, sender: str, receiver: str) -> Stre
     ):
         turn = send_message(client, prompt)
         wait_for_reply(client, turn)
-        near_tab.wait_for(turn.chat_id, "chat:completion", done=True)
-        wait_for_end(far_tab, turn.chat_id)
+        wait_for_close(near_tab, far_tab, turn.chat_id)
     return Streamed(
         chat_id=turn.chat_id,
         user_id=account.id,
@@ -208,6 +207,21 @@ def wait_for_end(tab: SocketSession, chat_id: str) -> None:
     deadline = time.monotonic() + GRACE_SECONDS
     while time.monotonic() < deadline and not _finished(tab.events_of(chat_id)):
         time.sleep(0.05)
+
+
+def wait_for_close(near_tab: SocketSession, far_tab: SocketSession, chat_id: str) -> None:
+    """Both tabs are compared only once the task's `chat:active` false, its last event, is in."""
+    near_tab.wait_for(chat_id, "chat:active", active=False)
+    deadline = time.monotonic() + GRACE_SECONDS
+    while time.monotonic() < deadline and not _closed(far_tab.events_of(chat_id)):
+        time.sleep(0.05)
+
+
+def _closed(events: list[dict]) -> bool:
+    return any(
+        event.get("type") == "chat:active" and event.get("data", {}).get("active") is False
+        for event in events
+    )
 
 
 def _finished(events: list[dict]) -> bool:
@@ -399,8 +413,7 @@ def test_a_tools_events_reach_the_accounts_tabs_on_every_instance(fleet, provide
         account.client() as client,
     ):
         turn, _ = ask(client, prompt, tool_ids=[tool_id])
-        near_tab.wait_for(turn.chat_id, "chat:completion", done=True)
-        wait_for_end(far_tab, turn.chat_id)
+        wait_for_close(near_tab, far_tab, turn.chat_id)
 
     far_events, near_events = far_tab.events_of(turn.chat_id), near_tab.events_of(turn.chat_id)
     statuses = [event["data"]["description"] for event in _of_type(far_events, "status")]
