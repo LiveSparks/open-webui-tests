@@ -99,9 +99,7 @@ def test_the_json_preview_shows_unsaved_changes_of_the_editor(page_for, builder,
     new_name = f"Lighthouse guide {uuid.uuid4().hex[:6]}"
     system_prompt = "Answer as the lighthouse keeper."
     editor.get_by_placeholder("Model Name").fill(new_name)
-    editor.get_by_role("textbox", name=re.compile("^Write your model system prompt")).fill(
-        system_prompt
-    )
+    editor.get_by_role("textbox", name="System Prompt", exact=True).fill(system_prompt)
     editor.get_by_role("button", name="Advanced Params").click()
     editor.get_by_text("Temperature", exact=True).locator("xpath=..").get_by_role(
         "button", name="Default"

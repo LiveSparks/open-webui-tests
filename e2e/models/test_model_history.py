@@ -37,12 +37,12 @@ from harness.upstream import MOCK_MODEL_ID
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
-SYSTEM_PROMPT = re.compile("^Write your model system prompt")
+SYSTEM_PROMPT = "System Prompt"
 
 
 def _system_prompt(scope: Locator) -> Locator:
     """The system prompt field, opened first when a saved prompt shows collapsed."""
-    field = scope.get_by_role("textbox", name=SYSTEM_PROMPT)
+    field = scope.get_by_role("textbox", name=SYSTEM_PROMPT, exact=True)
     collapsed = scope.get_by_role("button", name="System Prompt", exact=True)
     expect(field.or_(collapsed)).to_be_visible()
     if collapsed.is_visible():

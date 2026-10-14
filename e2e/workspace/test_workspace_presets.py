@@ -67,9 +67,7 @@ def test_a_preset_sends_its_system_prompt_with_the_chat(page_for, builder, upstr
     editor.get_by_role("textbox", name="Model Name").fill(name)
     editor.get_by_role("button", name="Select a base model", exact=True).click()
     _choose_from_models(page, "mock-model")
-    editor.get_by_role("textbox", name=re.compile("^Write your model system prompt")).fill(
-        system_prompt
-    )
+    editor.get_by_role("textbox", name="System Prompt", exact=True).fill(system_prompt)
     editor.get_by_role("button", name="Save & Create").click()
     expect(page).to_have_url(re.compile(r"/workspace/models$"))
 

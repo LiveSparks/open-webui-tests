@@ -100,7 +100,7 @@ def test_a_channel_muted_from_its_menu_stays_quiet_until_the_reader_is_mentioned
     _choose_notifications(page, busy_name, "Mentions only")
 
     entry = _sidebar_entry(page, busy_name)
-    expect(entry.get_by_label("Mentions only")).to_be_visible()
+    expect(entry.get_by_text("Mentions only", exact=True)).to_be_visible()
     post_message(writer, busy_id, "first stop is the bakery")
     post_message(writer, busy_id, f"<@U:{reader.id}|{reader.name}> bring the map")
     expect(page.get_by_text("bring the map")).to_be_visible()
@@ -109,10 +109,10 @@ def test_a_channel_muted_from_its_menu_stays_quiet_until_the_reader_is_mentioned
 
     page.reload()
     entry = _sidebar_entry(page, busy_name)
-    expect(entry.get_by_label("Mentions only")).to_be_visible()
+    expect(entry.get_by_text("Mentions only", exact=True)).to_be_visible()
     expect(entry.get_by_title("Unread")).to_have_count(0)
 
     _choose_notifications(page, busy_name, "All messages")
 
-    expect(entry.get_by_label("Mentions only")).to_have_count(0)
+    expect(entry.get_by_text("Mentions only", exact=True)).to_have_count(0)
     expect(entry.get_by_title("Unread")).to_have_text("2")

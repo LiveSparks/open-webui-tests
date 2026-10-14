@@ -17,7 +17,6 @@ one that leaves the groups out the group test fails.
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -71,9 +70,7 @@ def preset(builder) -> dict:
 
 def write_system_prompt(page: Page, model: dict, system_prompt: str) -> None:
     editor = open_editor(page, model)
-    editor.get_by_role("textbox", name=re.compile("^Write your model system prompt")).fill(
-        system_prompt
-    )
+    editor.get_by_role("textbox", name="System Prompt", exact=True).fill(system_prompt)
     save(editor)
 
 

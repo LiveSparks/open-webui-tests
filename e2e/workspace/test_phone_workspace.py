@@ -118,7 +118,7 @@ def test_a_model_made_in_the_editor_on_a_phone_answers_with_its_system_prompt(ph
     expect_reachable(base_model)
     base_model.tap()
     choose_model(phone, MOCK_MODEL_ID)
-    system = editor.get_by_role("textbox", name=re.compile("^Write your model system prompt"))
+    system = editor.get_by_role("textbox", name="System Prompt", exact=True)
     expect_reachable(system)
     system.fill(system_prompt)
     expect_no_sideways_scroll(phone)
