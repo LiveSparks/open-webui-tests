@@ -8,18 +8,20 @@ one before it byte for byte, only adding to the end. A call started in the middl
 is the one place the voice prompt arrives late: it lands in the system message of the first
 spoken turn and rewrites the prefix the typed turns built, as the page's table says.
 
-A realtime call (Call mode Realtime, the voice provider in `harness.realtime_provider`) adds no
-voice prompt: each question the voice hands on goes to the chat model as an ordinary turn, and
-what the voice spoke, its answer read out or one it gave itself, follows as a historical voice
-transcript. Mid-call the requests only append, through a tool call, an answer the voice gives
-itself and a message typed while the call runs, in a new chat and in one with typed turns
-before the call.
+A realtime call (Call mode Realtime, the voice provider in `harness.realtime_provider`) carries
+the voice prompt too while it is connected (since c0f56767f): each question the voice hands on
+goes to the chat model as an ordinary turn, and what the voice spoke, its answer read out or one
+it gave itself, follows as a historical voice transcript. In a new chat every request carries the
+voice prompt and only appends, through a tool call, an answer the voice gives itself and a
+message typed while the call runs. Started after typed turns, the first spoken turn rewrites the
+prefix once, as with a classic call, and the call only appends from there.
 
 Discriminates: passes on dev 30f3f6a8f. In backend copies, a clock value added to the model's
 system prompt turned both tests red (the call started mid-chat because the typed turns before it
 stopped appending); on dev 176d31d1d the tool list shuffled per request turned the first red too.
 The realtime tests pass on dev 4b9d31b39; a backend copy of it that adds a clock value to every
-message carrying a voice record turns both red.
+message carrying a voice record turns both red. Retargeted for c0f56767f, where a connected
+realtime call sends the voice prompt like a classic call.
 """
 
 from __future__ import annotations
@@ -177,11 +179,11 @@ def test_a_realtime_call_only_appends(voice_page_for, make_user, cached_setup, r
     assert called_tools(requests[-1]) == {"get_current_timestamp"}
     told = [message["content"] for message in requests[-1]["messages"]]
     assert {HISTORICAL + "At 06:40.", HISTORICAL + "You are welcome."} <= set(told)
-    assert VOICE_PROMPT not in told[0]
+    assert all(VOICE_PROMPT in request["messages"][0]["content"] for request in requests)
     assert_append_only(requests)
 
 
-def test_a_realtime_call_in_a_typed_chat_only_appends(
+def test_a_realtime_call_started_in_a_typed_chat_rewrites_the_prefix_once(
     voice_page_for, make_user, cached_setup, realtime, upstream
 ):
     caller = make_user()
@@ -201,4 +203,8 @@ def test_a_realtime_call_in_a_typed_chat_only_appends(
     requests = chat_requests(upstream)
     assert len(requests) == 6, [request["messages"][-1] for request in requests]
     assert HISTORICAL + "At six." in [message["content"] for message in requests[-1]["messages"]]
-    assert_append_only(requests)
+    assert VOICE_PROMPT not in requests[1]["messages"][0]["content"]
+    assert VOICE_PROMPT in requests[2]["messages"][0]["content"]
+    broken = first_break(requests[1:3])
+    assert broken is not None and "messages[0] (system)" in broken, broken
+    assert_append_only(requests[2:])
