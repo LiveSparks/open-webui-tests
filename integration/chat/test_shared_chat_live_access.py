@@ -7,7 +7,8 @@ event with the author on the user message and then the reply through `chat:compl
 without access, or with a "Clone only" grant, cannot join. Removing a member from the group,
 or taking a grant off the folder, sends the joined tabs a `chat:access` event, drops the tab that
 lost access from the live feed and closes the chat to that account. A folder reader can reply in
-the owner's chats only while the folder is in "Allow replies" mode. Only the owner shares a folder
+the owner's chats only while the folder is in "Allow replies" mode, and the folder's chat list
+then names both of them as the people who wrote in that chat. Only the owner shares a folder
 and sets its mode: a member with a write grant is refused, while their ordinary Edit Folder save
 still works.
 
@@ -19,7 +20,9 @@ fails the folder grant removal test, `refresh_chat_access` never emitting `chat:
 the group removal test and the folder grant removal test, `get_accessible_chat_by_id` dropping
 the folder `share_mode == 'continue'` condition fails the folder reply test,
 `update_folder_access_by_id` letting a write grant change sharing fails the folder sharing test,
-and the folder update route skipping its share mode check fails the same test.
+and the folder update route skipping its share mode check fails the same test. On dev
+b704d0613, `get_shared_folder_chats` listing only the chat's owner as its participant fails the
+folder reply test.
 """
 
 from __future__ import annotations
@@ -297,6 +300,13 @@ def test_a_folder_reader_replies_only_while_the_folder_allows_replies(admin, mak
     assert stored[turn.user_message_id]["user_id"] == reader.id
     assert stored[turn.user_message_id]["user"] == {"id": reader.id, "name": reader.name}
     assert stored[turn.assistant_message_id]["content"] == "answer to is the tide table up to date?"
+    writers = [{"id": owner.id, "name": owner.name}, {"id": reader.id, "name": reader.name}]
+    for account in (owner, reader):
+        with account.client() as client:
+            listed = client.get(f"/api/v1/folders/{folder_id}/shared/chats", params={"page": 1})
+        assert listed.status_code == 200, listed.text
+        [entry] = [chat for chat in listed.json()["chats"] if chat["id"] == chat_id]
+        assert entry["participants"] == writers
 
     _share_folder(owner, folder_id, reader_read, None)
 

@@ -4,14 +4,18 @@ The owner of a group channel adds a member, who then reads the channel and lists
 one, who then loses both. A plain member cannot add or remove anyone and changes nothing. An
 admin who is not in the channel may manage its members. A direct message is listed for both
 people with the other person's account, counts what the other wrote as unread for the reader only
-and refuses a third person.
+and refuses a third person. A member who mutes a channel sees it as muted in the channel list
+and in the channel itself until they unmute it, while the other members' setting stays as it
+was; someone outside a group channel or a direct message cannot mute it.
 
 Discriminates: in a backend copy, skipping the owner check in `add_members_by_id` turns the plain
 member add row red (HTTP 200 and a new member), leaving the membership row in place in
 `remove_members_by_id` turns the removal test red (the person still reads the channel), counting
 no unread messages in `get_channels` turns the unread test red, and dropping the membership check
 from the `dm` branch of `get_channel_by_id` or of `get_channel_messages` turns the third person
-test red.
+test red; on dev b704d0613, `get_channels` reporting every channel unmuted turns the mute test
+red and dropping the membership check from `update_member_mute_status` turns the outsider mute
+test red (HTTP 200).
 """
 
 from __future__ import annotations
@@ -151,3 +155,48 @@ def test_a_third_person_cannot_open_a_direct_message(channels_on, make_user):
     assert _status_of_reading(outsider, channel_id) == REFUSED
     assert _member_ids(sender, channel_id) == {sender.id, reader.id}
     assert channel_id not in _listed_ids(outsider)
+
+
+def _mute(actor, channel_id: str, muted: bool):
+    with actor.client() as client:
+        return client.post(
+            _channel_path(channel_id, "/members/mute"), json={"is_channel_muted": muted}
+        )
+
+
+def _muted_flags(actor, channel_id: str) -> tuple[bool, bool]:
+    """The flag as the channel list and the channel itself report it to `actor`."""
+    with actor.client() as client:
+        listed = client.get("/api/v1/channels/").json()
+        opened = client.get(_channel_path(channel_id)).json()
+    [entry] = [channel for channel in listed if channel["id"] == channel_id]
+    return entry["is_channel_muted"], opened["is_channel_muted"]
+
+
+def test_a_member_mutes_and_unmutes_a_channel_for_themselves_only(channels_on, make_user):
+    owner, member = make_user(), make_user()
+    channel_id = group_channel(owner, member)
+    assert _muted_flags(member, channel_id) == (False, False)
+
+    muted = _mute(member, channel_id, True)
+
+    assert muted.status_code == 200 and muted.json() == {"is_channel_muted": True}, muted.text
+    assert _muted_flags(member, channel_id) == (True, True)
+    assert _muted_flags(owner, channel_id) == (False, False)
+
+    unmuted = _mute(member, channel_id, False)
+
+    assert unmuted.status_code == 200 and unmuted.json() == {"is_channel_muted": False}
+    assert _muted_flags(member, channel_id) == (False, False)
+
+
+def test_someone_outside_a_channel_cannot_mute_it(channels_on, make_user):
+    owner, member, outsider = make_user(), make_user(), make_user()
+    group_id = group_channel(owner, member)
+    direct_id = _direct_message(owner, member)
+
+    for channel_id in (group_id, direct_id):
+        answered = _mute(outsider, channel_id, True)
+        assert answered.status_code == REFUSED, answered.text
+        assert channel_id not in _listed_ids(outsider)
+        assert _muted_flags(member, channel_id) == (False, False)

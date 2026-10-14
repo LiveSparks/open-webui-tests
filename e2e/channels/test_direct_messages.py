@@ -4,20 +4,23 @@ A person starts a direct message from the "Message" button on someone's profile 
 channel. The conversation lists in the sidebar's channels under the other person's name and what
 is sent there reaches the other person live. While the other person is elsewhere the entry shows
 an unread count that goes away once they open it, and stays away after a reload. Closing an entry
-removes it from the sidebar for good, and messaging the person again brings back the same
-conversation with its history. A third person who opens the conversation is sent home.
+("Hide conversation" in its options menu) removes it from the sidebar for good, and messaging the
+person again brings back the same conversation with its history. A third person who opens the
+conversation is sent home.
 A closed conversation comes back by itself, with its unread count, when the other person writes
 again. A group conversation started in the Create Channel modal with two people picked lists
 for each of them under the other two names, and what one writes reaches both.
 
 Discriminates: passes on dev 176d31d1d; in a frontend copy, leaving the unread count out of the
 sidebar entry turns the unread test red, keeping the count after the entry is opened turns its
-clearing step red, dropping the close button's request turns the close test red (the entry is
+clearing step red, dropping the hide request turns the close test red (the entry is
 back after a reload), a profile card button that opens nothing turns the start test red, and
 staying on the page when the conversation cannot be loaded turns the third person test red, and
 creating the direct message with only the first person picked turns the group test red; in a
 backend copy, leaving a closed member inactive when a message arrives turns the comes back test
 red.
+
+Retargeted for b704d0613: the close button became "Hide conversation" in the entry's options menu.
 """
 
 from __future__ import annotations
@@ -83,6 +86,18 @@ def _group_entry(page: Page, *others) -> Locator:
     return links
 
 
+def _hide(page: Page, other_name: str) -> None:
+    """Hide the conversation from the options menu beside its entry."""
+    # focus shows the row's buttons like a hover, and keeps them shown while the section slides
+    _entry(page, other_name).focus()
+    row = page.locator("#sidebar-channel-item").filter(
+        has=page.get_by_role("link", name=other_name)
+    )
+    # the menu's trigger wraps its button, and both carry the name
+    row.get_by_role("button", name="Conversation options").first.click()
+    page.get_by_role("menuitem", name="Hide conversation").click()
+
+
 def _message(page: Page, text: str) -> Locator:
     return page.locator("[id^='message-']").filter(has_text=text).first
 
@@ -132,10 +147,7 @@ def test_a_closed_direct_message_stays_gone_and_reopens_with_its_history(people,
     entry = _entry(page, other.name)
     expect(entry).to_be_visible()
 
-    # focus shows the row's buttons like a hover, and keeps them shown while the section slides
-    entry.focus()
-    # the close button has no name; it is the only button beside the link
-    entry.locator("xpath=following-sibling::div//button").click()
+    _hide(page, other.name)
 
     expect(entry).to_have_count(0)
     page.reload()
@@ -170,9 +182,7 @@ def test_a_closed_direct_message_comes_back_when_the_other_person_writes(people,
     page = page_for(closer)
     entry = _entry(page, other.name)
     expect(entry).to_be_visible()
-    # focus shows the row's buttons like a hover, and keeps them shown while the section slides
-    entry.focus()
-    entry.locator("xpath=following-sibling::div//button").click()
+    _hide(page, other.name)
     expect(entry).to_have_count(0)
 
     post_message(other, direct_message_id, "the tickets are sold out soon")

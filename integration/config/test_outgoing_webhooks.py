@@ -18,6 +18,10 @@ a reply fails, as the notifications docs promise; on dev a provider error that e
 announces nothing, so that test stays red until the failure is published
 (open-webui/open-webui#32003, fixed by 0a5095409).
 
+A target subscribed to `channel.message` is called for every message in a channel whose access
+list names its user. Once the user mutes the channel it is called only for a message that
+@mentions them.
+
 Discriminates: in a backend copy, `_check_notifications_access` skipping the switch turns the
 switched-off test red (HTTP 200) and skipping the permission turns the permission test red,
 `_normalize_target` skipping `validate_url` turns the loopback test red (the target is saved),
@@ -26,17 +30,22 @@ switched-off test red (HTTP 200) and skipping the permission turns the permissio
 `dispatch_notification_event` skipping every `away` target turns the idle-user test red (nothing
 is called) and ignoring a target's events turns the unsubscribed test red (the other target is
 called); publishing `chat.failed` where a chat ends in an error turns the failed-reply test green.
+On dev b704d0613, `send_notification` ignoring the mute turns the muted channel test red (the
+ordinary message is delivered) and ignoring the mention turns it red as well (nothing is
+delivered).
 """
 
 from __future__ import annotations
 
 import time
+import uuid
 
 import pytest
 
 from harness import upstream as reply
 from harness.actors import admin_of, create_user
 from harness.backends import write_rows
+from harness.channel_quotes import enable_channels, post_message
 from harness.chat import send_message, wait_for_reply
 from harness.inflight import start_slow_reply
 from harness.listener import json_answer
@@ -236,7 +245,7 @@ def allowed_notifications(fetching_instance, preserve, listener):
     preserve("admin_config", "permissions", on=fetching_instance)
     with admin_of(fetching_instance).client() as client:
         _allow_user_webhooks(client)
-    for path in ("/away", "/always", "/other"):
+    for path in ("/away", "/always", "/other", "/loud", "/muted"):
         listener.route("POST", path, json_answer({}))
     return fetching_instance
 
@@ -312,3 +321,60 @@ def test_a_reply_that_fails_calls_a_target_for_failed_chats(allowed_notification
     )
     body = listener.requests_to("/other")[0].json()
     assert body["action"] == "chat_failed" and "the provider is down" in body["message"]
+
+
+# a channel message and the members' targets
+
+
+def _channel_target(url: str) -> dict:
+    return {
+        "id": "channel",
+        "config": {"url": url},
+        "events": ["channel.message"],
+        "delivery": "always",
+    }
+
+
+def _shared_channel(admin, *readers) -> str:
+    """A channel the admin shares with `readers`, each of whom has opened it once."""
+    grants = [
+        {"principal_type": "user", "principal_id": reader.id, "permission": "read"}
+        for reader in readers
+    ]
+    with admin.client() as client:
+        created = client.post(
+            "/api/v1/channels/create",
+            json={"name": f"room-{uuid.uuid4().hex[:8]}", "access_grants": grants},
+        )
+    assert created.status_code == 200, created.text
+    channel_id = created.json()["id"]
+    for reader in readers:
+        with reader.client() as client:
+            assert client.get(f"/api/v1/channels/{channel_id}/messages").status_code == 200
+    return channel_id
+
+
+def test_a_muted_channel_calls_the_target_only_for_a_mention(allowed_notifications, listener):
+    admin = admin_of(allowed_notifications)
+    enable_channels(admin)
+    loud, muted = create_user(allowed_notifications), create_user(allowed_notifications)
+    _add_targets(loud, _channel_target(f"{listener.base_url}/loud"))
+    _add_targets(muted, _channel_target(f"{listener.base_url}/muted"))
+    channel_id = _shared_channel(admin, loud, muted)
+    with muted.client() as client:
+        saved = client.post(
+            f"/api/v1/channels/{channel_id}/members/mute", json={"is_channel_muted": True}
+        )
+        assert saved.status_code == 200, saved.text
+
+    post_message(admin, channel_id, "lunch is at noon")
+    post_message(admin, channel_id, f"<@U:{muted.id}|{muted.name}> bring the keys")
+
+    assert _wait_for(lambda: len(listener.requests_to("/loud")) == 2), (
+        "the unmuted member's target did not get both messages"
+    )
+    assert _wait_for(lambda: listener.requests_to("/muted")), "the mention was not delivered"
+    # a late delivery of the ordinary message would still be in flight
+    time.sleep(1)
+    delivered = [request.json()["message"] for request in listener.requests_to("/muted")]
+    assert len(delivered) == 1 and "bring the keys" in delivered[0], delivered

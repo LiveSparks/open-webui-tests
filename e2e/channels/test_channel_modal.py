@@ -3,14 +3,14 @@
 The Channels section's plus button opens the Create Channel modal. A group channel made there is
 private, lists in the owner's sidebar, opens at once and takes messages, and someone who was not let
 in is sent home when they open it. A direct message made there with a person picked by name reaches
-that person in their own sidebar. The gear on an owned channel opens Edit Channel: a new name shows
-in the sidebar and the navbar for the owner and, after a reload, for another member. Delete asks for
-a confirmation, then the channel leaves the owner's sidebar and a member who opens its address is
-sent home. The Webhooks modal makes a webhook, copies its address, and posting to that address shows
-the message to a member under the webhook's name; deleting the webhook makes the address refuse
-further posts. A post reaches a member who has the channel open without a reload; renaming the
-webhook in the modal shows its earlier posts under the new name, and once it is deleted they read
-"Deleted Webhook".
+that person in their own sidebar. "Edit channel" in an owned channel's options menu opens Edit
+Channel: a new name shows in the sidebar and the navbar for the owner and, after a reload, for
+another member. Delete asks for a confirmation, then the channel leaves the owner's sidebar and a
+member who opens its address is sent home. The Webhooks modal makes a webhook, copies its
+address, and posting to that address shows the message to a member under the webhook's name;
+deleting the webhook makes the address refuse further posts. A post reaches a member who has
+the channel open without a reload; renaming the webhook in the modal shows its earlier posts
+under the new name, and once it is deleted they read "Deleted Webhook".
 
 Discriminates: passes on dev 30f3f6a8f; in a frontend copy, a create form that sends a fixed name
 turns the group test red, a direct message created without its picked person turns the direct
@@ -18,6 +18,8 @@ message test red, an update that sends the old name turns the rename test red, a
 its request turns the delete test red, and a webhook delete that skips its request turns the webhook
 test red; in a backend copy, listing every webhook post under a fixed name turns the renaming test
 red (checked on dev ebc6add67).
+
+Retargeted for b704d0613: the gear became an options menu that also holds the mute choice.
 """
 
 from __future__ import annotations
@@ -93,7 +95,9 @@ def _open_create_modal(page: Page) -> Locator:
 def _open_edit_modal(page: Page, name: str) -> Locator:
     entry = _entry(page, name)
     entry.hover()
-    entry.get_by_role("button").click()
+    # the menu's trigger wraps its button, and both carry the name
+    entry.get_by_role("button", name="Channel options").first.click()
+    page.get_by_role("menuitem", name="Edit channel").click()
     modal = page.get_by_role("dialog").filter(has_text="Edit Channel")
     expect(modal).to_be_visible()
     return modal
