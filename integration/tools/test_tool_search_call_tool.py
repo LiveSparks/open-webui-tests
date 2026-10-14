@@ -7,20 +7,28 @@ its own behaviour (approval prompt, `ask_user` pause, access, MCP and builtin to
 the model's original call so later turns replay what the model actually sent, on Chat Completions
 and the Responses API. A malformed dispatch comes back as a failed result starting `Error: ` and
 the turn goes on. A tool already named `search_tools` or `call_tool`, a filter's included, turns
-the dispatcher off. Added with dev 7b47c3b22.
+the dispatcher off. What a dispatched tool leaves on the reply matches a direct call with Tool
+Search off: the sources of the file and knowledge tools, `fetch_url` and a tool's citation event,
+a tool's files event, an HTML embed, and pictures from `generate_image` and `edit_image` stored
+as files. The source list the citations template adds after a sourced round is the same, and
+the next turn replays `call_tool`. Added with dev 7b47c3b22.
 
 Discriminates: in backend copies of dev 6276e81ce, unwrapping only at execution (not in the stream
 handler) fails the run, replay, Responses, approval, ask_user, builtin and MCP tests; no unwrap at
 all also fails every refused-dispatch case, the access, non-streamed resume and Ollama tests;
 replaying the resolved target in place of the model's call fails the replay, Responses, approval,
 ask_user and Ollama tests; leaving filter tools out of the name check fails the filter test; and
-dropping the stored-item restore in the OpenAI router fails the relayed Responses test.
+dropping the stored-item restore in the OpenAI router fails the relayed Responses test. Skipping
+citation sources for dispatched calls fails the file tool, cited round and page tests; no unwrap
+at all also fails the citation event, embed and image tests.
 """
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
+import re
 import time
 import uuid
 from typing import Iterator
@@ -30,15 +38,25 @@ import pytest
 
 from harness import responses_provider as responses_api
 from harness import upstream as reply
-from harness.actors import Actor
+from harness.actors import Actor, admin_of, create_user
+from harness.channel_chat import serve_openai_images
 from harness.chat import ChatTurn, ask, send_message, wait_for_reply
+from harness.image_engines import IMAGES_CONFIG, PNG_BASE64, save_image_settings
+from harness.knowledge_bases import add_text_file, knowledge_base
+from harness.listener import text_answer
 from harness.mcp_server import TOOL_SERVERS, mcp_connection, serving_mcp
 from harness.ollama_provider import OLLAMA_CONFIG, chat_stream, connect_ollama, serve_ollama
 from harness.plugins import installed_function
-from harness.python_tools import python_tool
+from harness.python_tools import EVERYONE_READS, python_tool
 from harness.second_provider import OPENAI_CONFIG
 from harness.terminal_server import read_grant
-from harness.upstream import Reply
+from harness.upstream import MOCK_MODEL_ID, Reply
+from harness.web_retrieval import (
+    LOCAL_WEB_FETCH,
+    RETRIEVAL_CONFIG,
+    save_web_settings,
+    serve_search_results,
+)
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
@@ -653,3 +671,290 @@ def test_a_stored_dispatch_relayed_to_the_responses_api_keeps_the_models_call(
     [call] = [item for item in provider.sent()[-1]["input"] if item.get("type") == "function_call"]
     assert (call["name"], call["arguments"]) == ("call_tool", sent_arguments)
     assert "provider_function" not in call
+
+
+# --- what a dispatched tool leaves on the reply: sources, files, embeds -----------------------
+
+VIAS = ("direct", "call_tool")
+NOTES = "Grey herons nest in colonies near water and hunt fish in the shallows."
+LEDGER = "The heron survey budget for the spring is four thousand."
+SOURCE_TAG = re.compile(r'<source id="\d+" name="[^"]+"')
+
+REPORTING_TOOLS = '''
+from fastapi.responses import HTMLResponse
+
+
+class Tools:
+    async def harbour_report(self, harbour: str, __event_emitter__=None) -> str:
+        """Report on a harbour, citing the harbour log.
+
+        :param harbour: Name of the harbour
+        """
+        await __event_emitter__(
+            {
+                "type": "citation",
+                "data": {
+                    "document": [f"The lights of {harbour} were lit at dusk."],
+                    "metadata": [{"source": "harbour log"}],
+                    "source": {"name": "Harbour log", "url": "https://example.com/log"},
+                },
+            }
+        )
+        await __event_emitter__(
+            {"type": "files", "data": {"files": [{"type": "image", "url": "/static/favicon.png"}]}}
+        )
+        return f"report for {harbour}"
+
+    def harbour_chart(self, harbour: str) -> HTMLResponse:
+        """Show a chart of a harbour.
+
+        :param harbour: Name of the harbour
+        """
+        page = f'<p id="chart">Chart of {harbour}</p>'
+        return HTMLResponse(content=page, headers={"Content-Disposition": "inline"})
+'''
+
+
+def model_calls(tool_search, via: str, name: str, arguments: dict) -> Reply:
+    """The model calling `name`: offered as itself with Tool Search off, or through call_tool."""
+    tool_search(ENABLE_TOOL_SEARCH=via == "call_tool")
+    if via == "direct":
+        return reply.tool_call(name, arguments)
+    return dispatch(name, arguments)
+
+
+def system_prompts(request: dict) -> list:
+    return [entry["content"] for entry in request["messages"] if entry["role"] == "system"]
+
+
+def assert_ran_as(message: dict, name: str) -> None:
+    [call] = items(message, "function_call").values()
+    assert (call["name"], call["status"]) == (name, "completed"), call
+
+
+@pytest.fixture
+def library(admin, make_user):
+    """Two text files in a knowledge base a fresh reader may read; yields reader, base, files."""
+    reader = make_user()
+    tag = uuid.uuid4().hex[:8]
+    with (
+        admin.client() as client,
+        knowledge_base(client, f"Birds {tag}", [read_grant(reader.id)]) as knowledge_id,
+    ):
+        notes = add_text_file(client, knowledge_id, f"herons-{tag}.txt", NOTES)
+        ledger = add_text_file(client, knowledge_id, f"ledger-{tag}.txt", LEDGER)
+        yield reader, knowledge_id, [notes, ledger]
+
+
+@pytest.fixture
+def file_reader(admin):
+    """A preset that reads a chat's files through tools, so the chat file tools are offered."""
+    model_id = f"file-reader-{uuid.uuid4().hex[:8]}"
+    form = {
+        "id": model_id,
+        "base_model_id": MOCK_MODEL_ID,
+        "name": "File reader",
+        "meta": {"capabilities": {"file_upload": True, "file_context": False}},
+        "params": {},
+        "access_grants": [EVERYONE_READS],
+    }
+    with admin.client() as client:
+        client.post("/api/v1/models/create", json=form).raise_for_status()
+        client.get("/api/models", params={"refresh": "true"}).raise_for_status()
+        yield model_id
+        client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+
+FILE_TOOLS = ["query_knowledge_files", "view_knowledge_file", "query_chat_files", "view_file"]
+
+
+@pytest.mark.parametrize("tool", FILE_TOOLS)
+def test_a_file_tool_through_call_tool_cites_what_a_direct_call_cites(
+    tool_search, library, file_reader, upstream, tool
+):
+    reader, knowledge_id, file_ids = library
+    arguments = {
+        "query_knowledge_files": {"query": "heron", "knowledge_ids": [knowledge_id], "count": 10},
+        "view_knowledge_file": {"file_id": file_ids[0]},
+        "query_chat_files": {"query": "heron"},
+        "view_file": {"file_id": file_ids[0]},
+    }[tool]
+    chat = {}
+    if tool in ("query_chat_files", "view_file"):
+        files = [{"type": "file", "id": file_id, "name": file_id} for file_id in file_ids]
+        chat = {"model": file_reader, "files": files}
+    sources = {}
+    with reader.client() as client:
+        for via in VIAS:
+            upstream.queue(model_calls(tool_search, via, tool, arguments), reply.text("cited"))
+            _, message = ask(client, f"what do my notes say about herons? ({via})", **chat)
+            assert_ran_as(message, tool)
+            sources[via] = message.get("sources")
+
+    assert sources["direct"], f"{tool} cited nothing on a direct call"
+    assert sources["call_tool"] == sources["direct"]
+    assert NOTES in json.dumps(sources["call_tool"])
+
+
+def test_a_round_cited_through_call_tool_gets_the_source_list_and_replays_next_turn(
+    tool_search, library, upstream
+):
+    reader, knowledge_id, _ = library
+    arguments = {"query": "heron", "knowledge_ids": [knowledge_id], "count": 10}
+    rewritten = {}
+    with reader.client() as client:
+        for via in VIAS:
+            question = f"what do my notes say about herons? ({via})"
+            upstream.queue(
+                model_calls(tool_search, via, "query_knowledge_files", arguments),
+                reply.text("Herons nest [1]."),
+                reply.text("Still herons."),
+            )
+            turn, _ = ask(client, question)
+            ask(client, "and now?", chat_id=turn.chat_id, parent_id=turn.assistant_message_id)
+            first, after_call, next_turn = upstream.chat_requests()[-3:]
+            [user_prompt] = [entry for entry in after_call["messages"] if entry["role"] == "user"]
+            rewritten[via] = user_prompt["content"].replace(f" ({via})", "")
+            assert after_call["tools"] == first["tools"] == next_turn["tools"]
+            assert system_prompts(after_call) == system_prompts(first)
+            assert tool_messages(next_turn) == tool_messages(after_call)
+            replayed = replayed_calls(next_turn)["call_1"]["name"]
+            assert replayed == ("call_tool" if via == "call_tool" else "query_knowledge_files")
+
+    assert len(SOURCE_TAG.findall(rewritten["call_tool"])) == 2, rewritten["call_tool"]
+    assert rewritten["call_tool"] == rewritten["direct"]
+
+
+def test_a_workspace_tool_through_call_tool_keeps_its_citation_and_files(
+    tool_search, admin, make_user, upstream
+):
+    stored = {}
+    with python_tool(admin, REPORTING_TOOLS) as tool_id, make_user().client() as client:
+        for via in VIAS:
+            upstream.queue(
+                model_calls(tool_search, via, "harbour_report", {"harbour": "Pula"}),
+                reply.text("Reported."),
+            )
+            _, message = ask(client, "report on Pula", tool_ids=[tool_id])
+            assert_ran_as(message, "harbour_report")
+            stored[via] = (message.get("sources"), message.get("files"))
+
+    sources, files = stored["call_tool"]
+    assert [source["source"]["name"] for source in sources] == ["Harbour log"]
+    assert files == [{"type": "image", "url": "/static/favicon.png"}]
+    assert stored["call_tool"] == stored["direct"]
+
+
+def test_an_html_embed_through_call_tool_matches_a_direct_call(
+    tool_search, admin, make_user, upstream
+):
+    shown = {}
+    with python_tool(admin, REPORTING_TOOLS) as tool_id, make_user().client() as client:
+        for via in VIAS:
+            upstream.queue(
+                model_calls(tool_search, via, "harbour_chart", {"harbour": "Pula"}),
+                reply.text("Charted."),
+            )
+            _, message = ask(client, "chart Pula", tool_ids=[tool_id])
+            assert_ran_as(message, "harbour_chart")
+            [result] = items(message, "function_call_output").values()
+            told = tool_messages(upstream.chat_requests()[-1])["call_1"]
+            shown[via] = (result.get("embeds"), told)
+
+    embeds, told = shown["call_tool"]
+    assert embeds == ['<p id="chart">Chart of Pula</p>']
+    assert "harbour_chart: Embedded UI result is active" in told
+    assert shown["call_tool"] == shown["direct"]
+
+
+@pytest.fixture
+def image_engine(admin, listener, preserve):
+    """Image generation and editing on, the images drawn by the listener."""
+    preserve(IMAGES_CONFIG)
+    with admin.client() as client:
+        save_image_settings(client, **serve_openai_images(listener))
+    return listener
+
+
+DRAWINGS = {
+    "generate_image": ({"prompt": "a lighthouse"}, "/images/generations"),
+    "edit_image": (
+        {"prompt": "a lighthouse", "image_urls": [f"data:image/png;base64,{PNG_BASE64}"]},
+        "/images/edits",
+    ),
+}
+
+
+@pytest.mark.parametrize("tool", DRAWINGS)
+def test_an_image_drawn_through_call_tool_is_stored_on_the_reply(
+    tool_search, make_user, upstream, image_engine, tool
+):
+    arguments, endpoint = DRAWINGS[tool]
+    drawn = {}
+    with make_user().client() as client:
+        for via in VIAS:
+            asked = len(image_engine.requests_to(endpoint))
+            upstream.queue(model_calls(tool_search, via, tool, arguments), reply.text("Drawn."))
+            _, message = ask(client, "draw it", features={"image_generation": True})
+            assert_ran_as(message, tool)
+            assert len(image_engine.requests_to(endpoint)) == asked + 1, f"{via} never drew"
+            [image] = message.get("files") or [{}]
+            assert image.get("type") == "image" and image["url"].startswith("/api/v1/files/")
+            stored = client.get(image["url"])
+            assert stored.content == base64.b64decode(PNG_BASE64), f"{via}: {image}"
+            told = json.loads(tool_messages(upstream.chat_requests()[-1])["call_1"])
+            assert [entry["url"] for entry in told["images"]] == [image["url"]]
+            drawn[via] = (told["status"], told["message"])
+
+    assert drawn["call_tool"] == drawn["direct"]
+
+
+@pytest.fixture
+def web_search(instance_with, preserve, listener):
+    """The local-fetch instance searching the listener, Tool Search on, a page to read."""
+    launched = instance_with(LOCAL_WEB_FETCH)
+    preserve(RETRIEVAL_CONFIG, CHAT_CONFIG, on=launched)
+    page_url = f"{listener.base_url}/herons"
+    listener.route("GET", "/herons", text_answer(PAGE))
+    with admin_of(launched).client() as client:
+        save_web_settings(client, **serve_search_results(listener, [page_url]))
+
+    def settings(**changes) -> None:
+        with admin_of(launched).client() as client:
+            current = client.get(CHAT_CONFIG[0]).json()
+            client.post(CHAT_CONFIG[1], json={**current, **changes}).raise_for_status()
+
+    settings(
+        TOOL_SEARCH_DEFER_THRESHOLD=0,
+        TOOL_SEARCH_ALWAYS_LOADED=[],
+        TOOL_SEARCH_DEFER_BUILTIN_TOOLS=True,
+    )
+    return launched, settings, page_url
+
+
+PAGE_TEXT = "Two grey herons stand at the jetty every morning."
+PAGE = f"<html><body><h1>Heron watch</h1><p>{PAGE_TEXT}</p></body></html>"
+
+
+@pytest.mark.slow
+def test_a_page_read_through_call_tool_is_cited_like_a_direct_read(web_search, listener):
+    launched, settings, page_url = web_search
+    cited = {}
+    with create_user(launched).client() as client:
+        for via in VIAS:
+            searches = len(listener.requests_to("/search"))
+            launched.upstream.queue(
+                model_calls(settings, via, "search_web", {"query": "herons jetty"}),
+                model_calls(settings, via, "fetch_url", {"url": page_url}),
+                reply.text("Two herons [1]."),
+            )
+            _, message = ask(client, "how many herons?", features={"web_search": True})
+            assert len(listener.requests_to("/search")) == searches + 1, f"{via} never searched"
+            names = [item["name"] for item in items(message, "function_call").values()]
+            assert names == ["search_web", "fetch_url"], names
+            cited[via] = message.get("sources")
+
+    [source] = cited["call_tool"]
+    assert source["source"]["id"] == page_url
+    assert PAGE_TEXT in source["document"][0]
+    assert cited["call_tool"] == cited["direct"]

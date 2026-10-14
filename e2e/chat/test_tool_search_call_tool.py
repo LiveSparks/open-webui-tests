@@ -4,16 +4,22 @@ Dev 7b47c3b22 lets the model dispatch a deferred tool through `call_tool(tool_na
 chat unwraps the call before approvals and execution, so the reply shows the target tool by name
 with its own input and result (also after a reload), and an approval prompt names it. A call to
 an unknown tool comes back as an error the reply continues past. The next turn replays the call
-the model actually made, so the provider sees its own `call_tool` call in the history.
+the model actually made, so the provider sees its own `call_tool` call in the history. A
+dispatched tool shows on the reply as a direct call does: knowledge sources listed with each
+`[n]` marker opening its passage (after a reload too), a workspace tool's citation, a page read
+with `fetch_url`, a picture from `generate_image` kept as a stored file and an HTML embed.
 
 Discriminates: passes on dev 6276e81ce; in a backend copy without the streaming handler's unwrap
 the display and approval tests fail (the reply shows call_tool), without the replay of the
 model's original call the display test fails on the next turn's history, and without the unknown
-tool check the failure test fails (a different error reaches the model and the chat).
+tool check the failure test fails (a different error reaches the model and the chat). Skipping
+citation sources for dispatched calls fails the knowledge and page tests; no unwrap at all also
+fails the citation event, embed and picture tests.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import uuid
@@ -23,8 +29,19 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
+from harness.actors import admin_of, create_user
+from harness.channel_chat import serve_openai_images
+from harness.image_engines import IMAGES_CONFIG, PNG_BASE64, save_image_settings
+from harness.knowledge_bases import add_text_file, knowledge_base
+from harness.listener import text_answer
 from harness.python_tools import EVERYONE_READS, python_tool
 from harness.upstream import MOCK_MODEL_ID
+from harness.web_retrieval import (
+    LOCAL_WEB_FETCH,
+    RETRIEVAL_CONFIG,
+    save_web_settings,
+    serve_search_results,
+)
 from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply, last_reply, send
 from utils.model_selector import select_model
 
@@ -221,3 +238,252 @@ def test_an_approval_prompt_names_the_dispatched_tool(
     expect_reply(page, "Not shouted.")
     expect(last_reply(page)).to_contain_text("Denied shout")
     assert tool_results(upstream, denied)[-1:] == [REJECTED]
+
+
+# --- what a dispatched tool shows on the reply: sources, pictures, embeds ----------------------
+
+NOTES = ("herons", "Grey herons nest in colonies near water and hunt fish in the shallows.")
+LEDGER = ("ledger", "The heron survey budget for the spring is four thousand.")
+SOURCE_TAG = re.compile(r'<source id="(\d+)" name="([^"]+)"')
+FILE_CONTENT_URL = re.compile(r"/api/v1/files/[^/]+/content$")
+REPORTING_TOOL = '''
+from fastapi.responses import HTMLResponse
+
+
+class Tools:
+    async def harbour_report(self, harbour: str, __event_emitter__=None) -> str:
+        """Report on a harbour, citing the harbour log."""
+        await __event_emitter__(
+            {
+                "type": "citation",
+                "data": {
+                    "document": [f"The lights of {harbour} were lit at dusk."],
+                    "metadata": [{"source": "Harbour log"}],
+                    "source": {"name": "Harbour log"},
+                },
+            }
+        )
+        return f"report for {harbour}"
+
+    def harbour_chart(self, harbour: str) -> HTMLResponse:
+        """Show a chart of a harbour."""
+        page = f'<p id="chart">Chart of {harbour}</p>'
+        return HTMLResponse(content=page, headers={"Content-Disposition": "inline"})
+'''
+
+
+@pytest.fixture
+def builtins_deferred(admin, tool_search_on) -> None:
+    with admin.client() as client:
+        current = client.get(CHAT_CONFIG[0]).json()
+        client.post(
+            CHAT_CONFIG[1], json={**current, "TOOL_SEARCH_DEFER_BUILTIN_TOOLS": True}
+        ).raise_for_status()
+
+
+@pytest.fixture
+def reporter(admin) -> Iterator[str]:
+    """A preset of the scripted model with the harbour reporting tool attached; yields its name."""
+    name = f"Reporter {uuid.uuid4().hex[:8]}"
+    model_id = name.lower().replace(" ", "-")
+    with python_tool(admin, REPORTING_TOOL) as tool_id, admin.client() as client:
+        created = client.post(
+            "/api/v1/models/create",
+            json={
+                "id": model_id,
+                "base_model_id": MOCK_MODEL_ID,
+                "name": name,
+                "meta": {"toolIds": [tool_id]},
+                "params": {},
+                "access_grants": [EVERYONE_READS],
+            },
+        )
+        assert created.status_code == 200, created.text
+        yield name
+        client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+
+@pytest.fixture
+def library(admin, make_user):
+    """Two notes in a knowledge base a fresh reader may read; yields reader, base and texts."""
+    reader = make_user()
+    tag = uuid.uuid4().hex[:8]
+    grant = [{"principal_type": "user", "principal_id": reader.id, "permission": "read"}]
+    names = {f"{stem}-{tag}.txt": text for stem, text in (NOTES, LEDGER)}
+    with admin.client() as client, knowledge_base(client, f"Birds {tag}", grant) as knowledge_id:
+        for filename, text in names.items():
+            add_text_file(client, knowledge_id, filename, text)
+        yield reader, knowledge_id, names
+
+
+def expect_markers_open_their_sources(page: Page, source_ids: dict[str, str], texts: dict) -> None:
+    expect(conversation(page).get_by_role("button", name="Toggle 2 sources")).to_be_visible()
+    markers = last_reply(page).get_by_role("button", name=re.compile(r"^View source: "))
+    expect(markers).to_have_count(2)
+    for position in (1, 2):
+        name = source_ids[str(position)]
+        expect(markers.nth(position - 1)).to_have_accessible_name(f"View source: {name}")
+        markers.nth(position - 1).click()
+        citation = page.get_by_role("dialog")
+        expect(citation).to_contain_text(texts[name])
+        citation.get_by_role("button", name="Close citation modal").click()
+        expect(citation).to_be_hidden()
+
+
+def test_knowledge_sources_from_a_dispatched_search_are_listed_and_cited(
+    builtins_deferred, page_for, library, upstream
+):
+    reader, knowledge_id, texts = library
+    prompt = f"what do my notes say? {uuid.uuid4().hex[:6]}"
+    arguments = {"query": "heron", "knowledge_ids": [knowledge_id], "count": 10}
+    upstream.queue(
+        call_tool("query_knowledge_files", arguments, prompt, "call_k"),
+        reply.text("Herons nest [1] and the budget is set [2].", match=reply.answering(prompt)),
+    )
+    page = page_for(reader)
+    send(page, prompt)
+    expect_reply(page, "Herons nest")
+
+    final = requests_for(upstream, prompt)[-1]
+    source_ids = dict(SOURCE_TAG.findall(json.dumps(final["messages"]).replace('\\"', '"')))
+    assert set(source_ids.values()) == set(texts), source_ids
+    expect_markers_open_their_sources(page, source_ids, texts)
+
+    expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
+    page.reload()
+    expect_reply(page, "Herons nest")
+    expect_markers_open_their_sources(page, source_ids, texts)
+
+
+def test_a_citation_a_dispatched_tool_emits_is_listed(
+    tool_search_on, page_for, make_user, upstream, reporter
+):
+    prompt = f"report on Pula {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        call_tool("harbour_report", {"harbour": "Pula"}, prompt, "call_r"),
+        reply.text("Reported.", match=reply.answering(prompt)),
+    )
+    page = page_for(make_user())
+    select_model(page, reporter)
+    send(page, prompt)
+    expect_reply(page, "Reported.")
+
+    assert tool_results(upstream, prompt) == ["report for Pula"]
+    conversation(page).get_by_role("button", name="Toggle 1 source").click()
+    conversation(page).get_by_role("button", name="View source: Harbour log").click()
+    expect(page.get_by_role("dialog")).to_contain_text("The lights of Pula were lit at dusk.")
+
+
+def test_an_embed_a_dispatched_tool_returns_is_shown(
+    tool_search_on, page_for, make_user, upstream, reporter
+):
+    prompt = f"chart Pula {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        call_tool("harbour_chart", {"harbour": "Pula"}, prompt, "call_e"),
+        reply.text("Charted.", match=reply.answering(prompt)),
+    )
+    page = page_for(make_user())
+    select_model(page, reporter)
+    send(page, prompt)
+    expect_reply(page, "Charted.")
+
+    [told] = tool_results(upstream, prompt)
+    assert "harbour_chart: Embedded UI result is active" in told
+    chart = last_reply(page).frame_locator("iframe").locator("#chart")
+    expect(chart).to_have_text("Chart of Pula")
+    page.reload()
+    expect(last_reply(page).frame_locator("iframe").locator("#chart")).to_have_text("Chart of Pula")
+
+
+@pytest.fixture
+def image_engine(admin, preserve, listener) -> None:
+    preserve(IMAGES_CONFIG)
+    with admin.client() as client:
+        save_image_settings(client, **serve_openai_images(listener))
+
+
+def test_a_picture_drawn_through_call_tool_shows_and_is_stored(
+    builtins_deferred, image_engine, page_for, make_user, upstream, listener
+):
+    person = make_user()
+    prompt = f"draw a lighthouse {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        call_tool("generate_image", {"prompt": "a lighthouse"}, prompt, "call_i"),
+        reply.text("Here is your lighthouse.", match=reply.answering(prompt)),
+    )
+    page = page_for(person)
+    expect(chat_input(page)).to_be_visible()
+    page.get_by_label("Integrations").click()
+    page.get_by_role("menu").get_by_role("button", name="Image", exact=True).click()
+    page.keyboard.press("Escape")
+    send(page, prompt)
+    expect_reply(page, "Here is your lighthouse.")
+
+    picture = last_reply(page).get_by_role("img")
+    expect(picture).to_be_visible()
+    source = picture.get_attribute("src")
+    assert FILE_CONTENT_URL.search(source), f"the picture is not a stored file: {source}"
+    [generation] = listener.requests_to("/images/generations")
+    assert generation.json()["prompt"] == "a lighthouse"
+    [told] = tool_results(upstream, prompt)
+    assert json.loads(told)["status"] == "success"
+
+    expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
+    page.reload()
+    expect_reply(page, "Here is your lighthouse.")
+    expect(last_reply(page).get_by_role("img")).to_have_attribute("src", source)
+    with person.client() as client:
+        assert client.get(source).content == base64.b64decode(PNG_BASE64)
+
+
+PAGE_TEXT = "Two grey herons stand at the jetty every morning."
+
+
+@pytest.fixture
+def searcher(instance_with, preserve, listener):
+    """The local-fetch instance searching the listener, Tool Search deferring its builtins."""
+    searching = instance_with(LOCAL_WEB_FETCH)
+    if not searching.serves_frontend:
+        pytest.skip("no built frontend (set OPEN_WEBUI_BUILD_DIR)")
+    preserve(RETRIEVAL_CONFIG, CHAT_CONFIG, on=searching)
+    listener.route("GET", "/herons", text_answer(f"<html><body><p>{PAGE_TEXT}</p></body></html>"))
+    with admin_of(searching).client() as client:
+        save_web_settings(client, **serve_search_results(listener, [f"{listener.base_url}/herons"]))
+        current = client.get(CHAT_CONFIG[0]).json()
+        client.post(
+            CHAT_CONFIG[1],
+            json={
+                **current,
+                "ENABLE_TOOL_SEARCH": True,
+                "TOOL_SEARCH_DEFER_THRESHOLD": 0,
+                "TOOL_SEARCH_ALWAYS_LOADED": [],
+                "TOOL_SEARCH_DEFER_BUILTIN_TOOLS": True,
+            },
+        ).raise_for_status()
+    return searching
+
+
+@pytest.mark.slow
+def test_a_page_read_through_call_tool_is_the_reply_source(page_for, searcher, listener):
+    page_url = f"{listener.base_url}/herons"
+    prompt = f"how many herons? {uuid.uuid4().hex[:6]}"
+    searcher.upstream.queue(
+        call_tool("search_web", {"query": "herons jetty"}, prompt, "call_s"),
+        call_tool("fetch_url", {"url": page_url}, prompt, "call_f"),
+        reply.text("Two herons [1].", match=reply.answering(prompt)),
+    )
+    page = page_for(create_user(searcher))
+    expect(chat_input(page)).to_be_visible()
+    page.get_by_role("button", name="Integrations", exact=True).last.click()
+    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
+    page.keyboard.press("Escape")
+    send(page, prompt)
+    expect_reply(page, "Two herons")
+
+    assert listener.requests_to("/search"), "the dispatched search never reached the engine"
+    expect(conversation(page).get_by_role("button", name="Toggle 1 source")).to_be_visible()
+    site = page_url.split("/")[2]
+    last_reply(page).get_by_role("button", name=f"View source: {site}").click()
+    citation = page.get_by_role("dialog")
+    expect(citation.get_by_role("link", name=page_url, exact=True)).to_be_visible()
+    expect(citation).to_contain_text(PAGE_TEXT)
