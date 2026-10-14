@@ -150,10 +150,9 @@ def test_a_saved_search_engine_answers_the_models_web_search(
     searches = listener.requests_to("/search")
     assert [search.json()["query"] for search in searches] == ["kestrel count"]
     assert searches[0].headers["Authorization"] == "Bearer search-key"
+    answered = list(filter(reply.answering(question), upstream.chat_requests()))
     tool_results = [
-        entry["content"]
-        for entry in upstream.chat_requests()[-1]["messages"]
-        if entry["role"] == "tool"
+        entry["content"] for entry in answered[-1]["messages"] if entry["role"] == "tool"
     ]
     assert any("Kestrels number 412" in result for result in tool_results), tool_results
 

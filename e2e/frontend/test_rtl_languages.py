@@ -97,6 +97,7 @@ def test_a_right_to_left_language_relabels_the_app_and_keeps_it_on_screen(
     assert_on_screen(page.get_by_role("dialog"), "the Settings dialog")
     assert not scrolls_sideways(page), "the Settings dialog scrolls the page sideways"
     page.keyboard.press("Escape")
+    expect(page.get_by_role("dialog")).to_be_hidden()
 
     page.get_by_role("main").locator("[aria-haspopup='listbox']").first.click()
     assert_on_screen(page.get_by_role("listbox"), "the model selector")

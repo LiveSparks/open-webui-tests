@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.channel_quotes import delete_message, enable_channels, group_channel, post_message
 from utils.chat_ui import send
+from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -45,14 +46,7 @@ def message_rows(page: Page, rendered_id: str) -> Locator:
 def toolbar_button(message: Locator, tooltip: str) -> Locator:
     """An icon-only button of a message's hover toolbar, told apart by the tooltip it shows."""
     message.hover()
-    buttons = message.get_by_role("button")
-    index = buttons.evaluate_all(
-        "(buttons, tooltip) => buttons.findIndex("
-        "(button) => button.parentElement?._tippy?.props.content === tooltip)",
-        tooltip,
-    )
-    assert index >= 0, f"no button in the message toolbar shows the tooltip {tooltip!r}"
-    return buttons.nth(index)
+    return tooltip_button(message, tooltip)
 
 
 def left_on_screen(page: Page, deleted_rendered_id: str, author_name: str) -> dict:
@@ -73,6 +67,7 @@ def test_deleting_a_message_clears_its_quote_and_the_reply_chip(channel, page_fo
         expect(page.get_by_text(QUOTED)).to_be_visible()
 
     toolbar_button(message_rows(reader_page, quoted_id).first, "Reply").click()
+    expect(reader_page.get_by_text(f"Replying to {author.name}")).to_be_visible()
     with reader_page.expect_response(lambda sent: sent.url.endswith("/messages/post")) as posted:
         send(reader_page, "my answer to that")
     # a delete that lands while the reply is still being stored races it

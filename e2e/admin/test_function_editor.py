@@ -113,9 +113,11 @@ def open_editor(page: Page, function_id: str) -> None:
     expect(page.get_by_role("main").locator(".cm-content")).to_contain_text("class Pipe")
 
 
-def test_an_edit_that_does_not_parse_is_refused_and_the_pipe_keeps_its_old_code(page_for, admin):
+def test_an_edit_that_does_not_parse_is_refused_and_the_pipe_keeps_its_old_code(
+    page_for, admin, editor_admin
+):
     with installed_function(admin, clock_pipe("High tide at nine.")) as pipe_id:
-        page = page_for(admin)
+        page = page_for(editor_admin)
         open_editor(page, pipe_id)
         replace_code(page, MISSING_COLON)
         page.get_by_role("main").get_by_role("button", name="Save", exact=True).click()
@@ -126,9 +128,9 @@ def test_an_edit_that_does_not_parse_is_refused_and_the_pipe_keeps_its_old_code(
         ask_pipe(page, pipe_id, "when is high tide?", "High tide at nine.")
 
 
-def test_edited_code_answers_the_next_chat(page_for, admin):
+def test_edited_code_answers_the_next_chat(page_for, admin, editor_admin):
     with installed_function(admin, clock_pipe("High tide at nine.")) as pipe_id:
-        page = page_for(admin)
+        page = page_for(editor_admin)
         ask_pipe(page, pipe_id, "when is high tide?", "High tide at nine.")
 
         open_editor(page, pipe_id)
@@ -162,6 +164,9 @@ def test_a_function_imported_from_a_link_is_saved_and_answers(page_for, editor_a
     expect(page).to_have_url(re.compile(r"/admin/functions$"))
 
     switch = pipe_card(page, file_name).get_by_role("switch")
-    switch.click()
+    # the switch flips before the server has stored it
+    with page.expect_response(lambda response: response.url.endswith("/toggle")) as toggled:
+        switch.click()
+    assert toggled.value.ok, toggled.value.text()
     expect(switch).to_be_checked()
     ask_pipe(page, file_name, "when is low tide?", "Low tide at three.")

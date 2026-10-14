@@ -107,6 +107,13 @@ def _stored(admin) -> dict:
         return client.get(SUBAGENTS[0]).json()
 
 
+def _start_with(admin, **values) -> None:
+    """Store the sub-agent settings the test starts from; call it after `preserve(SUBAGENTS)`."""
+    with admin.client() as client:
+        current = client.get(SUBAGENTS[0]).json()
+        client.post(SUBAGENTS[1], json={**current, **values}).raise_for_status()
+
+
 def _offered(request: dict) -> dict[str, dict]:
     return {tool["function"]["name"]: tool["function"] for tool in request.get("tools") or []}
 
@@ -123,6 +130,7 @@ def _ask_in_new_chat(page: Page, question: str, upstream, *, model: str = MOCK_M
 
 def test_every_subagent_setting_saves_and_survives_a_reload(admin_page, admin, preserve):
     preserve(SUBAGENTS)
+    _start_with(admin, ENABLE_SUBAGENTS=False, SUBAGENTS_BACKGROUND_ENABLED=False)
     prompt = f"Report in two lines only, batch {uuid.uuid4().hex[:6]}."
     settings = _open_tab(admin_page)
     fields = _fields(settings)
@@ -150,6 +158,7 @@ def test_every_subagent_setting_saves_and_survives_a_reload(admin_page, admin, p
 
 def test_a_switched_off_setting_stays_off_after_a_reload(admin_page, admin, preserve):
     preserve(SUBAGENTS)
+    _start_with(admin, ENABLE_SUBAGENTS=False, SUBAGENTS_BACKGROUND_ENABLED=False)
     settings = _open_tab(admin_page)
     fields = _fields(settings)
     fields["ENABLE_SUBAGENTS"].click()
@@ -171,6 +180,7 @@ def test_switching_sub_agents_off_keeps_the_limits_for_when_they_come_back(
     admin_page, admin, preserve
 ):
     preserve(SUBAGENTS)
+    _start_with(admin, ENABLE_SUBAGENTS=False)
     settings = _open_tab(admin_page)
     fields = _fields(settings)
     fields["ENABLE_SUBAGENTS"].click()
@@ -194,12 +204,11 @@ def test_switching_sub_agents_off_keeps_the_limits_for_when_they_come_back(
     expect(fields["SUBAGENTS_SYSTEM_PROMPT"]).to_have_value("Keep it short.")
 
 
-def test_the_limits_show_only_while_their_switches_are_on(admin_page, preserve):
+def test_the_limits_show_only_while_their_switches_are_on(admin_page, admin, preserve):
     preserve(SUBAGENTS)
+    _start_with(admin, ENABLE_SUBAGENTS=False, SUBAGENTS_BACKGROUND_ENABLED=False)
     settings = _open_tab(admin_page)
     fields = _fields(settings)
-    if fields["ENABLE_SUBAGENTS"].is_checked():
-        fields["ENABLE_SUBAGENTS"].click()
 
     for name in list(fields)[1:]:
         expect(fields[name]).to_have_count(0)
@@ -255,14 +264,10 @@ def test_the_tab_starts_from_the_built_in_defaults(instance_with, page_for):
 
 
 def test_the_model_is_offered_delegation_only_while_sub_agents_are_on(
-    admin_page, preserve, upstream
+    admin_page, admin, preserve, upstream
 ):
     preserve(SUBAGENTS)
-    settings = _open_tab(admin_page)
-    enable = _fields(settings)["ENABLE_SUBAGENTS"]
-    if not enable.is_checked():
-        enable.click()
-        _save(admin_page, settings)
+    _start_with(admin, ENABLE_SUBAGENTS=True)
     on = _ask_in_new_chat(admin_page, "is delegation on?", upstream)
 
     settings = _open_tab(admin_page)
@@ -276,16 +281,10 @@ def test_the_model_is_offered_delegation_only_while_sub_agents_are_on(
 
 
 def test_the_background_switch_decides_whether_the_model_may_delegate_in_the_background(
-    admin_page, preserve, upstream
+    admin_page, admin, preserve, upstream
 ):
     preserve(SUBAGENTS)
-    settings = _open_tab(admin_page)
-    fields = _fields(settings)
-    if not fields["ENABLE_SUBAGENTS"].is_checked():
-        fields["ENABLE_SUBAGENTS"].click()
-    if fields["SUBAGENTS_BACKGROUND_ENABLED"].is_checked():
-        fields["SUBAGENTS_BACKGROUND_ENABLED"].click()
-    _save(admin_page, settings)
+    _start_with(admin, ENABLE_SUBAGENTS=True, SUBAGENTS_BACKGROUND_ENABLED=False)
     foreground_only = _ask_in_new_chat(admin_page, "may you delegate in the foreground?", upstream)
 
     settings = _open_tab(admin_page)
@@ -305,10 +304,9 @@ def test_the_background_switch_decides_whether_the_model_may_delegate_in_the_bac
 def model_with_delegation(admin, preserve):
     """A model every account may use, with delegation on and the model's own tick untouched."""
     preserve(SUBAGENTS)
+    _start_with(admin, ENABLE_SUBAGENTS=True)
     model_id = f"helper-{uuid.uuid4().hex[:8]}"
     with admin.client() as client:
-        current = client.get(SUBAGENTS[0]).json()
-        client.post(SUBAGENTS[1], json={**current, "ENABLE_SUBAGENTS": True}).raise_for_status()
         created = client.post(
             "/api/v1/models/create",
             json={

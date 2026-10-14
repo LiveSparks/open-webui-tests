@@ -109,7 +109,7 @@ def created_on(admin: Actor, account: Actor) -> dt.date:
 
 def user_row(page: Page, account: Actor) -> Locator:
     page.get_by_role("main").locator("input").first.fill(account.email)
-    row = page.get_by_role("main").locator("tr", has_text=account.email)
+    row = page.get_by_role("main").get_by_role("row").filter(has_text=account.email)
     expect(row).to_have_count(1)
     return row
 

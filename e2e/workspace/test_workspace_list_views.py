@@ -22,6 +22,7 @@ import uuid
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 from playwright.sync_api import Page, Route, expect
 
@@ -37,6 +38,9 @@ STALE_ANSWER = (
 TOOL_SOURCE = 'class Tools:\n    def ping(self) -> str:\n        return "pong"\n'
 
 
+Cleanup = Callable[[httpx.Client], httpx.Response]
+
+
 def _post(account: Actor, path: str, form: dict) -> dict:
     with account.client() as client:
         created = client.post(path, json=form)
@@ -44,35 +48,35 @@ def _post(account: Actor, path: str, form: dict) -> dict:
     return created.json()
 
 
-def _model(account: Actor, name: str) -> Callable[[], None]:
+def _model(account: Actor, name: str) -> Cleanup:
     model_id = f"view-{uuid.uuid4().hex[:8]}"
     form = {"id": model_id, "name": name, "base_model_id": MOCK_MODEL_ID, "meta": {}, "params": {}}
     _post(account, "/api/v1/models/create", form)
     return lambda client: client.post("/api/v1/models/model/delete", json={"id": model_id})
 
 
-def _prompt(account: Actor, name: str) -> Callable[[], None]:
+def _prompt(account: Actor, name: str) -> Cleanup:
     command = f"view{uuid.uuid4().hex[:8]}"
     form = {"command": command, "name": name, "content": "Say hello."}
     created = _post(account, "/api/v1/prompts/create", form)
     return lambda client: client.delete(f"/api/v1/prompts/id/{created['id']}/delete")
 
 
-def _tool(account: Actor, name: str) -> Callable[[], None]:
+def _tool(account: Actor, name: str) -> Cleanup:
     tool_id = f"view_{uuid.uuid4().hex[:8]}"
     form = {"id": tool_id, "name": name, "content": TOOL_SOURCE, "meta": {"description": "pings"}}
     _post(account, "/api/v1/tools/create", form)
     return lambda client: client.delete(f"/api/v1/tools/id/{tool_id}/delete")
 
 
-def _skill(account: Actor, name: str) -> Callable[[], None]:
+def _skill(account: Actor, name: str) -> Cleanup:
     skill_id = f"view-{uuid.uuid4().hex[:8]}"
     form = {"id": skill_id, "name": name, "content": "Be brief.", "meta": {}}
     _post(account, "/api/v1/skills/create", form)
     return lambda client: client.delete(f"/api/v1/skills/id/{skill_id}/delete")
 
 
-def _knowledge(account: Actor, name: str) -> Callable[[], None]:
+def _knowledge(account: Actor, name: str) -> Cleanup:
     created = _post(account, "/api/v1/knowledge/create", {"name": name, "description": "notes"})
     return lambda client: client.delete(f"/api/v1/knowledge/{created['id']}/delete")
 

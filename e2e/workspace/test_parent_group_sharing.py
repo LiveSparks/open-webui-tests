@@ -109,31 +109,52 @@ def _slash_menu(page: Page, typed: str) -> Locator:
     return page.get_by_role("tooltip")
 
 
-def _read_only_note(page: Page, title: str) -> Locator:
-    """The row of a note the account can only read, on the Notes page's Read Only list."""
+def _read_only_note(page: Page, title: str, listed: str | None = None) -> Locator:
+    """The row of a note the account can only read, on the Notes page's Read Only list.
+
+    `listed` names a note the account surely reads, so a row missing next to it is truly absent.
+    """
     page.goto("/notes")
     main = page.get_by_role("main")
     main.get_by_role("button", name="Write", exact=True).click()
     page.get_by_role("button", name="Read Only", exact=True).click()
     expect(main.get_by_role("button", name="Read Only", exact=True)).to_be_visible()
-    return main.get_by_role("button", name="Open note").filter(has_text=title)
+    notes = main.get_by_role("button", name="Open note")
+    if listed:
+        expect(notes.filter(has_text=listed)).to_be_visible()
+    return notes.filter(has_text=title)
+
+
+def _create_note(client, title: str, grants: list[dict]) -> str:
+    return _created(
+        client.post(
+            "/api/v1/notes/create",
+            json={
+                "title": title,
+                "data": {"content": {"md": "Ada takes the night watch."}},
+                "access_grants": grants,
+            },
+        )
+    )
+
+
+@pytest.fixture
+def open_note(admin) -> Iterator[str]:
+    """The title of a note every account reads, deleted afterwards."""
+    title = _unique("Open rota")
+    with admin.client() as client:
+        note_id = _create_note(client, title, [EVERYONE_READS])
+    yield title
+    with admin.client() as client:
+        client.delete(f"/api/v1/notes/{note_id}/delete")
 
 
 def test_a_note_shared_with_the_parent_opens_for_a_subgroup_member_until_they_leave(
-    admin, family, page_for
+    admin, family, open_note, page_for
 ):
     title = _unique("Harbour rota")
     with admin.client() as client:
-        _created(
-            client.post(
-                "/api/v1/notes/create",
-                json={
-                    "title": title,
-                    "data": {"content": {"md": "Ada takes the night watch."}},
-                    "access_grants": _parent_reads(family),
-                },
-            )
-        )
+        _create_note(client, title, _parent_reads(family))
 
     page = page_for(family.member)
     _read_only_note(page, title).click()
@@ -141,10 +162,10 @@ def test_a_note_shared_with_the_parent_opens_for_a_subgroup_member_until_they_le
     expect(page.get_by_role("main").get_by_text("Read-Only Access")).to_be_visible()
 
     outsider_page = page_for(family.outsider)
-    expect(_read_only_note(outsider_page, title)).to_have_count(0)
+    expect(_read_only_note(outsider_page, title, listed=open_note)).to_have_count(0)
 
     _leave_child_group(admin, family)
-    expect(_read_only_note(page, title)).to_have_count(0)
+    expect(_read_only_note(page, title, listed=open_note)).to_have_count(0)
 
 
 def _create_prompt(admin: Actor, command: str, grants: list[dict]) -> None:
@@ -207,10 +228,16 @@ def _group_name(admin: Actor, group_id: str) -> str:
 def test_a_knowledge_base_shared_with_the_parent_in_the_access_dialog_reaches_a_subgroup_member(
     admin, curator, family, page_for
 ):
-    name = _unique("Lighthouse logs")
+    name, open_name = _unique("Lighthouse logs"), _unique("Lighthouse open")
     with curator.client() as client:
         knowledge_id = _created(
             client.post("/api/v1/knowledge/create", json={"name": name, "description": ""})
+        )
+        _created(
+            client.post(
+                "/api/v1/knowledge/create",
+                json={"name": open_name, "description": "", "access_grants": [EVERYONE_READS]},
+            )
         )
     parent_name = _group_name(admin, family.parent)
 
@@ -230,9 +257,9 @@ def test_a_knowledge_base_shared_with_the_parent_in_the_access_dialog_reaches_a_
     offered = _slash_menu(member_page, "#Lighthouse").get_by_role("button", name=name)
     expect(offered).to_be_visible()
     outsider_page = page_for(family.outsider)
-    expect(
-        _slash_menu(outsider_page, "#Lighthouse").get_by_role("button", name=name)
-    ).to_have_count(0)
+    outsider_menu = _slash_menu(outsider_page, "#Lighthouse")
+    expect(outsider_menu.get_by_role("button", name=open_name)).to_be_visible()
+    expect(outsider_menu.get_by_role("button", name=name)).to_have_count(0)
 
 
 def test_a_tool_shared_with_the_parent_is_listed_under_integrations_for_a_subgroup_member(

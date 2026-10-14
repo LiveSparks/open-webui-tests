@@ -237,6 +237,11 @@ def open_model_details(page: Page, settings: Locator, name: str) -> Locator:
     return details
 
 
+def close_model_details(details: Locator) -> None:
+    details.get_by_role("button", name="Close").last.click()
+    expect(details).to_be_hidden()
+
+
 def test_a_models_overview_counts_the_tags_of_its_chats(history, admin_page, presets):
     aster, birch = presets
     settings = open_dashboard(admin_page, history.group_name, "Last 30 days")
@@ -244,7 +249,7 @@ def test_a_models_overview_counts_the_tags_of_its_chats(history, admin_page, pre
     details = open_model_details(admin_page, settings, aster)
 
     expect(details.get_by_text(f"{history.tag} 2")).to_be_visible()
-    details.get_by_role("button", name="Close").last.click()
+    close_model_details(details)
     other = open_model_details(admin_page, settings, birch)
     expect(other.get_by_text(history.tag)).to_have_count(0)
 
@@ -261,7 +266,7 @@ def test_a_models_chat_list_keeps_to_the_period_picked(history, admin_page, pres
     expect(chats.filter(has_text="aster today")).to_have_count(1)
     expect(chats.filter(has_text="aster long ago")).to_have_count(0)
 
-    details.get_by_role("button", name="Close").last.click()
+    close_model_details(details)
     settings.get_by_role("combobox").filter(has_text="Last 7 days").select_option(label="All time")
     details = open_model_details(admin_page, settings, aster)
     details.get_by_role("button", name="Chats", exact=True).click()

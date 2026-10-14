@@ -285,6 +285,7 @@ def test_with_the_login_form_off_the_auth_page_offers_no_password_form(
 
     page.goto("/auth")
 
+    expect(page.get_by_text("Sign in to")).to_be_visible()
     expect(page.get_by_label("Email")).to_have_count(0)
     expect(page.get_by_label("Password", exact=True)).to_have_count(0)
     name, email = _new_visitor()

@@ -56,10 +56,19 @@ def save_admin_config(admin, **values) -> None:
     saved.raise_for_status()
 
 
+def notes_link(page: Page) -> Locator:
+    """The Notes entry of the user menu, opened once the menu's Settings entry is there."""
+    expect(chat_input(page)).to_be_visible()
+    page.get_by_role("button", name="User menu").first.click()
+    menu = page.get_by_role("menu")
+    expect(menu.get_by_role("button", name="Settings")).to_be_visible()
+    return menu.get_by_role("link", name="Notes", exact=True)
+
+
 def test_export_config_downloads_what_the_admin_saved(page_for, admin, preserve):
     preserve("admin_config")
     watermark = f"Exported watermark {uuid.uuid4().hex[:6]}"
-    save_admin_config(admin, RESPONSE_WATERMARK=watermark)
+    save_admin_config(admin, RESPONSE_WATERMARK=watermark, ENABLE_NOTES=True)
     page = page_for(admin)
     settings = open_database_settings(page)
 
@@ -74,6 +83,8 @@ def test_an_imported_config_switches_notes_off_for_users(
 ):
     preserve("admin_config")
     save_admin_config(admin, ENABLE_NOTES=True)
+    user_page = page_for(make_user())
+    expect(notes_link(user_page)).to_be_visible()
     page = page_for(admin)
     settings = open_database_settings(page)
     exported = json.loads(download(page, row_button(settings, "Export Config", "Export")))
@@ -87,12 +98,8 @@ def test_an_imported_config_switches_notes_off_for_users(
     expect(page.get_by_text("Config imported successfully")).to_be_visible()
     page.goto("/")
     expect(chat_input(page)).to_be_visible()
-    user_page = page_for(make_user())
-    expect(chat_input(user_page)).to_be_visible()
-    user_page.get_by_role("button", name="User menu").first.click()
-    menu = user_page.get_by_role("menu")
-    expect(menu.get_by_role("button", name="Settings")).to_be_visible()
-    expect(menu.get_by_role("link", name="Notes", exact=True)).to_have_count(0)
+    user_page.reload()
+    expect(notes_link(user_page)).to_have_count(0)
 
 
 def test_all_chats_export_holds_every_accounts_chat(page_for, admin, make_user):
