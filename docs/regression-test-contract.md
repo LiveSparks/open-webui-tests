@@ -128,6 +128,10 @@ A test that fails without a code change costs a release its trust in the suite. 
 - **Compare listeners only after the last event.** Before comparing what two tabs or sockets received, wait on both for the final event the server sends (a chat task ends with `chat:active` false, after its `done`), since a tab snapshotted at an earlier event may still be missing the rest.
 - **Assert the settled state, never a passing one.** Wait for what stays on screen once the action has finished (the stored file's thumbnail), not what shows only while it runs (the file name during the upload), which a fast server can skip before the first check.
 
+- **Prove the list loaded before checking something is missing.** `to_have_count(0)` passes at once on a list still empty because it is loading. Wait first for an item the same account surely sees (an everyone-read note, its own prompt), then check the absence.
+- **Set the starting state; never read it.** Put a setting into the state the test starts from (over the API, after `preserve`) instead of relying on the instance default or branching on what a switch currently shows.
+- **Check every setup call.** Assert the status of each request that builds the test's state, so a failed setup shows the server's answer instead of a misleading error later.
+
 ## Checklist before committing a test
 
 Every test in the suite meets all of these. Check each one against your test before you commit.
