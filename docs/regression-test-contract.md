@@ -104,7 +104,7 @@ An unproven regression test is decoration, so every narrow test is shown to fail
 - **Frontend fix:** copy `src/`, `static/` and the build config files to a scratch dir, symlink the checkout's `node_modules`, undo the fix in `src/`, and build with `npm_package_version=<version> NODE_OPTIONS=--max-old-space-size=6144 npx vite build`. Run the browser test with `OPEN_WEBUI_BUILD_DIR` on that build, plus one unrelated journey test as a control that the build itself works. Unrelated frontend mutations can share one build.
 - **Unit tests that stay:** the same, with the unit command above.
 - **A test said to guard nothing** gets the same proof: if it stays green with the fix undone, fix the test or delete it.
-- **Flakes:** run every new module three times on the clean checkout before committing. A test that fails once in three is a failing test.
+- **Flakes:** run every new module five times on the clean checkout before committing, and once more with two runs of it in parallel, as a busy CI runner is slower than your machine. A test that fails once in five is a failing test.
 
 ## Rules for every test
 
@@ -113,6 +113,18 @@ An unproven regression test is decoration, so every narrow test is shown to fail
 - **When a change breaks a test, retarget it.** Point it at the new shape and keep it pinning the original bug. Loosening an assertion until it passes destroys the only thing the test was for.
 - **Skip only for a genuinely absent dependency, and name it.** A blanket `except Exception: pytest.skip(...)` turns real breakage into a green run. When the code a test targets is gone, fail and name what to retarget.
 - **A regression stays red until its fix merges.** Write it as a plain failing test that names the issue and the fix PR, so every run shows it. A strict `xfail` is for a known bug nobody is fixing yet: it flips to XPASS on its own once upstream fixes it. Keep allowlists out of the suite, since an allowlist sits there until someone remembers it.
+
+## Writing tests that do not flake
+
+A test that fails without a code change costs a release its trust in the suite. Every rule here comes from a test that did exactly that.
+
+- **Wait for the server, not the screen.** The UI shows a message, a reply or an edit before the server has stored it. Before the next step depends on something being saved (deleting a message that a reply quotes, approving a call, reading it as another account), wait for the request's response or read it back over HTTP.
+- **Act only on a settled page.** After opening the sidebar, a menu or a dialog, or picking from a suggestion list, wait for the state that proves it took effect (the dialog visible, the picked mention in the input) before the next click or keystroke. A click that can be lost while something animates may be repeated until its effect shows, with a one-line comment on why; never repeat an assertion.
+- **Check only what the test is about.** When a step only needs an earlier result (a reply before opening its sources), and the live view can lag behind the server, read the result from the stored chat. Keep live-rendering assertions in the tests that are about live rendering.
+- **Own every piece of state the test relies on.** Create the account, skill, channel or setting the test needs in the test itself, so it passes alone and in any order. A test that only passes because an earlier one left something behind is broken.
+- **Derive expectations from data you do not control.** When a test reads data that changes between releases (the changelog, the default prompts, the model list), check each item against its own source instead of assuming some item somewhere has a property.
+- **Tie every scripted reply to its prompt** with `reply.answering(prompt)`, and every count of provider requests to the requests of this test, so a request left over from an earlier test cannot take or add a reply.
+- **Pin time.** Compute expected dates in the zone the page uses, keep clear of midnight, and assert relative wording ("a few seconds ago") only where the page promises it.
 
 ## Keeping the remaining unit tests alive
 
