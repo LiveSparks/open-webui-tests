@@ -21,7 +21,9 @@ while it runs, brings it back (since fa4c7fe5e there is no Review in chat button
 End call closes the overlay and the provider's session. A provider that refuses or drops the
 call ends it: the overlay stays open with its message and Retry, which calls again, and End call
 closes it. Realtime calls open on the browser's speech-to-text engine too, which the standard
-call refuses, and without the call permission there is no Voice mode at all.
+call refuses, and without the call permission there is no Voice mode at all. Since a9227421d
+(open-webui/open-webui#32251) a realtime call keeps the screen on with a wake lock and lets it go
+when the call ends; a fake `navigator.wakeLock` counts both.
 
 Discriminates: passes on the dev 4f1f38541 build. In one frontend copy of it a mute that keeps
 sending audio, End call leaving the call connected, a failure the overlay does not show, the
@@ -35,7 +37,9 @@ chat model test red, the voice model's own answer never added turned that test r
 conversation sent to the provider turned that test red; 4f1f38541 left those paths alone. On
 the dev d989375b4 build the snapshot and typed question tests pass; a frontend copy of it that
 never resends the snapshot turns the typed during the call test red, and a backend copy that
-ignores the voice record of earlier messages turns the typed after the call test red.
+ignores the voice record of earlier messages turns the typed after the call test red. The end
+call test passes on dev c31423955 and turns red with a9227421d reverted (no wake lock is asked
+for during the call).
 """
 
 from __future__ import annotations
@@ -52,7 +56,13 @@ from harness.audio_engine import AUDIO_CONFIG
 from harness.chat_history import seed_chat
 from harness.realtime_provider import SAMPLE_RATE, serving_realtime_provider, using_realtime
 from utils.chat_ui import chat_input, conversation, expect_reply, send
-from utils.voice_call import TURN_TIMEOUT_MS, call_status, start_call
+from utils.voice_call import (
+    TURN_TIMEOUT_MS,
+    call_status,
+    expect_screen_kept_on,
+    record_wake_locks,
+    start_call,
+)
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -215,14 +225,17 @@ def test_ending_the_call_closes_the_panel_and_the_provider_session(
     voice_page_for, make_user, realtime
 ):
     page = voice_page_for(make_user())
+    record_wake_locks(page)
     start_call(page)
     call = realtime.wait_for_call()
     expect(call_status(page, "Listening")).to_be_visible(timeout=TURN_TIMEOUT_MS)
+    expect_screen_kept_on(page, True)
 
     page.get_by_role("button", name="End call").click()
 
     expect(call_overlay(page)).to_have_count(0)
     realtime.wait_for(call.ended.is_set, "the call end")
+    expect_screen_kept_on(page, False)
 
 
 def test_a_provider_refusing_the_session_shows_why_until_the_call_is_ended(

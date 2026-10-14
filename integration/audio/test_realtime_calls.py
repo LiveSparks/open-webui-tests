@@ -12,14 +12,19 @@ provider's own error text. Since d989375b4 the conversation goes over as a snaps
 characters), and a model with an avatar offers its named gestures through `play_animation`: a
 gesture's result (`bridge.animation.result`, unavailable whatever the browser says for a gesture
 the model does not have) goes to the provider as a function output and `bridge.animation.respond`
-asks it to go on, with the chat model still at hand.
+asks it to go on, with the chat model still at hand. Since 78613d86f a Standard call (a chat
+request with the `voice` feature) offers the same `play_animation` tool to a chat model on native
+function calling; a typed chat and a user without the call permission are not offered it.
 
 Discriminates: in a backend copy, the session voice ignoring the model's own voice turns the
 model voice test red, the `bridge.result` command no longer passed on as a function output turns
 the relay test red, the call permission check removed turns the permission test red, and a
 provider error passed on verbatim turns the provider error tests red. On d989375b4, gestures never
 offered turn the gesture tests red, the old snapshot never deleted turns the replace test red and
-the browser's word taken for a gesture the model does not have turns its case red.
+the browser's word taken for a gesture the model does not have turns its case red. On dev
+c31423955 a backend copy that never offers the tool to the chat model turns the standard call
+case red, and one that drops the voice feature and call permission checks turns the typed chat
+and permission cases red.
 """
 
 from __future__ import annotations
@@ -29,7 +34,9 @@ import uuid
 
 import pytest
 
+from harness import upstream as reply
 from harness.audio_engine import AUDIO_CONFIG
+from harness.chat import send_message, wait_for_reply
 from harness.chat_history import seed_chat
 from harness.instance import free_port
 from harness.realtime_provider import (
@@ -138,6 +145,18 @@ def model_with_gestures(admin):
     yield model_id
     with admin.client() as client:
         client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+
+@pytest.fixture
+def native_model_with_gestures(admin, model_with_gestures):
+    """`model_with_gestures` set to native function calling, as a standard call needs."""
+    with admin.client() as client:
+        stored = client.get("/api/v1/models/model", params={"id": model_with_gestures}).json()
+        stored["params"] = {"function_calling": "native"}
+        updated = client.post("/api/v1/models/model/update", json=stored)
+        assert updated.status_code == 200, updated.text
+        client.get("/api/models", params={"refresh": "true"}).raise_for_status()
+    return model_with_gestures
 
 
 @pytest.fixture
@@ -567,3 +586,42 @@ def test_a_gesture_result_reaches_the_provider_which_is_then_asked_to_go_on(
     asked = call.received("response.create")[-1]["response"]
     assert asked["metadata"] == {"input_item_id": heard["item_id"]}
     assert [tool["name"] for tool in asked["tools"]] == ["generate_chat_completion"]
+
+
+@pytest.mark.parametrize(
+    ("features", "call_allowed", "offered"),
+    [({"voice": True}, True, True), ({}, True, False), ({"voice": True}, False, False)],
+    ids=["standard-call", "typed-chat", "no-call-permission"],
+)
+def test_a_standard_call_offers_the_models_gestures_to_the_chat_model(
+    native_model_with_gestures,
+    admin,
+    make_user,
+    upstream,
+    preserve,
+    features,
+    call_allowed,
+    offered,
+):
+    if not call_allowed:
+        preserve("permissions")
+        with admin.client() as client:
+            permissions = client.get("/api/v1/users/default/permissions").json()
+            permissions["chat"]["call"] = False
+            saved = client.post("/api/v1/users/default/permissions", json=permissions)
+        assert saved.status_code == 200, saved.text
+    question = f"wave at me {uuid.uuid4().hex[:6]}"
+    upstream.queue(reply.text("Hello.", match=reply.answering(question)))
+    with make_user().client() as client:
+        turn = send_message(client, question, model=native_model_with_gestures, features=features)
+        wait_for_reply(client, turn)
+
+    request = next(filter(reply.answering(question), upstream.chat_requests()))
+    tools = {tool["function"]["name"]: tool["function"] for tool in request.get("tools", [])}
+    assert ("play_animation" in tools) == offered, list(tools)
+    if offered:
+        assert tools["play_animation"]["parameters"]["properties"]["name"]["enum"] == [
+            "wave",
+            "nod",
+        ]
+        assert "Wave when greeting." in tools["play_animation"]["description"]

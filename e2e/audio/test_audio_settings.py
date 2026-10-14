@@ -9,24 +9,36 @@ Auto-Send sends that transcript as the message. On the admin side, moving either
 browser's Web API hides that engine's controls, and once saved the user's tab and the voice call
 button follow.
 
+Since 78613d86f a voice call speaks with a user's Kokoro.js (Browser) voice when the admin set no
+server speech engine; before it the call fell back to the browser's own speechSynthesis. The
+Kokoro model is a download the suite cannot make, so the page's Kokoro worker is replaced by one
+that answers each sentence with silence, and speechSynthesis records what it is asked to say.
+
 Discriminates: passes on the dev 176d31d1d build; in a frontend copy, a read aloud that ignores
 the user's saved voice turns the voice test red, a finished reply that never presses its speak
 button turns the auto-playback test red, a recording that is never transcribed turns the
 dictation test red, a transcript that is not submitted turns the auto-send test red, and the
-speech-to-text controls staying on the page for the Web API turn the hide test red.
+speech-to-text controls staying on the page for the Web API turn the hide test red. The Kokoro
+call test passes on dev c31423955 and turns red in a build of it whose call plays its audio only
+for a server speech engine, as before 78613d86f (the reply goes to speechSynthesis, no Kokoro
+audio plays).
 """
 
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
-from harness.audio_engine import SPEECH_MODEL, TRANSCRIPT, VOICE, AudioEngine
+from harness.audio_engine import AUDIO_CONFIG, SPEECH_MODEL, TRANSCRIPT, VOICE, AudioEngine
 from harness.chat_history import seed_chat
 from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.speech_audio import silent_wav
+from utils.voice_call import TURN_TIMEOUT_MS, start_call
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -211,3 +223,71 @@ def test_the_web_api_engines_hide_their_controls_for_the_admin_and_the_user(
     expect(
         page.get_by_text("Call feature is not supported when using Web STT engine")
     ).to_be_visible()
+
+
+# Kokoro.js runs in a worker that downloads its model; this one answers at once with silence
+FAKE_KOKORO = """(speech) => {
+    window.kokoro = { asked: [], urls: [], played: [], synthesized: [] };
+    const RealWorker = window.Worker;
+    const wav = Uint8Array.from(atob(speech), (character) => character.charCodeAt(0));
+    class FakeKokoro extends EventTarget {
+        answer(data) {
+            const event = new MessageEvent('message', { data });
+            setTimeout(() => {
+                this.onmessage?.(event);
+                this.dispatchEvent(event);
+            });
+        }
+        postMessage(message) {
+            if (message.type === 'init') this.answer({ status: 'init:complete' });
+            if (message.type !== 'generate') return;
+            window.kokoro.asked.push(message.payload.text);
+            const url = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+            window.kokoro.urls.push(url);
+            this.answer({ status: 'generate:complete', audioUrl: url });
+        }
+        terminate() {}
+    }
+    window.Worker = function (url, options) {
+        return String(url).includes('kokoro') ? new FakeKokoro() : new RealWorker(url, options);
+    };
+    speechSynthesis.speak = (utterance) => window.kokoro.synthesized.push(utterance.text);
+    document.addEventListener(
+        'playing',
+        (event) => {
+            const source = event.target.src;
+            if (window.kokoro.urls.includes(source)) window.kokoro.played.push(source);
+        },
+        true
+    );
+}"""
+
+
+def test_a_call_speaks_with_the_users_kokoro_voice_when_the_server_has_no_speech_engine(
+    voice_page_for, make_user, admin, speech_engine, upstream
+):
+    with admin.client() as client:
+        current = client.get(AUDIO_CONFIG[0]).json()
+        current["tts"]["ENGINE"] = ""
+        saved = client.post(AUDIO_CONFIG[1], json=current)
+    assert saved.status_code == 200, saved.text
+    caller = make_user()
+    with caller.client() as client:
+        kokoro = {"audio": {"tts": {"engine": "browser-kokoro"}}}
+        saved = client.post("/api/v1/users/user/settings/update", json={"ui": kokoro})
+    assert saved.status_code == 200, saved.text
+    speech_engine.transcript = f"tell me about the lamp {uuid.uuid4().hex[:6]}"
+    answer = f"The keeper lights lamp {uuid.uuid4().hex[:6]}."
+    upstream.queue(reply.text(answer, match=reply.answering(speech_engine.transcript)))
+    page = voice_page_for(caller)
+    speech = base64.b64encode(silent_wav(1)).decode()
+    page.add_init_script(f"({FAKE_KOKORO})({json.dumps(speech)})")
+    page.reload()
+
+    start_call(page)
+
+    expect_reply(page, answer)
+    page.wait_for_function("() => window.kokoro.played.length > 0", timeout=TURN_TIMEOUT_MS)
+    spoken = page.evaluate("() => window.kokoro")
+    assert spoken["asked"] == [answer], spoken
+    assert spoken["synthesized"] == [], "the browser's own voice spoke the reply"

@@ -1,4 +1,4 @@
-"""Journey: a model's voice avatar in a realtime call, in place of the voice orb.
+"""Journey: a model's voice avatar in a realtime or standard call, in place of the voice orb.
 
 Since d989375b4 a model can carry a VRM avatar with optional state clips and named gestures.
 A realtime call on that model loads the avatar (and its clips) through the model's read access
@@ -12,23 +12,33 @@ provider to go on speaking after it. The avatar is drawn on a canvas, so a test 
 through that canvas and the orb, and its gestures through what the provider is told. Here the
 provider is `harness.realtime_provider` and the files come from `harness.voice_avatars`.
 
+Since 78613d86f a Standard call shows the avatar too, and a chat model on native function calling
+is offered the same `play_animation` tool during the call: the avatar plays the gesture and the
+model's next request carries its result, started. A Standard call's stage reads Voice call until
+it speaks.
+
 Discriminates: passes on the dev d989375b4 build. A frontend copy of it whose call overlay never
 shows the avatar turns the avatar and gesture started tests red, one whose overlay never falls
 back to the orb turns both fallback tests and the failed avatar case red, and a backend copy
 without the avatar's files among the model's readable files turns the avatar and gesture
 started tests red, the caller only reading the model. The reduced motion and unknown gesture
-cases pass there as well; integration/audio/test_realtime_calls.py proves the latter.
+cases pass there as well; integration/audio/test_realtime_calls.py proves the latter. The
+Standard call test passes on dev c31423955 and turns red in a build of it whose Standard call
+never shows the avatar (the canvas never appears), in one that answers every gesture unavailable
+(the result is unavailable) and with a backend copy that never offers the tool.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 
 import pytest
 from playwright.sync_api import Page, expect
 
+from harness import upstream as reply
 from harness.realtime_provider import serving_realtime_provider, using_realtime
 from harness.upstream import MOCK_MODEL_ID
 from harness.voice_avatars import SERVER_CHECKED_BONES, animation, avatar, upload
@@ -52,10 +62,13 @@ def realtime(admin, e2e_instance):
 
 @pytest.fixture
 def avatar_model(admin):
-    """`avatar_model(content, gesture=False)`: a model everyone reads, with the admin's avatar."""
+    """`avatar_model(content, gesture=False, params={})`: a model everyone reads, with the admin's
+    avatar."""
     created_ids = []
 
-    def create(content: bytes = avatar(), gesture: bool = False) -> dict:
+    def create(
+        content: bytes = avatar(), gesture: bool = False, params: dict | None = None
+    ) -> dict:
         settings = {"file_id": upload(admin, "pilot.vrm", content)}
         if gesture:
             settings["states"] = {"idle": {"file_id": upload(admin, "idle.vrma", animation())}}
@@ -66,7 +79,7 @@ def avatar_model(admin):
             "base_model_id": MOCK_MODEL_ID,
             "name": f"Harbour pilot {uuid.uuid4().hex[:4]}",
             "meta": {"voice_avatar": settings},
-            "params": {},
+            "params": params or {},
             "access_grants": [EVERYONE_READS],
         }
         with admin.client() as client:
@@ -83,7 +96,8 @@ def avatar_model(admin):
 
 
 def call_stage(page: Page):
-    return page.get_by_role("button", name="Stop speaking")
+    # a standard call names it Voice call until it speaks
+    return page.get_by_role("button", name=re.compile("^(Stop speaking|Voice call)$"))
 
 
 def expect_avatar_shown(page: Page) -> None:
@@ -217,3 +231,33 @@ def test_a_gesture_that_cannot_play_is_reported_unavailable(
     assert gesture_statuses(realtime) == ["unavailable"]
     effect = json.dumps(realtime.calls[-1].gesture_results[0])
     assert "could not start" in effect
+
+
+def test_a_standard_call_shows_the_avatar_and_the_chat_model_plays_its_gesture(
+    voice_page_for, make_user, speech_engine, upstream, avatar_model
+):
+    model = avatar_model(gesture=True, params={"function_calling": "native"})
+    settings = model["meta"]["voice_avatar"]
+    question, answer = f"wave at me {uuid.uuid4().hex[:6]}", f"Waving now {uuid.uuid4().hex[:6]}."
+    upstream.queue(
+        reply.tool_call("play_animation", {"name": "wave"}, match=reply.answering(question)),
+        reply.text(answer, match=reply.answering(question)),
+    )
+    # an empty transcript sends nothing, so the turn waits for the avatar
+    speech_engine.transcript = ""
+    page = voice_page_for(make_user())
+    fetched = call_on(page, model)
+    expect_avatar_shown(page)
+    for clip in (settings["states"]["idle"]["file_id"], settings["gestures"][0]["file_id"]):
+        wait_until_fetched(page, fetched, clip)
+
+    speech_engine.transcript = question
+
+    expect_reply(page, answer)
+    asked = [body for body in upstream.chat_requests() if reply.answering(question)(body)]
+    offered = [tool["function"]["name"] for tool in asked[0].get("tools", [])]
+    assert "play_animation" in offered, offered
+    results = [entry for body in asked for entry in body["messages"] if entry["role"] == "tool"]
+    assert results, "the gesture's result never reached the chat model"
+    assert json.loads(results[0]["content"]) == {"status": "started"}
+    expect_avatar_shown(page)

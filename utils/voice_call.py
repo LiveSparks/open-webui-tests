@@ -31,3 +31,43 @@ def wait_for_transcriptions(engine: AudioEngine, count: int, timeout: float = 20
                 f"{len(engine.transcription_requests())}"
             )
         time.sleep(0.1)
+
+
+# a screen wake lock that counts what the page asks of it
+RECORD_WAKE_LOCKS = """() => {
+    window.wakeLocks = { requested: 0, released: 0 };
+    const wakeLock = {
+        request: async (type) => {
+            window.wakeLocks.requested += 1;
+            const sentinel = new EventTarget();
+            sentinel.type = type;
+            sentinel.released = false;
+            sentinel.release = async () => {
+                if (sentinel.released) return;
+                sentinel.released = true;
+                window.wakeLocks.released += 1;
+            };
+            return sentinel;
+        }
+    };
+    Object.defineProperty(Navigator.prototype, 'wakeLock', {
+        configurable: true,
+        get: () => wakeLock
+    });
+}"""
+
+
+def record_wake_locks(page: Page) -> None:
+    """Count the page's screen wake lock requests and releases, from a reload on."""
+    page.add_init_script(f"({RECORD_WAKE_LOCKS})()")
+    page.reload()
+
+
+def expect_screen_kept_on(page: Page, kept_on: bool) -> None:
+    """Wait until the page holds a screen wake lock (`kept_on`) or holds none, having asked once."""
+    held = 1 if kept_on else 0
+    page.wait_for_function(
+        f"() => window.wakeLocks.requested > 0 && "
+        f"window.wakeLocks.requested - window.wakeLocks.released === {held}",
+        timeout=TURN_TIMEOUT_MS,
+    )

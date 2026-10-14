@@ -10,7 +10,9 @@ Open visibility gets that copy with no message box. The owner's chat settings st
 the Controls of someone replying show none of the owner's system prompt, the model is not sent it
 for their turn, and a clone made from the link starts without it. A folder shared with Allow
 replies lets its readers reply in the owner's chats in it, taking them off the folder's Access
-List closes the open chat, and only the folder's owner finds Share in its menu.
+List closes the open chat, and only the folder's owner finds Share in its menu. Since 3a54306c5
+someone replying in a shared chat gets no Voice mode button (the owner keeps theirs), and a call
+they left open in a chat of their own closes when they go back to the shared chat.
 
 Two tests are red on dev b5a20423e and name the bug. Opening an Allow replies link sends the
 account to the home page, or leaves an empty new chat on the chat's address: the shared page
@@ -30,7 +32,9 @@ signed-in visitor of the link fails the Open visibility test, the owner's settin
 others fails the system prompt and clone tests, and folder readers never allowed to reply fails
 the folder reply and folder removal tests. A frontend build with both bugs fixed (the shared page
 treating its move to the chat as done, the chat page reloading the chat when a rejoin is
-refused) passes all ten.
+refused) passes all ten. The live view test passes on dev c31423955 and turns red with 3a54306c5
+reverted (Voice mode shows for the member) and in a build of it that only leaves out closing the
+call (the call stays open over the shared chat).
 """
 
 from __future__ import annotations
@@ -47,6 +51,7 @@ from harness.chat_history import seed_chat
 from utils.chat_ui import chat_input, conversation, expect_reply, send
 from utils.member_picker import pick_member
 from utils.sidebar_folders import folder_row
+from utils.voice_call import start_call
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -159,7 +164,9 @@ def test_the_link_opens_the_owners_live_chat_straight_away(page_for, make_user, 
     expect(chat_input(member_page)).to_be_visible()
 
 
-def test_a_user_allowed_to_reply_chats_on_and_the_owner_sees_it_live(page_for, make_user, upstream):
+def test_a_user_allowed_to_reply_chats_on_and_the_owner_sees_it_live(
+    page_for, voice_page_for, make_user, upstream
+):
     owner, member = _accounts(make_user)
     owner_page = page_for(owner)
     chat_id = _start_chat(owner_page, upstream)
@@ -169,9 +176,12 @@ def test_a_user_allowed_to_reply_chats_on_and_the_owner_sees_it_live(page_for, m
     _share_link(dialog)
     dialog.get_by_role("button", name="Close").click()
 
-    member_page = page_for(member)
+    # a microphone, for the call the member leaves open below
+    member_page = voice_page_for(member)
     _open_live_chat(member_page, chat_id)
     expect(_user_message(member_page, QUESTION)).to_contain_text(owner.name)
+    expect(member_page.get_by_role("button", name="Voice mode")).to_have_count(0)
+    expect(owner_page.get_by_role("button", name="Voice mode")).to_be_visible()
     sent = _ask(member_page, upstream, "is there a later one?", "One more at noon.")
 
     assert [entry["content"] for entry in sent["messages"] if entry["role"] == "assistant"] == [
@@ -184,6 +194,12 @@ def test_a_user_allowed_to_reply_chats_on_and_the_owner_sees_it_live(page_for, m
     expect(_user_message(owner_page, QUESTION)).not_to_contain_text(owner.name)
     owner_page.reload()
     expect(_user_message(owner_page, "is there a later one?")).to_contain_text(member.name)
+
+    member_page.get_by_role("link", name="New Chat").first.click()
+    start_call(member_page)
+    member_page.go_back()
+    expect(conversation(member_page).get_by_text("One more at noon.")).to_be_visible()
+    expect(member_page.get_by_role("button", name="End call")).to_have_count(0)
 
 
 def test_a_group_member_loses_the_open_chat_when_taken_out_of_the_group(
