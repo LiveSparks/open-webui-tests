@@ -20,7 +20,9 @@ announces nothing, so that test stays red until the failure is published
 
 A target subscribed to `channel.message` is called for every message in a channel whose access
 list names its user. Once the user mutes the channel it is called only for a message that
-@mentions them.
+@mentions them. A member of a group channel or a direct message is never called, since only the
+access list is asked who may read and those channels keep their members apart from it; that test
+stays red until open-webui/open-webui#32403 is fixed.
 
 Discriminates: in a backend copy, `_check_notifications_access` skipping the switch turns the
 switched-off test red (HTTP 200) and skipping the permission turns the permission test red,
@@ -32,7 +34,8 @@ is called) and ignoring a target's events turns the unsubscribed test red (the o
 called); publishing `chat.failed` where a chat ends in an error turns the failed-reply test green.
 On dev b704d0613, `send_notification` ignoring the mute turns the muted channel test red (the
 ordinary message is delivered) and ignoring the mention turns it red as well (nothing is
-delivered).
+delivered). The group and direct message test fails on dev ad5c2f87e and passes in a backend copy
+whose `send_notification` also takes the members of those channels as recipients.
 """
 
 from __future__ import annotations
@@ -378,3 +381,28 @@ def test_a_muted_channel_calls_the_target_only_for_a_mention(allowed_notificatio
     time.sleep(1)
     delivered = [request.json()["message"] for request in listener.requests_to("/muted")]
     assert len(delivered) == 1 and "bring the keys" in delivered[0], delivered
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("kind", ["group", "dm"])
+def test_a_member_of_a_group_or_direct_message_is_notified(allowed_notifications, listener, kind):
+    admin = admin_of(allowed_notifications)
+    enable_channels(admin)
+    member = create_user(allowed_notifications)
+    _add_targets(member, _channel_target(f"{listener.base_url}/{kind}"))
+    with admin.client() as client:
+        created = client.post(
+            "/api/v1/channels/create",
+            json={"name": f"{kind}-{uuid.uuid4().hex[:8]}", "type": kind, "user_ids": [member.id]},
+        )
+    assert created.status_code == 200, created.text
+    channel_id = created.json()["id"]
+    with member.client() as client:
+        assert client.get(f"/api/v1/channels/{channel_id}/messages").status_code == 200
+
+    post_message(admin, channel_id, "the boat leaves at six")
+
+    assert _wait_for(lambda: listener.requests_to(f"/{kind}")), (
+        f"a member of a {kind} channel got no notification (open-webui/open-webui#32403)"
+    )
+    assert "the boat leaves at six" in listener.requests_to(f"/{kind}")[0].json()["message"]
