@@ -9,12 +9,26 @@ dispatched tool shows on the reply as a direct call does: knowledge sources list
 `[n]` marker opening its passage (after a reload too), a workspace tool's citation, a page read
 with `fetch_url`, a picture from `generate_image` kept as a stored file and an HTML embed.
 
+With Ask for approval, a round mixing a dispatched call, a direct call and a refused dispatch asks
+about each call in turn and runs only the allowed ones, and a second round asks again. A pending
+prompt survives a reload and another tab of the account can allow it; switching to Full access
+runs the pending calls; a denied dispatch is asked anew on Regenerate while Continue runs nothing;
+a temporary chat asks in a dialog naming the dispatched tool.
+
 Discriminates: passes on dev 6276e81ce; in a backend copy without the streaming handler's unwrap
 the display and approval tests fail (the reply shows call_tool), without the replay of the
 model's original call the display test fails on the next turn's history, and without the unknown
 tool check the failure test fails (a different error reaches the model and the chat). Skipping
 citation sources for dispatched calls fails the knowledge and page tests; no unwrap at all also
 fails the citation event, embed and picture tests.
+
+
+tool check the failure test fails (a different error reaches the model and the chat). In backend
+copies of dev 81f5b8adf, skipping the Ask pause for a round holding a dispatched call fails every
+approval test but the temporary chat one, which fails when its confirmation is skipped for a
+dispatched call; marking every pending call approved on one approval, or resuming with full
+access after an approval, fails the mixed round test. A frontend build whose Full access switch
+leaves pending calls alone fails the Full access test.
 """
 
 from __future__ import annotations
@@ -42,7 +56,15 @@ from harness.web_retrieval import (
     save_web_settings,
     serve_search_results,
 )
-from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply, last_reply, send
+from utils.chat_ui import (
+    REPLY_TIMEOUT_MS,
+    chat_input,
+    conversation,
+    expect_reply,
+    last_reply,
+    regenerate_buttons,
+    send,
+)
 from utils.model_selector import select_model
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -487,3 +509,194 @@ def test_a_page_read_through_call_tool_is_the_reply_source(page_for, searcher, l
     citation = page.get_by_role("dialog")
     expect(citation.get_by_role("link", name=page_url, exact=True)).to_be_visible()
     expect(citation).to_contain_text(PAGE_TEXT)
+
+
+def shout_directly(text: str, call_id: str) -> dict:
+    arguments = json.dumps({"text": text})
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": "shout", "arguments": arguments},
+    }
+
+
+def dispatched(tool_name: str, params: dict, call_id: str) -> dict:
+    arguments = json.dumps({"tool_name": tool_name, "params": json.dumps(params)})
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": "call_tool", "arguments": arguments},
+    }
+
+
+def test_a_mixed_round_asks_each_call_in_turn_and_a_second_round_asks_again(
+    tool_approval_on, page_for, make_user, upstream, shouter
+):
+    page = page_for(make_user())
+    select_model(page, shouter)
+    set_approval_mode(page, "Ask for approval")
+
+    prompt = f"shout twice {uuid.uuid4().hex[:6]}"
+    round_one = [
+        dispatched("shout", {"text": "one"}, "call_1"),
+        shout_directly("two", "call_2"),
+        dispatched("whisper", {"text": "hush"}, "call_3"),
+    ]
+    upstream.queue(
+        reply.Reply(tool_calls=round_one, match=reply.answering(prompt)),
+        call_tool("shout", {"text": "three"}, prompt, "call_4"),
+        reply.text("Shouted what I could.", match=reply.answering(prompt)),
+    )
+    send(page, prompt)
+    for word, action in (("one", "Allow"), ("two", "Deny"), ("three", "Allow")):
+        buttons = last_reply(page).get_by_role("button", name=action, exact=True)
+        expect(buttons).not_to_have_count(0, timeout=REPLY_TIMEOUT_MS)
+        card = last_reply(page).get_by_text("Allow shout?")
+        # several calls fold into one group that opens once
+        if not card.is_visible():
+            last_reply(page).get_by_text(re.compile(r"^Exploring")).last.click()
+        card.click()
+        expect(last_reply(page)).to_contain_text(re.compile(rf"Input\s*text\s*{word}"))
+        buttons.last.click()
+    expect_reply(page, "Shouted what I could.")
+
+    unavailable = 'Error: Tool "whisper" is not available. Search for an available tool.'
+    final = requests_for(upstream, prompt)[-1]
+    results = {
+        entry["tool_call_id"]: entry["content"]
+        for entry in final["messages"]
+        if entry["role"] == "tool"
+    }
+    assert results == {
+        "call_1": "ONE",
+        "call_2": REJECTED,
+        "call_3": unavailable,
+        "call_4": "THREE",
+    }
+    expect(last_reply(page)).to_contain_text("Denied shout")
+
+
+def test_a_pending_dispatch_survives_a_reload_and_another_tab_can_allow_it(
+    tool_approval_on, page_for, make_user, upstream, shouter
+):
+    account = make_user()
+    page = page_for(account)
+    select_model(page, shouter)
+    set_approval_mode(page, "Ask for approval")
+    prompt = f"shout later {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        call_tool("shout", {"text": "patience"}, prompt, "call_p"),
+        reply.text("Shouted after all.", match=reply.answering(prompt)),
+    )
+    send(page, prompt)
+    approval_button(page, "Allow")
+    expect(page).to_have_url(re.compile(r"/c/"))
+
+    page.reload()
+    approval_button(page, "Allow")
+    expect(last_reply(page)).to_contain_text("Allow shout?")
+    other_tab = page_for(account)
+    other_tab.goto(page.url)
+    expect(last_reply(other_tab)).to_contain_text("Allow shout?")
+    approval_button(other_tab, "Allow").click()
+
+    expect_reply(other_tab, "Shouted after all.")
+    expect_reply(page, "Shouted after all.")
+    expect(conversation(page).get_by_role("button", name="Allow", exact=True)).to_have_count(0)
+    assert tool_results(upstream, prompt) == ["PATIENCE"]
+
+
+def test_switching_to_full_access_runs_the_pending_calls_and_ask_asks_again_later(
+    tool_approval_on, page_for, make_user, upstream, shouter
+):
+    page = page_for(make_user())
+    select_model(page, shouter)
+    set_approval_mode(page, "Ask for approval")
+    prompt = f"shout both {uuid.uuid4().hex[:6]}"
+    both = [
+        dispatched("shout", {"text": "first"}, "call_1"),
+        shout_directly("second", "call_2"),
+    ]
+    upstream.queue(
+        reply.Reply(tool_calls=both, match=reply.answering(prompt)),
+        reply.text("Both shouted.", match=reply.answering(prompt)),
+    )
+    send(page, prompt)
+    approval_button(page, "Allow")
+    set_approval_mode(page, "Full access")
+    expect_reply(page, "Both shouted.")
+    assert tool_results(upstream, prompt) == ["FIRST", "SECOND"]
+
+    set_approval_mode(page, "Ask for approval")
+    again = f"shout again {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        call_tool("shout", {"text": "asked"}, again, "call_3"),
+        reply.text("Asked again.", match=reply.answering(again)),
+    )
+    send(page, again)
+    approval_button(page, "Allow").click()
+    expect_reply(page, "Asked again.")
+
+
+def test_a_denied_dispatch_is_asked_again_on_regenerate_and_continue_runs_nothing(
+    tool_approval_on, page_for, make_user, upstream, shouter
+):
+    page = page_for(make_user())
+    select_model(page, shouter)
+    set_approval_mode(page, "Ask for approval")
+    prompt = f"shout maybe {uuid.uuid4().hex[:6]}"
+    upstream.queue(
+        call_tool("shout", {"text": "maybe"}, prompt, "call_m"),
+        reply.text("Not shouted.", match=reply.answering(prompt)),
+    )
+    send(page, prompt)
+    approval_button(page, "Deny")
+    expect(regenerate_buttons(page)).to_have_count(0)
+    approval_button(page, "Deny").click()
+    expect_reply(page, "Not shouted.")
+
+    upstream.queue(reply.text(" Really not.", match=reply.answering(prompt)))
+    last_reply(page).hover()
+    conversation(page).get_by_role("button", name="Continue Response").click()
+    expect_reply(page, "Really not.")
+    continued = requests_for(upstream, prompt)[-1]
+    assert tool_results(upstream, prompt) == [REJECTED]
+    assert continued["messages"][-1]["role"] == "assistant"
+
+    upstream.queue(
+        call_tool("shout", {"text": "maybe"}, prompt, "call_r"),
+        reply.text("Shouted this time.", match=reply.answering(prompt)),
+    )
+    last_reply(page).hover()
+    regenerate_buttons(page).last.click()
+    page.get_by_text("Try Again").click()
+    approval_button(page, "Allow").click()
+    expect_reply(page, "Shouted this time.")
+    assert tool_results(upstream, prompt) == ["MAYBE"]
+
+
+def test_a_temporary_chat_asks_before_running_the_dispatched_tool(
+    tool_approval_on, page_for, make_user, upstream, shouter
+):
+    page = page_for(make_user())
+    select_model(page, shouter)
+    set_approval_mode(page, "Ask for approval")
+    page.get_by_role("button", name="Temporary Chat").click()
+
+    for word, action, answer, result in (
+        ("hidden", "Deny", "Kept quiet.", "Error: tool call was not approved."),
+        ("loud", "Allow", "Shouted it.", "LOUD"),
+    ):
+        prompt = f"shout {word} {uuid.uuid4().hex[:6]}"
+        upstream.queue(
+            call_tool("shout", {"text": word}, prompt, "call_t"),
+            reply.text(answer, match=reply.answering(prompt)),
+        )
+        send(page, prompt)
+        dialog = page.get_by_role("dialog")
+        expect(dialog).to_contain_text("Tool Permissions", timeout=REPLY_TIMEOUT_MS)
+        expect(dialog).to_contain_text(re.compile(rf'shout\s*\{{\s*"text": "{word}"'))
+        dialog.get_by_role("button", name=action, exact=True).click()
+        expect_reply(page, answer)
+        assert tool_results(upstream, prompt)[-1:] == [result]
+    assert "/c/" not in page.url

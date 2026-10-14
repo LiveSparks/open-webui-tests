@@ -13,6 +13,13 @@ a tool's files event, an HTML embed, and pictures from `generate_image` and `edi
 as files. The source list the citations template adds after a sourced round is the same, and
 the next turn replays `call_tool`. Added with dev 7b47c3b22.
 
+Approvals treat a dispatched tool as the tool itself: under every approval setting (Ask, Full
+access, no choice, the admin switch off, a model preset that asks) it is asked exactly when a
+direct call is. In a round mixing dispatched, direct and refused calls each call waits for its own
+approval in order and only the allowed ones run; an allowed call can lead to a second round that
+asks again; allowing a tool once allows no other call of it, dispatched or direct. Continue runs
+nothing that is still pending, Regenerate asks anew, and a temporary chat asks over the socket.
+
 Discriminates: in backend copies of dev 6276e81ce, unwrapping only at execution (not in the stream
 handler) fails the run, replay, Responses, approval, ask_user, builtin and MCP tests; no unwrap at
 all also fails every refused-dispatch case, the access, non-streamed resume and Ollama tests;
@@ -21,6 +28,15 @@ ask_user and Ollama tests; leaving filter tools out of the name check fails the 
 dropping the stored-item restore in the OpenAI router fails the relayed Responses test. Skipping
 citation sources for dispatched calls fails the file tool, cited round and page tests; no unwrap
 at all also fails the citation event, embed and image tests.
+
+
+dropping the stored-item restore in the OpenAI router fails the relayed Responses test.
+In backend copies of dev 81f5b8adf, skipping the Ask pause for a round holding a dispatched call
+fails the ask and model-asks parity cases and every approval test of the module; skipping the
+temporary chat's confirmation for a dispatched call fails the temporary chat test; marking every
+pending call approved on one approval fails the mixed round and allow-once tests; letting a
+Continue run pending calls fails the pending Continue test; and resuming with full access after
+an approval fails the mixed round, second round and allow-once tests.
 """
 
 from __future__ import annotations
@@ -49,6 +65,7 @@ from harness.ollama_provider import OLLAMA_CONFIG, chat_stream, connect_ollama, 
 from harness.plugins import installed_function
 from harness.python_tools import EVERYONE_READS, python_tool
 from harness.second_provider import OPENAI_CONFIG
+from harness.socket_client import connected
 from harness.terminal_server import read_grant
 from harness.upstream import MOCK_MODEL_ID, Reply
 from harness.web_retrieval import (
@@ -447,6 +464,379 @@ def test_an_approved_dispatch_resumes_without_streaming(tool_search, make_user, 
     assert "current_timestamp" in tool_messages(follow_up)["call_1"]
     assert replayed_calls(follow_up)["call_1"]["name"] == "call_tool"
     assert message["content"].endswith("It is late.")
+
+
+ASK = {"tool_approval_mode": "ask"}
+TIME_TOOL = "get_current_timestamp"
+REJECTED = "Error: tool call rejected by user."
+
+
+def stored_message(client: httpx.Client, turn: ChatTurn) -> dict:
+    chat = client.get(f"/api/v1/chats/{turn.chat_id}").json()["chat"]
+    return chat["history"]["messages"][turn.assistant_message_id]
+
+
+def asked_or_ran(client: httpx.Client, turn: ChatTurn, call_id: str = "call_1") -> str:
+    """`asked` once the call waits for approval, else its status once the reply is done."""
+    deadline = time.monotonic() + WAIT
+    message: dict = {}
+    while time.monotonic() < deadline:
+        message = stored_message(client, turn)
+        call = items(message, "function_call").get(call_id, {})
+        if call.get("status") == "pending":
+            return "asked"
+        if message.get("done"):
+            return call.get("status", "missing")
+        time.sleep(0.1)
+    raise AssertionError(f"{call_id} neither asked nor finished: {message}")
+
+
+def note_titles(client: httpx.Client) -> list[str]:
+    return [note["title"] for note in client.get("/api/v1/notes/").json()]
+
+
+@contextlib.contextmanager
+def preset(admin: Actor, params: dict | None) -> Iterator[str]:
+    """The scripted model, or a preset of it carrying `params` when given."""
+    if params is None:
+        yield reply.MOCK_MODEL_ID
+        return
+    model_id = f"preset-{uuid.uuid4().hex[:8]}"
+    with admin.client() as client:
+        created = client.post(
+            "/api/v1/models/create",
+            json={
+                "id": model_id,
+                "base_model_id": reply.MOCK_MODEL_ID,
+                "name": model_id,
+                "meta": {},
+                "params": params,
+                "access_grants": [EVERYONE_READS],
+            },
+        )
+        assert created.status_code == 200, created.text
+        try:
+            client.get("/api/models", params={"refresh": "true"}).raise_for_status()
+            yield model_id
+        finally:
+            client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+
+APPROVAL_MODES = [
+    pytest.param(True, ASK, None, "asked", id="ask"),
+    pytest.param(True, {"tool_approval_mode": "full"}, None, "completed", id="full-access"),
+    pytest.param(True, {}, None, "completed", id="no-choice"),
+    pytest.param(False, ASK, None, "completed", id="permissions-off"),
+    pytest.param(True, {}, ASK, "asked", id="model-asks"),
+]
+
+
+@pytest.mark.parametrize(("permissions", "params", "model_params", "expected"), APPROVAL_MODES)
+def test_a_dispatched_tool_is_asked_exactly_when_a_direct_call_is(
+    tool_search, admin, make_user, upstream, permissions, params, model_params, expected
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=permissions)
+    outcomes = {}
+    with preset(admin, model_params) as model, make_user().client() as client:
+        for kind, call in (
+            ("direct", reply.tool_call(TIME_TOOL, {})),
+            ("dispatched", dispatch(TIME_TOOL, {})),
+        ):
+            upstream.queue(call, reply.text("done"))
+            turn = send_message(client, "what time is it?", model=model, params=params)
+            outcomes[kind] = asked_or_ran(client, turn)
+            if outcomes[kind] == "asked":
+                assert not items(stored_message(client, turn), "function_call_output")
+                resolve(client, turn, "call_1", "reject")
+            wait_for_reply(client, turn)
+
+    assert outcomes == {"direct": expected, "dispatched": expected}
+
+
+def test_a_mixed_round_asks_each_call_in_order_and_runs_only_the_allowed(
+    tool_search, make_user, upstream
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    kept, dropped = f"kept {uuid.uuid4().hex[:6]}", f"dropped {uuid.uuid4().hex[:6]}"
+    unavailable = 'Error: Tool "launch_rockets" is not available. Search for an available tool.'
+    calls = [
+        {"id": "call_1", "type": "function", "function": {"name": TIME_TOOL, "arguments": "{}"}},
+        dispatch_call(
+            "call_2",
+            {"tool_name": "write_note", "params": json.dumps({"title": kept, "content": "lit"})},
+        ),
+        dispatch_call("call_3", {"tool_name": "launch_rockets", "params": "{}"}),
+        dispatch_call(
+            "call_4",
+            {"tool_name": "write_note", "params": json.dumps({"title": dropped, "content": "x"})},
+        ),
+    ]
+    upstream.queue(Reply(tool_calls=calls), reply.text("Two of four."))
+    with make_user().client() as client:
+        turn = send_message(client, "log the lights", params=ASK)
+        wait_for_status(client, turn, "call_1", "pending")
+        paused = stored_message(client, turn)
+        resolve(client, turn, "call_1", "approve")
+        wait_for_status(client, turn, "call_2", "pending")
+        titles_before_second = note_titles(client)
+        resolve(client, turn, "call_2", "approve")
+        wait_for_status(client, turn, "call_4", "pending")
+        titles_before_fourth = note_titles(client)
+        resolve(client, turn, "call_4", "reject")
+        message = wait_for_reply(client, turn)
+        titles = note_titles(client)
+
+    shown = items(paused, "function_call")
+    assert [(item["name"], item["status"]) for item in shown.values()] == [
+        (TIME_TOOL, "pending"),
+        ("write_note", "queued"),
+        ("call_tool", "failed"),
+        ("write_note", "queued"),
+    ]
+    assert result_text(paused, "call_3") == unavailable
+    assert list(items(paused, "function_call_output")) == ["call_3"]
+    assert titles_before_second == [] and titles_before_fourth == titles == [kept]
+
+    follow_up = upstream.chat_requests()[-1]
+    [assistant] = [
+        entry
+        for entry in follow_up["messages"]
+        if entry["role"] == "assistant" and entry.get("tool_calls")
+    ]
+    assert assistant["tool_calls"] == calls
+    results = tool_messages(follow_up)
+    assert "current_timestamp" in results["call_1"]
+    assert not results["call_2"].startswith("Error")
+    assert (results["call_3"], results["call_4"]) == (unavailable, REJECTED)
+    assert [item["status"] for item in items(message, "function_call").values()] == [
+        "completed",
+        "completed",
+        "failed",
+        "rejected",
+    ]
+    assert message["content"].endswith("Two of four.")
+
+
+def test_an_approved_dispatch_leads_to_a_second_dispatch_that_asks_again(
+    tool_search, admin, make_user, upstream
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    upstream.queue(
+        dispatch("harbour_lights", {"harbour": "Pula"}),
+        dispatch("harbour_lights", {"harbour": "Rovinj"}, call_id="call_2"),
+        reply.text("Both lit."),
+    )
+    with python_tool(admin, HARBOUR_TOOLS) as tool_id, make_user().client() as client:
+        turn = send_message(client, "check two harbours", tool_ids=[tool_id], params=ASK)
+        wait_for_status(client, turn, "call_1", "pending")
+        resolve(client, turn, "call_1", "approve")
+        second = wait_for_status(client, turn, "call_2", "pending")
+        time.sleep(0.5)  # nothing runs while the second approval is open
+        requests_while_open = len(upstream.chat_requests())
+        resolve(client, turn, "call_2", "approve")
+        message = wait_for_reply(client, turn)
+
+    assert (second["name"], json.loads(second["arguments"])) == (
+        "harbour_lights",
+        {"harbour": "Rovinj"},
+    )
+    assert requests_while_open == 2
+    final = upstream.chat_requests()[-1]
+    assert tool_messages(final) == {"call_1": "lit at Pula", "call_2": "lit at Rovinj"}
+    assert {call["name"] for call in replayed_calls(final).values()} == {"call_tool"}
+    assert message["content"].endswith("Both lit.")
+
+
+def test_allowing_a_tool_once_allows_no_other_call_of_it(tool_search, make_user, upstream):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    same_tool_twice = Reply(
+        tool_calls=[
+            dispatch_call("call_1", {"tool_name": TIME_TOOL, "params": "{}"}),
+            {
+                "id": "call_2",
+                "type": "function",
+                "function": {"name": TIME_TOOL, "arguments": "{}"},
+            },
+        ]
+    )
+    upstream.queue(same_tool_twice, reply.text("first"))
+    with make_user().client() as client:
+        turn = send_message(client, "what time is it?", params=ASK)
+        wait_for_status(client, turn, "call_1", "pending")
+        resolve(client, turn, "call_1", "approve")
+        wait_for_status(client, turn, "call_2", "pending")
+        resolve(client, turn, "call_2", "reject")
+        wait_for_reply(client, turn)
+
+        later = []
+        for call in (reply.tool_call(TIME_TOOL, {}), dispatch(TIME_TOOL, {})):
+            upstream.queue(call, reply.text("again"))
+            turn = send_message(
+                client,
+                "and now?",
+                params=ASK,
+                chat_id=turn.chat_id,
+                parent_id=turn.assistant_message_id,
+            )
+            later.append(asked_or_ran(client, turn))
+            resolve(client, turn, "call_1", "approve")
+            wait_for_reply(client, turn)
+
+    assert later == ["asked", "asked"]
+
+
+def resend(
+    client: httpx.Client, turn: ChatTurn, assistant_message_id: str, continuing: bool
+) -> ChatTurn:
+    """Regenerate the reply to `turn` under a new id, or continue it, as the web client does."""
+    stored = client.get(f"/api/v1/chats/{turn.chat_id}").json()["chat"]["history"]["messages"]
+    question = stored[turn.user_message_id]
+    payload = {
+        "model": reply.MOCK_MODEL_ID,
+        "messages": [{"role": "user", "content": question["content"]}],
+        "stream": True,
+        "chat_id": turn.chat_id,
+        "id": assistant_message_id,
+        "user_message": {
+            **question,
+            "childrenIds": sorted({turn.assistant_message_id, assistant_message_id}),
+        },
+        "params": ASK,
+        "session_id": f"harness-{uuid.uuid4().hex[:8]}",
+        "background_tasks": {},
+    }
+    if continuing:
+        payload["assistant_message_id"] = assistant_message_id
+    accepted = client.post("/api/chat/completions", json=payload)
+    assert accepted.status_code == 200, accepted.text
+    return ChatTurn(turn.chat_id, turn.user_message_id, assistant_message_id)
+
+
+def test_continuing_a_pending_dispatch_runs_nothing_until_it_is_allowed(
+    tool_search, make_user, upstream
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    upstream.queue(dispatch(TIME_TOOL, {}), reply.text("It is late."))
+    with make_user().client() as client:
+        turn = send_message(client, "what time is it?", params=ASK)
+        wait_for_status(client, turn, "call_1", "pending")
+        resend(client, turn, turn.assistant_message_id, continuing=True)
+        time.sleep(1)  # a continue must not run the call or call the model
+        after_continue = stored_message(client, turn)
+        requests_after_continue = len(upstream.chat_requests())
+        resolve(client, turn, "call_1", "approve")
+        message = wait_for_reply(client, turn)
+
+    assert requests_after_continue == 1
+    assert items(after_continue, "function_call")["call_1"]["status"] == "pending"
+    assert not items(after_continue, "function_call_output")
+    assert "current_timestamp" in tool_messages(upstream.chat_requests()[-1])["call_1"]
+    assert message["content"].endswith("It is late.")
+
+
+def test_continuing_a_rejected_dispatch_replays_the_rejection_and_runs_nothing(
+    tool_search, make_user, upstream
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    upstream.queue(dispatch(TIME_TOOL, {}), reply.text("Fine."), reply.text(" Still fine."))
+    with make_user().client() as client:
+        turn = send_message(client, "what time is it?", params=ASK)
+        wait_for_status(client, turn, "call_1", "pending")
+        resolve(client, turn, "call_1", "reject")
+        wait_for_reply(client, turn)
+        resend(client, turn, turn.assistant_message_id, continuing=True)
+        deadline = time.monotonic() + WAIT
+        while len(upstream.chat_requests()) < 3 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        message = wait_for_reply(client, turn)
+
+    continued = upstream.chat_requests()[-1]
+    assert len(upstream.chat_requests()) == 3
+    assert replayed_calls(continued)["call_1"]["name"] == "call_tool"
+    assert tool_messages(continued) == {"call_1": REJECTED}
+    assert [item["status"] for item in items(message, "function_call_output").values()] == [
+        "rejected"
+    ]
+
+
+def test_regenerating_a_pending_dispatch_asks_again_and_leaves_the_old_call_unrun(
+    tool_search, make_user, upstream
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    upstream.queue(dispatch(TIME_TOOL, {}), dispatch(TIME_TOOL, {}), reply.text("Regenerated."))
+    with make_user().client() as client:
+        turn = send_message(client, "what time is it?", params=ASK)
+        wait_for_status(client, turn, "call_1", "pending")
+        regenerated = resend(client, turn, str(uuid.uuid4()), continuing=False)
+        assert asked_or_ran(client, regenerated) == "asked"
+        resolve(client, regenerated, "call_1", "approve")
+        message = wait_for_reply(client, regenerated)
+        old = stored_message(client, turn)
+
+    assert message["content"].endswith("Regenerated.")
+    assert items(old, "function_call")["call_1"]["status"] == "pending"
+    assert not items(old, "function_call_output")
+    assert len(upstream.chat_requests()) == 3
+
+
+def test_a_temporary_chat_asks_over_the_socket_for_the_dispatched_tool(
+    tool_search, admin, make_user, upstream
+):
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    account = make_user()
+    asked: list[dict] = []
+    decisions = [False, False, True]
+    turns = [
+        dispatch("harbour_lights", {"harbour": "Pula"}),
+        reply.tool_call("harbour_lights", {"harbour": "Pula"}),
+        dispatch("harbour_lights", {"harbour": "Rovinj"}),
+        dispatch("launch_rockets", {}),
+    ]
+    results = []
+    with (
+        python_tool(admin, HARBOUR_TOOLS) as tool_id,
+        connected(account) as socket,
+        account.client() as client,
+    ):
+
+        def answer(event: dict):
+            socket.events.append(event)
+            data = event.get("data") or {}
+            if data.get("type") == "confirmation":
+                asked.append(data["data"]["tool_call"])
+                return decisions.pop(0)
+            return None
+
+        socket.client.on("events", answer)
+        chat_id = f"temporary:{socket.client.get_sid()}"
+        for count, call in enumerate(turns, start=1):
+            upstream.queue(call, reply.text("ok"))
+            send_message(
+                client,
+                "are the lights on?",
+                chat_id=chat_id,
+                session_id=socket.client.get_sid(),
+                tool_ids=[tool_id],
+                params=ASK,
+            )
+            deadline = time.monotonic() + WAIT
+            while len(upstream.chat_requests()) < 2 * count and time.monotonic() < deadline:
+                time.sleep(0.1)
+            results.append(tool_messages(upstream.chat_requests()[-1])["call_1"])
+        assert client.get("/api/v1/chats/").json() == []
+
+    assert [(entry["name"], entry["arguments"]) for entry in asked] == [
+        ("harbour_lights", {"harbour": "Pula"}),
+        ("harbour_lights", {"harbour": "Pula"}),
+        ("harbour_lights", {"harbour": "Rovinj"}),
+    ]
+    not_approved = "Error: tool call was not approved."
+    assert results == [
+        not_approved,
+        not_approved,
+        "lit at Rovinj",
+        'Error: Tool "launch_rockets" is not available. Search for an available tool.',
+    ]
 
 
 def ask_user_question() -> dict:
