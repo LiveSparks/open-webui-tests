@@ -796,6 +796,33 @@ def test_a_file_tool_through_call_tool_cites_what_a_direct_call_cites(
     assert NOTES in json.dumps(sources["call_tool"])
 
 
+@pytest.mark.parametrize("via", VIAS)
+def test_an_approved_file_tool_cites_what_an_unasked_one_cites(tool_search, library, upstream, via):
+    """Sources must not be lost when the reply resumes after an approval (#32436)."""
+    reader, knowledge_id, _ = library
+    tool_search(ENABLE_TOOL_PERMISSIONS=True)
+    arguments = {"query": "heron", "knowledge_ids": [knowledge_id], "count": 10}
+    sources = {}
+    with reader.client() as client:
+        for mode in ("full", "ask"):
+            upstream.queue(
+                model_calls(tool_search, via, "query_knowledge_files", arguments),
+                reply.text("cited"),
+            )
+            turn = send_message(
+                client, f"what about herons? ({via}, {mode})", params={"tool_approval_mode": mode}
+            )
+            if mode == "ask":
+                wait_for_status(client, turn, "call_1", "pending")
+                resolve(client, turn, "call_1", "approve")
+            message = wait_for_reply(client, turn)
+            assert_ran_as(message, "query_knowledge_files")
+            sources[mode] = message.get("sources")
+
+    assert sources["full"], "the unasked call cited nothing"
+    assert sources["ask"] == sources["full"], "the approved call lost its sources"
+
+
 def test_a_round_cited_through_call_tool_gets_the_source_list_and_replays_next_turn(
     tool_search, library, upstream
 ):
