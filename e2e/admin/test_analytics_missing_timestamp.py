@@ -65,7 +65,7 @@ def test_all_time_loads_with_a_message_stored_without_a_time(instance, admin, ma
     page = page_for(make_user(role="admin"))
     page.goto("/admin/analytics")
     settings = page.get_by_role("dialog")
-    expect(settings.get_by_text("User Activity", exact=True)).to_be_visible()
+    expect(settings.get_by_role("button", name="Models", exact=True, pressed=True)).to_be_visible()
     settings.get_by_role("combobox").filter(has_text="All Users").select_option(label=group_name)
     expect(settings.get_by_text("0 messages")).to_be_visible()
 

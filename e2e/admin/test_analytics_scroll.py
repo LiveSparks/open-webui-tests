@@ -23,12 +23,12 @@ def test_the_wheel_reaches_the_end_of_the_analytics_dashboard(page_for, make_use
     page.set_viewport_size({"width": 1280, "height": 420})
     page.goto("/admin/settings/analytics")
     settings = page.get_by_role("dialog")
-    user_activity = settings.get_by_text("User Activity", exact=True)
-    expect(user_activity).to_be_visible()
+    leaderboard = settings.get_by_role("button", name="Models", exact=True, pressed=True)
+    expect(leaderboard).to_be_visible()
     end_note = settings.get_by_text("Message counts are based on assistant responses.")
     expect(end_note).not_to_be_in_viewport()
 
-    user_activity.hover()
+    leaderboard.hover()
     for _ in range(25):
         page.mouse.wheel(0, 400)
 

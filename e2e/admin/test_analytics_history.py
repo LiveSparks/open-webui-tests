@@ -116,10 +116,15 @@ def history(admin, make_user, presets) -> History:
     return History(asker, group_name, tag)
 
 
+def leaderboard_tab(settings: Locator, name: str, selected: bool | None = None) -> Locator:
+    """The Models / Users switch above the leaderboard, shown once the dashboard has loaded."""
+    return settings.get_by_role("button", name=name, exact=True, pressed=selected)
+
+
 def open_dashboard(page: Page, group_name: str, period: str) -> Locator:
     page.goto("/admin/analytics")
     settings = page.get_by_role("dialog")
-    expect(settings.get_by_text("User Activity", exact=True)).to_be_visible()
+    expect(leaderboard_tab(settings, "Models", selected=True)).to_be_visible()
     settings.get_by_role("combobox").filter(has_text="All Users").select_option(label=group_name)
     settings.get_by_role("combobox").filter(has_text="Custom range").select_option(label=period)
     return settings
@@ -218,11 +223,11 @@ def test_the_model_table_sorts_by_tokens_and_shows_each_models_share(history, ad
     expect(model_row(settings, aster).get_by_role("cell").last).to_have_text("75.0%")
     expect(model_row(settings, birch).get_by_role("cell").last).to_have_text("25.0%")
 
-    settings.get_by_role("columnheader", name="Tokens").first.click()
+    settings.get_by_role("columnheader", name="Total", exact=True).click()
 
     expect(rows.first).to_contain_text(birch)
-    expect(model_row(settings, birch).get_by_role("cell").nth(5)).to_have_text("500")
-    expect(model_row(settings, aster).get_by_role("cell").nth(5)).to_have_text("45")
+    expect(model_row(settings, birch).get_by_role("cell").nth(7)).to_have_text("500")
+    expect(model_row(settings, aster).get_by_role("cell").nth(7)).to_have_text("45")
 
 
 def open_model_details(page: Page, settings: Locator, name: str) -> Locator:

@@ -126,12 +126,17 @@ def activity(admin, make_user, upstream, presets) -> Activity:
 
 @pytest.fixture
 def dashboard(page_for, make_user) -> tuple[Page, Locator]:
-    """A fresh admin on the analytics dashboard, with the user tables loaded."""
+    """A fresh admin on the analytics dashboard, loaded."""
     page = page_for(make_user(role="admin"))
     page.goto("/admin/analytics")
     settings = page.get_by_role("dialog")
-    expect(settings.get_by_text("User Activity", exact=True)).to_be_visible()
+    expect(leaderboard_tab(settings, "Models", selected=True)).to_be_visible()
     return page, settings
+
+
+def leaderboard_tab(settings: Locator, name: str, selected: bool | None = None) -> Locator:
+    """The Models / Users switch above the leaderboard, shown once the dashboard has loaded."""
+    return settings.get_by_role("button", name=name, exact=True, pressed=selected)
 
 
 def _period(settings: Locator) -> Locator:
@@ -158,16 +163,23 @@ def test_the_model_table_counts_each_presets_messages_users_chats_and_tokens(
     _, settings = dashboard
     aster, birch = presets
     expect(_row(settings, aster)).to_have_count(1)
-    _cells(_row(settings, aster), "2", "1", "1", "230")
-    _cells(_row(settings, birch), "2", "2", "2", "270")
+    # messages, users, chats, then input, output and total tokens
+    _cells(_row(settings, aster), "2", "1", "1")
+    _cells(_row(settings, birch), "2", "2", "2")
+    expect(_row(settings, aster).get_by_role("cell").nth(7)).to_have_text("230")
+    expect(_row(settings, birch).get_by_role("cell").nth(7)).to_have_text("270")
 
 
 def test_the_user_table_and_summary_count_the_groups_messages_and_tokens(activity, dashboard):
     _, settings = dashboard
     _group_filter(settings).select_option(label=activity.group_name)
+    leaderboard_tab(settings, "Users").click()
     expect(_row(settings, activity.first.name)).to_have_count(1)
-    _cells(_row(settings, activity.first.name), "3", "360")
-    _cells(_row(settings, activity.second.name), "1", "140")
+    # messages, then input, output and total tokens
+    _cells(_row(settings, activity.first.name), "3")
+    _cells(_row(settings, activity.second.name), "1")
+    expect(_row(settings, activity.first.name).get_by_role("cell").nth(5)).to_have_text("360")
+    expect(_row(settings, activity.second.name).get_by_role("cell").nth(5)).to_have_text("140")
     expect(settings.get_by_text("4 messages")).to_be_visible()
     expect(settings.get_by_text("500 tokens")).to_be_visible()
     expect(settings.get_by_text("3 chats")).to_be_visible()
@@ -187,7 +199,10 @@ def test_a_date_range_before_the_chats_empties_the_dashboard(activity, dashboard
     end.fill((date.today() - timedelta(days=3)).isoformat())
     expect(settings.get_by_text("0 messages")).to_be_visible()
     expect(_row(settings, aster)).to_have_count(0)
-    expect(settings.get_by_text("No data")).to_have_count(2)
+    expect(settings.get_by_text("No data")).to_have_count(1)
+    leaderboard_tab(settings, "Users").click()
+    expect(settings.get_by_text("No data")).to_have_count(1)
+    leaderboard_tab(settings, "Models").click()
 
     _period(settings).select_option(label="Last 24 hours")
     expect(_row(settings, aster)).to_have_count(1)
@@ -225,7 +240,7 @@ def test_a_user_is_sent_back_to_the_chat_and_refused_the_api(page_for, make_user
 
     page.goto("/?settings=admin%3Aanalytics")
     expect(page.get_by_role("dialog").get_by_role("tab", selected=True)).to_be_visible()
-    expect(page.get_by_role("dialog").get_by_text("Model Usage")).to_have_count(0)
+    expect(leaderboard_tab(page.get_by_role("dialog"), "Models")).to_have_count(0)
 
     now = int(time.time())
     with user.client() as client:
