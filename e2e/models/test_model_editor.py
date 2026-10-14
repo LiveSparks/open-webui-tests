@@ -14,7 +14,8 @@ editor is private to its maker until the editor shares it with a group, whose me
 it. With realtime voice calls on, a Realtime Voice set in the editor is the voice a call on the
 model opens with, and cleared it falls back to the admin's; with calls on Standard the editor
 offers no such field. A TTS voice set for the model reads its replies aloud, over the voice the
-user picked for themselves. The system prompt is covered by
+user picked for themselves. A revision typed on the right of the system prompt's Compare revision
+editor and applied is the system prompt the model saves. Sending the system prompt is covered by
 e2e/workspace/test_workspace_presets.py. The advanced params test was retargeted for
 d4879a98b, whose Advanced Params heading is itself the button that shows them: it passes on
 dev 0401b7522 (3 of 3) and fails in a build of it whose editor drops the params from the model.
@@ -33,6 +34,8 @@ Retargeted for 8d0ff76f2, whose editor folds its settings into sections that ope
 its checkboxes into switches and picks tools, skills, filters, actions and knowledge from a search
 list: passes on dev 76ad6f97c (3 of 3), and in a build of it whose editor saves the model's settings
 as they were loaded every test that saves an edit fails.
+The compare test passes on dev c143625cc (3 of 3) and fails in a build of it whose Apply hands
+back the left side, the original.
 Retargeted for e32d2f75b, whose editor picks the base model with the chat's model selector (Select
 a base model): the sharing test passes on dev b40891e0a (3 of 3) and fails in a backend copy of it
 that makes every new model readable by everyone.
@@ -627,3 +630,26 @@ def test_a_tts_voice_set_in_the_editor_reads_the_replies_over_the_users_own(
     spoken = engine.speech_requests()
     voices = [request["voice"] for request in spoken if answer in request["input"]]
     assert voices == ["lighthouse"], f"the model's reply was read in {voices}"
+
+
+def test_a_revision_applied_from_compare_is_the_saved_system_prompt(page_for, builder, preset):
+    original = "Answer as the harbour master."
+    revised = unique("Answer as the harbour master, in one short sentence.")
+    page = page_for(builder)
+    editor = open_editor(page, preset)
+    prompt_box = editor.get_by_role("textbox", name="System Prompt", exact=True)
+    prompt_box.fill(original)
+
+    editor.get_by_role("button", name="Compare revision").click()
+    compare = page.get_by_role("dialog", name="Compare revision")
+    expect(compare.get_by_role("textbox", name="Original")).to_have_text(original)
+    compare.get_by_role("textbox", name="Proposed revision").click()
+    page.keyboard.type(revised)
+    compare.get_by_role("button", name="Apply to draft").click()
+
+    expect(compare).to_have_count(0)
+    expect(prompt_box).to_have_value(revised)
+    save(editor)
+    with builder.client() as client:
+        stored = client.get("/api/v1/models/model", params={"id": preset["id"]}).json()
+    assert stored["params"]["system"] == revised
