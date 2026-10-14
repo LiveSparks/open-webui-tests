@@ -2,10 +2,11 @@
 
 A channel manager invites the app through Add Member in the channel's member list. People then
 mention it from the `@` picker; the app answers as an ordinary message everyone sees under its
-name, and when a mention cannot be delivered, the reason appears under the asker's message marked
-"Only visible to you" for them alone. Buttons on an app message call the app: a private answer,
-a download or an error shows only to whoever pressed it, an acknowledgement shows nothing, and
-the result of longer work arrives later as an ordinary app message.
+name. When a mention cannot be delivered, the app's "App error:" reply says why for everyone;
+only when the app cannot post (it was disabled) does the reason appear under the asker's message
+marked "Only visible to you" for them alone. Buttons on an app message call the app: a private
+answer, a download or an error shows only to whoever pressed it, an acknowledgement shows nothing,
+and the result of longer work arrives later as an ordinary app message.
 
 An app can name a person as `<@U:id>`; the channel shows them by name, or as Unknown when the
 account is gone.
@@ -15,7 +16,12 @@ checks (the button handler's and the reply list's), the private reply row the ac
 then gets turns test_a_button_the_app_acknowledges_shows_nothing red. Either check alone holds.
 Retargeted for dev c7193760b with oix 0.8, where a mention only gets a delivery receipt; passes
 there except the `bare` cases of the two person mention tests: a mention written without a name
-shows as `@U:<id>`, while `<@U:id|id>` resolves.
+shows as `@U:<id>`, while `<@U:id|id>` resolves (#32362). Retargeted for dev b704d0613, where a
+failed delivery becomes the app's public error reply; every test passes there, the `bare` cases
+since 403f21ae7 (#32371) resolves a mention written without a name. With the backend's private
+fallback sent to every channel member, test_a_mention_the_app_cannot_answer_tells_only_the_asker
+turns red; with the public error reply never posted,
+test_a_mention_that_cannot_be_delivered_shows_the_app_error_to_everyone turns red.
 """
 
 from __future__ import annotations
@@ -149,7 +155,7 @@ def test_a_mention_from_the_picker_is_answered_for_everyone(
     expect(_private_reply(asker, installed_app["id"])).to_have_count(0)
 
 
-def test_a_mention_that_cannot_be_delivered_tells_only_the_asker(
+def test_a_mention_the_app_cannot_answer_tells_only_the_asker(
     page_for, apps_admin, make_apps_user, installed_app
 ):
     asker_account, watcher_account = make_apps_user(), make_apps_user()
@@ -161,18 +167,38 @@ def test_a_mention_that_cannot_be_delivered_tells_only_the_asker(
     _open_channel(watcher, channel_id)
     _type_mention(asker, installed_app["name"], "secret question", send=False)
     with apps_admin.client() as client:
-        client.patch(f"/api/v1/apps/{installed_app['id']}", json={"access_grants": []})
+        client.patch(f"/api/v1/apps/{installed_app['id']}", json={"is_active": False})
     asker.keyboard.press("Enter")
     reply = _private_reply(asker, installed_app["id"])
-    expect(reply).to_contain_text(
-        "App access was denied. Check permissions before retrying.", timeout=ANSWER_TIMEOUT_MS
-    )
+    expect(reply).to_contain_text("App is inactive", timeout=ANSWER_TIMEOUT_MS)
     expect(reply).to_contain_text("Only visible to you")
     expect(reply).not_to_contain_text("could not complete")
     expect(watcher.get_by_text("secret question")).to_be_visible()
     expect(_private_reply(watcher, installed_app["id"])).to_have_count(0)
     reply.get_by_role("button", name="Dismiss").click()
     expect(reply).to_have_count(0)
+
+
+def test_a_mention_that_cannot_be_delivered_shows_the_app_error_to_everyone(
+    page_for, apps_admin, make_apps_user, installed_app
+):
+    asker_account, watcher_account = make_apps_user(), make_apps_user()
+    channel_id = _channel_with_app(
+        apps_admin, installed_app, type="group", user_ids=[asker_account.id, watcher_account.id]
+    )
+    asker, watcher = page_for(asker_account), page_for(watcher_account)
+    _open_channel(asker, channel_id)
+    _open_channel(watcher, channel_id)
+    _type_mention(asker, installed_app["name"], "open question", send=False)
+    with apps_admin.client() as client:
+        client.patch(f"/api/v1/apps/{installed_app['id']}", json={"access_grants": []})
+    asker.keyboard.press("Enter")
+    for page in (asker, watcher):
+        error = page.locator("[id^='message-']").filter(has_text="App invocation denied").last
+        expect(error).to_be_visible(timeout=ANSWER_TIMEOUT_MS)
+        expect(error).to_contain_text("App error:")
+        expect(error).to_contain_text(installed_app["name"])
+    expect(_private_reply(asker, installed_app["id"])).to_have_count(0)
 
 
 def test_a_public_mention_answer_shows_to_everyone(

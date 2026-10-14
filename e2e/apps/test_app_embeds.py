@@ -6,10 +6,12 @@ tab and never call the app. A card swapped by an edit is replaced in place for e
 button can answer privately with a card, and a reply to a card quotes the card's text.
 
 Discriminates: passes on the dev c7193760b build except test_a_reply_to_a_card_quotes_its_text,
-which is red there: a reply's quoted message carries only a flag that it has data, so a card-only
-message is quoted with no text. In one frontend copy, rendering link buttons like action buttons
-turns the link test red, card Markdown with HTML allowed turns the raw HTML test red, and showing
-the app block only for messages with buttons turns the edited card test red.
+which is red there (#32361): a reply's quoted message carries only a flag that it has data, so a
+card-only message is quoted with no text. Every test passes on the dev b704d0613 build, that one
+since 3f6c3e31a gives a reply's quoted message the card. In one frontend copy, rendering link
+buttons like action buttons turns the link test red, card Markdown with HTML allowed turns the raw
+HTML test red, and showing the app block only for messages with buttons turns the edited card
+test red.
 """
 
 from __future__ import annotations

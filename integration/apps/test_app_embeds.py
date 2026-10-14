@@ -2,8 +2,9 @@
 
 An app message can carry up to ten cards with a title, link, description, color accent, author,
 footer, thumbnail and fields, next to or instead of its text, and link buttons that open a URL
-without ever calling the app. Cards are stored with the message, come back to the app when it
-reads the channel, are replaced as a whole by an edit, and can be part of a private button answer.
+without ever calling the app. Cards are stored with the message and listed with it, come back to
+the app when it reads the channel, are replaced as a whole by an edit, and can be part of a private
+button answer. A reply to a card carries the card for its quote, without the card's buttons.
 Open WebUI enforces the limits itself, whatever the app sends: only HTTP(S) URLs without
 credentials, Discord's text limits, at most 6000 card characters per message, and no cards on an
 acknowledgement or a download.
@@ -11,7 +12,11 @@ acknowledgement or a download.
 Discriminates: passes on dev c7193760b with oix 0.8. Mutation `create_app_message` storing actions
 only turns test_a_card_is_stored_with_the_message red; dropping the scheme and host check on card
 URLs turns the javascript, ftp, no-host and data cases of test_an_unsafe_card_url_is_refused red
-(credentials and spaces are refused by checks of their own).
+(credentials and spaces are refused by checks of their own). Retargeted for dev b704d0613, where
+the message list carries an app message's cards and buttons: the list flagging app data instead
+of carrying it turns test_a_card_is_stored_with_the_message red, and a reply's quoted message that
+carries the whole data, or only a flag as before, turns
+test_a_reply_to_a_card_quotes_the_card_without_its_buttons red.
 """
 
 from __future__ import annotations
@@ -107,9 +112,9 @@ def test_a_card_is_stored_with_the_message(apps_admin, installed_app, channel):
         message = _first_app_message(client, channel, installed_app["id"])
         stored = _app_data(client, channel, message["id"])
     assert message["content"] == "", "a card needs no text of its own"
-    assert message["data"] is True
     assert stored["embeds"] == [CARD]
     assert stored["actions"] == [LINK]
+    assert message["data"] == {"app": stored}, "the list carries the card without a second request"
 
 
 def test_a_mention_can_be_answered_with_a_card(apps_admin, installed_app, channel):
@@ -153,6 +158,19 @@ def test_the_app_reads_cards_back_from_the_channel(apps_admin, raw, channel):
     [message] = [m for m in listed["data"]["messages"] if m["id"] == created["data"]["id"]]
     assert message["embeds"] == [CARD]
     assert message["actions"] == [LINK]
+
+
+def test_a_reply_to_a_card_quotes_the_card_without_its_buttons(apps_admin, raw, channel):
+    button = {"action_id": "approve", "label": "Approve", "url": None, "context": {"step": 1}}
+    created = raw.request(
+        "create_message", channel_id=channel, embeds=[CARD], actions=[button, LINK]
+    )
+    assert created["status"] == 200, created
+    with apps_admin.client() as client:
+        reply = post(client, channel, "about that card", reply_to_id=created["data"]["id"])
+        listed = client.get(f"/api/v1/channels/{channel}/messages").json()
+    [listed_reply] = [message for message in listed if message["id"] == reply["id"]]
+    assert listed_reply["reply_to_message"]["data"] == {"app": {"embeds": [CARD]}}
 
 
 def test_a_button_can_answer_privately_with_a_card(apps_admin, installed_app, channel):

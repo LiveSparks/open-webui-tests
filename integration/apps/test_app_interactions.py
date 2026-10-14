@@ -2,28 +2,43 @@
 
 A mention is handed to the app with the actor and a signed execution token; the app only
 confirms it received it (`{"received": true}`) and says whatever it has to say as an ordinary
-channel message, as late as it likes. Open WebUI tells the asker, and only them, over their
-socket (`events:app`) when a mention could not be delivered, with a reason that depends on why.
+channel message, as late as it likes. When a mention cannot be delivered, Open WebUI posts why
+as the app's own "App error:" reply to it, for everyone in the channel; only when the app cannot
+post there (inactive, outside the channel, no write scope) is the asker alone told over their
+socket (`events:app`). The reason is the app's own error text, or Open WebUI's when the app was
+never asked, with the execution token replaced by "[redacted]".
 A button press is still answered within 2.5 seconds: a private answer reaches only the presser,
 a channel answer or an update becomes an app message everyone sees, an acknowledgement says
-nothing, and a download or an error goes back to the presser. Later work rechecks the asker's
-access with the same execution token before it posts.
+nothing, and a download or an error goes back to the presser; an app that fails keeps its own
+status and error text, redacted the same way. Later work rechecks the asker's access with the
+same execution token before it posts.
 
 Discriminates: on dev c7193760b with oix 0.8, mutation `app_channel_reply_handler` sending the
 delivery error to every channel member turns test_a_failed_delivery_is_told_only_to_the_asker
 red; `send_app_mention` accepting any answer as a receipt turns the ack, receipt-with-extras and
 private-answer cases of test_an_answer_that_is_not_a_receipt_is_a_failed_delivery red;
 `authorize_app_execution` skipping the channel access check turns
-test_background_work_loses_access_when_the_asker_leaves red.
+test_background_work_loses_access_when_the_asker_leaves red. Retargeted for dev b704d0613, where a
+failed delivery becomes a public app reply and the app's own error text is passed on: there,
+`app_channel_reply_handler` sending its private fallback to every channel member turns
+test_a_failure_the_app_cannot_post_is_told_only_to_the_asker red; it never posting the public
+reply turns test_a_user_without_access_to_the_app_is_refused,
+test_a_failed_delivery_is_told_to_the_whole_channel and every case of
+test_the_channel_learns_why_a_mention_was_not_delivered red; `send_app_invocation` passing the
+app's error text on unredacted turns test_an_app_error_shows_no_execution_token red; and the
+message list flagging app data instead of carrying it turns
+test_a_channel_message_with_buttons_stores_them red.
 """
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
 
 from harness.apps import (
+    ALL_SCOPES,
     channel_messages,
     connect,
     install_raw_app,
@@ -41,13 +56,11 @@ from harness.socket_client import connected
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
-ACCESS_DENIED = "App access was denied. Check permissions before retrying."
-DELIVERY_FAILED = "App delivery failed. Check its connection and server logs before retrying."
+INVALID_RECEIPT = "App returned an invalid delivery receipt"
 NOT_CONFIRMED = (
-    "App delivery was not confirmed. It may have accepted the message; "
-    "check the channel before retrying."
+    "\nDelivery was not confirmed. The app may have accepted the message; check before retrying."
 )
-BUSY = "App is unavailable or busy. The message was not accepted."
+WRITE_SCOPE = "channels:messages:write"
 
 
 @pytest.fixture
@@ -73,6 +86,36 @@ def _press(actor, app_id, message_id, action_id):
 
 def _replies_to(socket, message_id) -> list:
     return [event for event in socket.app_events if event["message_id"] == message_id]
+
+
+def app_error(detail: str) -> str:
+    """The reply an app posts, in its name, for a mention it could not take."""
+    return f"App error:\n\n```text\n{detail}\n```"
+
+
+def _posted_error(actor, channel_id, app, mention, detail) -> dict:
+    with actor.client() as client:
+        error = wait_for_message(client, channel_id, app_error(detail))
+    assert error["user"]["id"] == app["id"]
+    assert error["reply_to_id"] == mention["id"]
+    return error
+
+
+def _first_reply(actor, channel_id, message) -> dict:
+    deadline = time.monotonic() + 20
+    with actor.client() as client:
+        while time.monotonic() < deadline:
+            listed = channel_messages(client, channel_id)
+            replies = [reply for reply in listed if reply.get("reply_to_id") == message["id"]]
+            if replies:
+                return replies[0]
+            time.sleep(0.2)
+    raise AssertionError(f"nothing replied to {message['content']!r}")
+
+
+def _contents(actor, channel_id) -> list:
+    with actor.client() as client:
+        return [message["content"] for message in channel_messages(client, channel_id)]
 
 
 def _tools_message(actor, channel_id) -> dict:
@@ -192,11 +235,12 @@ def test_a_mention_of_an_app_outside_the_channel_is_refused(
     with connected(apps_admin) as socket:
         posted = _mention(apps_admin, channel_id, installed_app, "are you here?")
         event = reply_events(socket, message_id=posted["id"])
-    assert event["reply"] == {"type": "error", "content": ACCESS_DENIED}
+    assert event["reply"] == {"type": "error", "content": "Invite the app into this channel first"}
     assert event["app_id"] == installed_app["id"]
     assert event["app_name"] == installed_app["name"]
     assert event["channel_id"] == channel_id
     assert reference_app.records("mention", app_id=installed_app["id"]) == []
+    assert _contents(apps_admin, channel_id) == [posted["content"]], "the app cannot post here"
 
 
 def test_a_user_without_access_to_the_app_is_refused(apps_admin, make_apps_user, reference_app):
@@ -207,9 +251,11 @@ def test_a_user_without_access_to_the_app_is_refused(apps_admin, make_apps_user,
         invite(client, channel_id, restricted["id"])
     with connected(member) as socket:
         posted = _mention(member, channel_id, restricted, "let me in")
-        event = reply_events(socket, message_id=posted["id"])
-    assert event["reply"] == {"type": "error", "content": ACCESS_DENIED}
+        error = _posted_error(apps_admin, channel_id, restricted, posted, "App invocation denied")
+        time.sleep(1)
+        assert _replies_to(socket, posted["id"]) == [], "the channel was told, so not privately"
     assert reference_app.records("mention", app_id=restricted["id"]) == []
+    assert _contents(member, channel_id) == [error["content"], posted["content"]]
 
 
 def test_a_mention_of_a_disabled_app_is_refused(apps_admin, installed_app, reference_app, channel):
@@ -218,21 +264,50 @@ def test_a_mention_of_a_disabled_app_is_refused(apps_admin, installed_app, refer
     with connected(apps_admin) as socket:
         posted = _mention(apps_admin, channel, installed_app, "wake up")
         event = reply_events(socket, message_id=posted["id"])
-    assert event["reply"] == {"type": "error", "content": ACCESS_DENIED}
+    assert event["reply"] == {"type": "error", "content": "App is inactive"}
     assert reference_app.records("mention", app_id=installed_app["id"]) == []
+    assert _contents(apps_admin, channel) == [posted["content"]], "an inactive app posts nothing"
 
 
-def test_a_failed_delivery_is_told_only_to_the_asker(apps_admin, make_apps_user, installed_app):
+def test_a_failure_the_app_cannot_post_is_told_only_to_the_asker(
+    apps_admin, make_apps_user, reference_app
+):
+    asker = make_apps_user()
+    read_only = [scope for scope in ALL_SCOPES if scope != WRITE_SCOPE]
+    with apps_admin.client() as client:
+        app = installed(client, reference_app, scopes=read_only, access_grants=[])
+        channel_id = new_channel(client, type="group", user_ids=[asker.id])
+        invite(client, channel_id, app["id"])
+    with connected(asker) as asker_socket, connected(apps_admin) as bystander_socket:
+        posted = _mention(asker, channel_id, app, "only I should know")
+        event = reply_events(asker_socket, message_id=posted["id"])
+        time.sleep(1)
+        assert _replies_to(bystander_socket, posted["id"]) == []
+    assert event["reply"] == {"type": "error", "content": "App invocation denied"}
+    assert _contents(apps_admin, channel_id) == [posted["content"]]
+
+
+def test_a_failed_delivery_is_told_to_the_whole_channel(apps_admin, make_apps_user, installed_app):
     asker = make_apps_user()
     with apps_admin.client() as client:
         channel_id = new_channel(client, type="group", user_ids=[asker.id])
         invite(client, channel_id, installed_app["id"])
         client.patch(f"/api/v1/apps/{installed_app['id']}", json={"access_grants": []})
+    with apps_admin.client() as client:
+        root = post(client, channel_id, "thread root")
     with connected(asker) as asker_socket, connected(apps_admin) as bystander_socket:
-        posted = _mention(asker, channel_id, installed_app, "only I should know")
-        reply_events(asker_socket, message_id=posted["id"])
+        posted = _mention(
+            asker, channel_id, installed_app, "everyone should know", parent_id=root["id"]
+        )
+        with apps_admin.client() as client:
+            error = wait_for_message(
+                client, channel_id, app_error("App invocation denied"), parent_id=root["id"]
+            )
         time.sleep(1)
+        assert _replies_to(asker_socket, posted["id"]) == []
         assert _replies_to(bystander_socket, posted["id"]) == []
+    assert error["user"]["id"] == installed_app["id"]
+    assert error["reply_to_id"] == posted["id"]
 
 
 def test_a_mention_only_app_hears_mentions_but_not_other_messages(apps_admin, reference_app):
@@ -286,9 +361,9 @@ def test_a_channel_message_with_buttons_stores_them(apps_admin, installed_app, c
     with apps_admin.client() as client:
         message = wait_for_message(client, channel, "Choose")
         data = client.get(f"/api/v1/channels/{channel}/messages/{message['id']}/data").json()
-    assert message["data"] is True, "the list only flags that the message carries data"
     labels = [action["label"] for action in data["app"]["actions"]]
     assert labels == ["Approve", "Who am I", "Reject", "Noted"]
+    assert message["data"] == data, "the list carries the buttons without a second request"
 
 
 def test_pressing_a_button_updates_the_message_for_everyone(apps_admin, installed_app, channel):
@@ -368,7 +443,8 @@ def test_a_button_that_outlasts_its_budget_times_out(apps_admin, installed_app, 
 def test_a_button_handler_that_crashes_is_a_failed_answer(apps_admin, installed_app, channel):
     message = _tools_message(apps_admin, channel)
     pressed = _press(apps_admin, installed_app["id"], message["id"], "crash")
-    assert pressed.status_code == 502, pressed.text
+    assert pressed.status_code == 500, pressed.text
+    assert pressed.json()["detail"] == "App handler failed", "the app's own error text"
 
 
 def test_a_link_button_cannot_be_pressed_through_the_app(
@@ -479,36 +555,71 @@ def raw(apps_admin, channel):
         {"status": 200, "data": {"type": "ack"}},
         {"status": 200, "data": {"received": True, "content": "sneaky"}},
         {"status": 200, "data": {"type": "message", "content": "an old-style private answer"}},
-        {"status": 500, "error": "boom"},
     ],
-    ids=["ack", "receipt-with-extras", "private-answer", "server-error"],
+    ids=["ack", "receipt-with-extras", "private-answer"],
 )
 def test_an_answer_that_is_not_a_receipt_is_a_failed_delivery(apps_admin, raw, channel, answer):
     raw.mention_answer = answer
-    with connected(apps_admin) as socket:
-        posted = _mention(apps_admin, channel, raw.installed, "anything")
-        event = reply_events(socket, message_id=posted["id"])
-    assert event["reply"] == {"type": "error", "content": DELIVERY_FAILED}
-    with apps_admin.client() as client:
-        contents = [message["content"] for message in channel_messages(client, channel)]
-    assert contents == [posted["content"]], "nothing the app answered is posted"
+    posted = _mention(apps_admin, channel, raw.installed, "anything")
+    error = _posted_error(apps_admin, channel, raw.installed, posted, INVALID_RECEIPT)
+    contents = _contents(apps_admin, channel)
+    assert contents == [error["content"], posted["content"]], "nothing the app answered is posted"
 
 
 @pytest.mark.parametrize(
     ("answer", "detail"),
     [
-        ({"status": 503, "error": "App is at capacity"}, BUSY),
-        ({"status": 504, "error": "Event acceptance timed out"}, NOT_CONFIRMED),
-        ({"status": 403, "error": "Event installation mismatch"}, ACCESS_DENIED),
+        ({"status": 503, "error": "App is at capacity"}, "App is at capacity"),
+        (
+            {"status": 504, "error": "Event acceptance timed out"},
+            "Event acceptance timed out" + NOT_CONFIRMED,
+        ),
+        ({"status": 403, "error": "Event installation mismatch"}, "Event installation mismatch"),
+        ({"status": 500, "error": "boom"}, "boom"),
     ],
-    ids=["busy", "timed-out", "denied"],
+    ids=["busy", "timed-out", "denied", "server-error"],
 )
-def test_the_asker_learns_why_a_mention_was_not_delivered(apps_admin, raw, channel, answer, detail):
+def test_the_channel_learns_why_a_mention_was_not_delivered(
+    apps_admin, raw, channel, answer, detail
+):
     raw.mention_answer = answer
     with connected(apps_admin) as socket:
         posted = _mention(apps_admin, channel, raw.installed, "anything")
-        event = reply_events(socket, message_id=posted["id"])
-    assert event["reply"] == {"type": "error", "content": detail}
+        error = _posted_error(apps_admin, channel, raw.installed, posted, detail)
+        time.sleep(1)
+        assert _replies_to(socket, posted["id"]) == [], "the channel was told, so not privately"
+    assert _contents(apps_admin, channel) == [error["content"], posted["content"]]
+
+
+@pytest.mark.parametrize("where", ["mention", "button"])
+def test_an_app_error_shows_no_execution_token(apps_admin, raw, channel, where):
+    created = raw.request(
+        "create_message",
+        channel_id=channel,
+        content="Pick",
+        actions=[{"action_id": "go", "label": "Go"}],
+    )
+    assert created["status"] == 200, created
+    echoed = []
+
+    def failing(event):
+        echoed.append(event["execution_token"])
+        return {"status": 500, "error": f"refused {event['execution_token']} here"}
+
+    raw.answer_with = failing
+    if where == "mention":
+        posted = _mention(apps_admin, channel, raw.installed, "anything")
+        shown = _first_reply(apps_admin, channel, posted)["content"]
+        with apps_admin.client() as client:
+            everything = json.dumps(channel_messages(client, channel))
+    else:
+        pressed = _press(apps_admin, raw.installed["id"], created["data"]["id"], "go")
+        assert pressed.status_code == 500, pressed.text
+        shown = pressed.json()["detail"]
+        everything = pressed.text
+    assert echoed and echoed[0], "the app never saw the token it was to echo"
+    assert echoed[0] not in everything
+    assert "refused [redacted] here" in shown
 
 
 def test_an_ack_with_content_is_refused(apps_admin, raw, channel):

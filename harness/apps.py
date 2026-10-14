@@ -32,7 +32,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 import httpx
 import jwt
@@ -359,7 +359,8 @@ class RawApp:
     It answers `app:connect` through `answer_connect(data)` (an honest, signed answer by
     default; `signed_proof(data, **claims)` forges single claims), acknowledges `app:ready` once
     the instance answers its ping, and records every event, answering mentions with
-    `mention_answer` and button presses with `event_answer`. `request(operation, **arguments)`
+    `mention_answer` and button presses with `event_answer`, or both with `answer_with(event)`
+    when it is set. `request(operation, **arguments)`
     calls the instance's runtime over the connection the instance opened, as an app's client does.
     """
 
@@ -379,6 +380,10 @@ class RawApp:
         self.event_answer: dict = {"type": "ack"}
         # the whole socket answer to a mention, status included
         self.mention_answer: dict = {"status": 200, "data": {"received": True}}
+        # the whole socket answer built from the event, for mentions and presses alike
+        self.answer_with: Callable[[dict], dict] | None = None
+        # the credential the instance stored at the last honest connection answer
+        self.connection_token: str | None = None
         # operations sent while the instance still waits for `app:ready`, and their answers
         self.before_ready: list[str] = []
         self.before_ready_answers: list[dict] = []
@@ -413,6 +418,7 @@ class RawApp:
             **claims,
         }
         proof = jwt.encode(signed, key, algorithm="EdDSA", headers={"typ": "oix-connect+jwt"})
+        self.connection_token = token
         answer = {"installation_id": self.installation_id, "connection_token": token}
         return {"status": 200, "data": {**answer, "proof": proof}}
 
@@ -469,6 +475,8 @@ def serving_raw_app(private_pem: str | None = None) -> Iterator[RawApp]:
             raw.events.append(payload)
             if str(payload.get("type", "")).startswith("channel.message."):
                 return {"status": 200, "data": {"received": True}}
+            if raw.answer_with:
+                return raw.answer_with(payload)
             if payload.get("type") == "channel.mention":
                 return raw.mention_answer
             return {"status": 200, "data": raw.event_answer}
