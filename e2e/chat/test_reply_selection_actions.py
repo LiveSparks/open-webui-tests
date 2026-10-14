@@ -7,6 +7,9 @@ sends it, and what is sent is the quote with the question. Escape hides the butt
 
 Discriminates: passes on the dev 30f3f6a8f build; in a frontend build whose Explain and Ask leave
 the chat input empty and whose buttons stay up after Escape, every test fails.
+
+Retargeted for dev b1da0e8e8: the buttons now float at the end of the page (7129cc1d8, #32330), so
+they are found by the reply they belong to and no longer inside it.
 """
 
 from __future__ import annotations
@@ -25,10 +28,11 @@ SECOND_PARAGRAPH = "The east pier stays dry all year."
 
 
 @pytest.fixture
-def harbour_reply(page_for, make_user) -> Page:
+def harbour_reply(page_for, make_user) -> tuple[Page, Locator]:
+    """The chat open on the reply, and the box its Ask and Explain buttons show in."""
     owner = make_user()
     with owner.client() as client:
-        chat_id, _ = seed_chat(
+        chat_id, reply_id = seed_chat(
             client,
             [
                 {"role": "user", "content": "Where can I moor in Whitby?"},
@@ -38,11 +42,11 @@ def harbour_reply(page_for, make_user) -> Page:
     page = page_for(owner)
     page.goto(f"/c/{chat_id}")
     expect_reply(page, SECOND_PARAGRAPH)
-    return page
+    return page, page.locator(f"#floating-buttons-{chat_id}-{reply_id}")
 
 
-def _select(page: Page, text: str) -> Locator:
-    """Drag across one paragraph of the reply to select it; returns the reply."""
+def _select(page: Page, text: str) -> None:
+    """Drag across one paragraph of the reply to select it."""
     paragraph = last_reply(page).get_by_text(text, exact=True)
     box = paragraph.bounding_box()
     middle = box["y"] + box["height"] / 2
@@ -50,7 +54,6 @@ def _select(page: Page, text: str) -> Locator:
     page.mouse.down()
     page.mouse.move(box["x"] + box["width"] - 1, middle, steps=5)
     page.mouse.up()
-    return last_reply(page)
 
 
 def _send_and_read(page: Page, upstream, answer: str) -> str:
@@ -63,41 +66,46 @@ def _send_and_read(page: Page, upstream, answer: str) -> str:
 
 
 def test_explain_quotes_the_selected_passage_into_the_message(harbour_reply, upstream):
-    _select(harbour_reply, SECOND_PARAGRAPH).get_by_role("button", name="Explain").click()
+    page, buttons = harbour_reply
+    _select(page, SECOND_PARAGRAPH)
+    buttons.get_by_role("button", name="Explain").click()
 
-    expect(chat_input(harbour_reply)).to_contain_text(SECOND_PARAGRAPH)
-    expect(chat_input(harbour_reply)).to_contain_text("Explain")
-    expect(chat_input(harbour_reply)).not_to_contain_text(FIRST_PARAGRAPH)
+    expect(chat_input(page)).to_contain_text(SECOND_PARAGRAPH)
+    expect(chat_input(page)).to_contain_text("Explain")
+    expect(chat_input(page)).not_to_contain_text(FIRST_PARAGRAPH)
     assert [
         body for body in upstream.chat_requests() if reply.answering(SECOND_PARAGRAPH)(body)
     ] == []
 
-    sent = _send_and_read(harbour_reply, upstream, "It sits above the high water line.")
+    sent = _send_and_read(page, upstream, "It sits above the high water line.")
     assert f"> {SECOND_PARAGRAPH}" in sent
     assert sent.rstrip().endswith("Explain")
 
 
 def test_ask_sends_the_quoted_passage_with_the_typed_question(harbour_reply, upstream):
-    selected = _select(harbour_reply, SECOND_PARAGRAPH)
-    selected.get_by_role("button", name="Ask", exact=True).click()
-    question = selected.get_by_role("textbox", name="Ask a question")
+    page, buttons = harbour_reply
+    _select(page, SECOND_PARAGRAPH)
+    buttons.get_by_role("button", name="Ask", exact=True).click()
+    question = buttons.get_by_role("textbox", name="Ask a question")
     expect(question).to_be_focused()
     question.fill("Even in a storm surge?")
-    selected.get_by_role("button", name="Submit question").click()
+    buttons.get_by_role("button", name="Submit question").click()
 
-    expect(chat_input(harbour_reply)).to_contain_text(SECOND_PARAGRAPH)
-    expect(chat_input(harbour_reply)).to_contain_text("Even in a storm surge?")
+    expect(chat_input(page)).to_contain_text(SECOND_PARAGRAPH)
+    expect(chat_input(page)).to_contain_text("Even in a storm surge?")
 
-    sent = _send_and_read(harbour_reply, upstream, "Mostly, yes.")
+    sent = _send_and_read(page, upstream, "Mostly, yes.")
     assert f"> {SECOND_PARAGRAPH}" in sent
     assert sent.rstrip().endswith("Even in a storm surge?")
 
 
 def test_escape_hides_the_buttons_again(harbour_reply):
-    explain = _select(harbour_reply, SECOND_PARAGRAPH).get_by_role("button", name="Explain")
+    page, buttons = harbour_reply
+    _select(page, SECOND_PARAGRAPH)
+    explain = buttons.get_by_role("button", name="Explain")
     expect(explain).to_be_visible()
 
-    harbour_reply.keyboard.press("Escape")
+    page.keyboard.press("Escape")
 
     expect(explain).to_be_hidden()
-    expect(chat_input(harbour_reply)).to_have_text("")
+    expect(chat_input(page)).to_have_text("")

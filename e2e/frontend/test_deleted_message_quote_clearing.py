@@ -13,6 +13,7 @@ Twin of unit/frontend/test_deleted_message_quote_clearing.py.
 
 Discriminates: passes on the bbfa876af build; with the deletion branch of Channel.svelte and
 Thread.svelte back to filtering the row only, the quote and the chip stay on the reader's screen.
+The author deletes only once the reader's reply is stored and shown, so the two never race.
 """
 
 from __future__ import annotations
@@ -72,8 +73,11 @@ def test_deleting_a_message_clears_its_quote_and_the_reply_chip(channel, page_fo
         expect(page.get_by_text(QUOTED)).to_be_visible()
 
     toolbar_button(message_rows(reader_page, quoted_id).first, "Reply").click()
-    send(reader_page, "my answer to that")
-    expect(reader_page.get_by_text("my answer to that")).to_be_visible()
+    with reader_page.expect_response(lambda sent: sent.url.endswith("/messages/post")) as posted:
+        send(reader_page, "my answer to that")
+    # a delete that lands while the reply is still being stored races it
+    answer = message_rows(reader_page, posted.value.json()["id"]).first
+    expect(answer).to_contain_text("my answer to that")
     expect(reader_page.get_by_text(QUOTED)).to_have_count(2)  # the message and the quote of it
     toolbar_button(message_rows(reader_page, quoted_id).first, "Reply").click()
     expect(reader_page.get_by_text(f"Replying to {author.name}")).to_be_visible()
