@@ -1,10 +1,10 @@
 """An OpenAI-shaped model provider that records every request and answers from a script.
 
 `reset(mode)` sets the fallback every reply uses (`ok`, `stream` or `error`). `queue(...)` lines
-up scripted replies (text, reasoning, tool calls, usage, a finish reason, an HTTP error, a slow
-stream, a late start, a stream the provider drops halfway) that the next chat completions consume
-in order; a reply with `match` only answers a request it accepts, so a title or follow-up task
-cannot eat the reply meant for the chat.
+up scripted replies (text, reasoning, tool calls, usage or llama.cpp timings, a finish reason, an
+HTTP error, a slow stream, a late start, a stream the provider drops halfway) that the next chat
+completions consume in order; a reply with `match` only answers a request it accepts, so a title
+or follow-up task cannot eat the reply meant for the chat.
 `requests` holds what Open WebUI actually sent, which is how a test sees the payload it built.
 """
 
@@ -27,6 +27,8 @@ class Reply:
     reasoning: str | None = None
     tool_calls: list[dict] = field(default_factory=list)
     usage: dict | None = None
+    usage_last: bool = False  # usage in a trailing chunk without choices, as include_usage sends it
+    timings: dict | None = None  # llama.cpp's counts, sent on the closing chunk
     status: int = 200
     error_message: str = "upstream failed"
     chunk_delay: float = 0.0
@@ -194,10 +196,14 @@ def _handler(upstream: MockUpstream):
                     if reply.hang_up_after is not None and sent > reply.hang_up_after:
                         self.close_connection = True  # no closing chunk: a provider gone down
                         return
-                    self._event(
-                        _chunk(delta, finish_reason, reply.usage if finish_reason else None)
-                    )
+                    closing_usage = None if reply.usage_last else reply.usage
+                    chunk = _chunk(delta, finish_reason, closing_usage if finish_reason else None)
+                    if finish_reason and reply.timings:
+                        chunk["timings"] = reply.timings
+                    self._event(chunk)
                     time.sleep(reply.chunk_delay)
+                if reply.usage_last and reply.usage:
+                    self._event({**_chunk({}, None, reply.usage), "choices": []})
                 self._end_stream()
             else:
                 self._send_json(200, _completion(reply))
