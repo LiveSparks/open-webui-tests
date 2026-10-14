@@ -14,8 +14,12 @@ registration answers, `token_base` names the token endpoint of its metadata by a
 `authorize_base` its authorize endpoint (`GOOGLE_ACCOUNTS` plays Google's sign-in page), and
 `reached(url)` points a URL the browser was sent there back at this server. With
 `offline_access_only` a code grant carries a refresh token only when the authorize asked for
-`access_type=offline`, the way Google's does. `revoke_refresh_tokens()` withdraws the live refresh
-tokens and `ProtectedMcp.presented` lists every bearer token the MCP server was shown.
+`access_type=offline`, the way Google's does. With `bot_challenge` the authorize endpoint
+answers Open WebUI's own server-side requests the way Cloudflare's bot protection does: a 403
+with `cf-mitigated: challenge` and an HTML page that repeats the requested URL, while a browser
+passes as before. `revoke_refresh_tokens()` withdraws the live refresh tokens, `forget_clients()`
+drops every registered client so the authorize answers `invalid_client`, and
+`ProtectedMcp.presented` lists every bearer token the MCP server was shown.
 `register_oauth_mcp()` registers the server as the admin panel does and saves the connection (after
 `preserve(TOOL_SERVERS)`). `scopes` is what the MCP server's protected-resource metadata asks for
 and its tools require (`mcp:tools` by default; `GOOGLE_WORKSPACE_SCOPES` is a list as long as
@@ -27,6 +31,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import json
 import secrets
 import threading
@@ -116,6 +121,7 @@ class McpAuthorizationServer:
     token_base: str | None = None  # the base URL the metadata gives the token endpoint, if not ours
     authorize_base: str | None = None  # the same for the authorize endpoint
     offline_access_only: bool = False
+    bot_challenge: bool = False
 
     @property
     def issuer(self) -> str:
@@ -151,6 +157,11 @@ class McpAuthorizationServer:
         """Withdraw every refresh token issued so far; using one then answers `invalid_grant`."""
         with self.lock:
             self.refresh_tokens.clear()
+
+    def forget_clients(self) -> None:
+        """Drop every registered client, as a provider does that expires unused registrations."""
+        with self.lock:
+            self.clients.clear()
 
     def access_token(self, token: str) -> dict | None:
         """What the server knows about an access token it issued, None for any other."""
@@ -299,10 +310,23 @@ def serve_authorization_server(
             self.end_headers()
             self.wfile.write(encoded)
 
+        def _send_challenge(self) -> None:
+            page = f"<html><body>Just a moment... {html.escape(self.path)}</body></html>".encode()
+            self.send_response(403)
+            self.send_header("Content-Type", "text/html; charset=UTF-8")
+            self.send_header("cf-mitigated", "challenge")
+            self.send_header("Content-Length", str(len(page)))
+            self.end_headers()
+            self.wfile.write(page)
+
         def do_GET(self) -> None:
             entry = self._record()
+            # Cloudflare challenges the server-side client and lets the browser through
+            from_server = "aiohttp" in entry.headers.get("User-Agent", "")
             if entry.path == "/.well-known/oauth-authorization-server":
                 self._send(200, server.metadata())
+            elif entry.path == "/authorize" and server.bot_challenge and from_server:
+                self._send_challenge()
             elif entry.path == "/authorize":
                 status, error, location = server._authorize(entry.query)
                 self._send(status, error, {"Location": location} if location else None)

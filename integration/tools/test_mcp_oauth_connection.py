@@ -22,6 +22,16 @@ connect (the authorization server refuses the authorize), and returning the stor
 checking its expiry fails the refresh and the revoked-token tests (no refresh is tried). On dev
 ef67cc3fa, `remove_client` leaving authlib's `_clients` entry in place fails the registration
 test (the connect uses the first client).
+
+The bot challenge test pins a fixed bug (PR open-webui/open-webui#32364, fix 4f9f04cee, issue
+#32363): before sending the browser to sign in, Open WebUI fetches the authorize URL itself to
+catch a stale client. A provider behind Cloudflare answers that fetch with a bot challenge page
+that repeats the URL, redirect URL included, so Open WebUI took it for a rejected client,
+registered again and failed with "OAuth client registration is still invalid after
+re-registration". A challenge now skips the check. Nearby: a provider that no longer knows the
+client still gets a new registration and the connect goes through with it. The challenge test
+passes on dev ad8da5921 and fails on a backend copy with 4f9f04cee reverted (the authorize answers
+500 after a second registration).
 """
 
 from __future__ import annotations
@@ -186,3 +196,35 @@ def test_registering_the_server_again_connects_with_the_new_client(
         "the connection still signs in with the client it was first registered as"
     )
     assert echo_through_chat(person, upstream, server_id) == PHRASE
+
+
+def preflights(auth_server) -> list:
+    """The authorize requests Open WebUI sent itself before sending the browser there."""
+    requests = auth_server.requests_to("/authorize")
+    return [entry for entry in requests if "aiohttp" in entry.headers.get("User-Agent", "")]
+
+
+@pytest.mark.regression
+def test_a_bot_challenge_on_the_sign_in_page_still_connects(instance, mcp, person, server_id):
+    auth_server = mcp.auth_server
+    auth_server.bot_challenge = True
+
+    connect(instance, person, server_id)
+
+    assert preflights(auth_server), "Open WebUI never checked the sign-in page itself"
+    assert len(auth_server.requests_to("/register")) == 1, (
+        "the challenge page was read as a rejected client and the server registered again"
+    )
+
+
+@pytest.mark.regression
+def test_a_forgotten_client_registers_again_and_connects(instance, mcp, person, server_id):
+    auth_server = mcp.auth_server
+    auth_server.forget_clients()
+
+    connect(instance, person, server_id)
+
+    assert len(auth_server.requests_to("/register")) == 2, "the unknown client was not replaced"
+    [replacement] = auth_server.clients
+    authorize = auth_server.requests_to("/authorize")[-1]
+    assert authorize.query["client_id"] == replacement

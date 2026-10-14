@@ -1,4 +1,4 @@
-"""Five 0.11.1 fixes in the filter and function plumbing.
+"""Six fixes in the filter and function plumbing, the first five from 0.11.1.
 
 * Disabled functions (commit a3a81fee03): the user-valves endpoints ignored `is_active`, so a
   switched-off function still loaded its code and accepted valves that could never apply. The
@@ -15,14 +15,18 @@
 * Silent filter failures (commit 35fbde0a3f): every filter failure was logged at DEBUG. Outlet
   and stream failures are now logged with their traceback and the filter id, a Valves class that
   fails to build is caught by the same handler, and a user-valves failure names the filter.
+* Pipe file list (PR #32380, commit 29719c8bf, issue #32379): a pipe answering a message without
+  attachments got `__files__` as None, where the docs promise a list, so a pipe looping over the
+  files crashed. It now gets an empty list.
 
 Twin of unit/chat/test_filter_and_function_pipeline.py.
 
 Discriminates: reverting each fix in its own copy fails that fix's tests and no others: the
 disabled-function spec and update, the pipe's repeated system prompt, the number, object and
 reasoning deltas, the direct stream filter (the keep-alive line too), and the outlet, stream,
-valves and user-valves log lines. The nearby tests (active function, unknown id, a pipe without
-params, plain and empty deltas, no filter, a quiet inlet, a working filter) pass on all five.
+valves and user-valves log lines, and the pipe's file list (it is None with 29719c8bf
+reverted, on dev ad8da5921). The nearby tests (active function, unknown id, a pipe without
+params, plain and empty deltas, no filter, a quiet inlet, a working filter) pass on all six.
 """
 
 from __future__ import annotations
@@ -137,7 +141,7 @@ TOOL_CALLING_PIPE = source(
     import json
 
     class Pipe:
-        def pipe(self, body):
+        def pipe(self, body, __files__):
             messages = body["messages"]
             rounds = sum(1 for message in messages if message["role"] == "tool")
             if rounds < 2:
@@ -146,7 +150,8 @@ TOOL_CALLING_PIPE = source(
                 yield {"choices": [{"index": 0, "delta": {"tool_calls": [call]}}]}
                 yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
                 return
-            yield json.dumps([m["content"] for m in messages if m["role"] == "system"])
+            system_prompts = [m["content"] for m in messages if m["role"] == "system"]
+            yield json.dumps({"system": system_prompts, "files": __files__})
     """
 )
 
@@ -177,7 +182,9 @@ def test_a_pipe_keeps_one_system_prompt_across_tool_calls(admin, system_prompt, 
 
     calls = [item for item in message["output"] if item["type"] == "function_call"]
     assert len(calls) == 2, "the pipe was not called back after its tool calls"
-    assert json.loads(message["content"]) == expected
+    answered = json.loads(message["content"])
+    assert answered["system"] == expected
+    assert answered["files"] == [], "a message without attachments gave the pipe no file list"
 
 
 # --- non-string deltas (ac091273b) -------------------------------------------------------------

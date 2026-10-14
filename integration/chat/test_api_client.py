@@ -29,6 +29,11 @@ always on the memory-off runs; an unknown model falling back to the first one fa
 missing-model test; `check_model_access` letting every model through fails the inaccessible-model
 test; the OpenAI router stripping `data: ` from the relayed stream fails every streamed test; and
 dropping `usage` from a non-streamed reply fails both completion runs.
+
+The saved chat loop test also pins a fixed bug (PR open-webui/open-webui#32380, fix 29719c8bf,
+issue #32379): a tool called on a message without attachments got `__files__` as None, where the
+docs promise a list, so a tool looping over the files crashed. It now gets an empty list. It
+passes on dev ad8da5921 and fails on a backend copy with 29719c8bf reverted (the tool reports None).
 """
 
 from __future__ import annotations
@@ -54,12 +59,12 @@ DEFAULT_PERMISSIONS = "/api/v1/users/default/permissions"
 MEMORY_TOOLS = {"search_memories", "add_memory"}
 TOOL_SOURCE = '''
 class Tools:
-    def lookup_ticket(self, ticket: str) -> str:
+    def lookup_ticket(self, ticket: str, __files__=None) -> str:
         """
         Look a support ticket up.
         :param ticket: The ticket number.
         """
-        return f"ticket {ticket} is open"
+        return f"ticket {ticket} is open, attached files: {__files__!r}"
 '''
 
 
@@ -413,7 +418,7 @@ def test_a_saved_chat_runs_the_tool_loop_and_stores_the_answer(
     assert answer["done"] is True
     assert answer["content"] == "Yes, T-17 is still open."
     follow_up = upstream.chat_requests()[1]
-    assert "ticket T-17 is open" in str(follow_up["messages"])
+    assert "ticket T-17 is open, attached files: []" in str(follow_up["messages"])
 
 
 def test_without_a_session_id_the_call_returns_once_the_answer_is_stored(
