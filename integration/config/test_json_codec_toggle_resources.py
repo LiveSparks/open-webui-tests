@@ -835,7 +835,9 @@ def test_channel_messages_reactions_and_threads_read_the_same_across_the_switch(
         admins[writer].post("/api/v1/channels/create", json={"name": f"talk-{_tag()}"}), "channel"
     ).json()
     base = f"/api/v1/channels/{channel['id']}/messages"
-    content, data, meta = ALL_MIXED, {"extra": nested()}, {"origin": MIXED_TEXT["hindi"]}
+    content, data = ALL_MIXED, {"extra": nested()}
+    # metadata is written by the server only; a client's is dropped (#32421)
+    meta = {"origin": MIXED_TEXT["hindi"]}
     posted = admins[writer].post(
         f"{base}/post", json={"content": content, "data": data, "meta": meta}
     )
@@ -855,7 +857,8 @@ def test_channel_messages_reactions_and_threads_read_the_same_across_the_switch(
         assert sorted(reaction["name"] for reaction in listed["reactions"]) == ["heart", "🚀"]
         assert listed["reply_count"] == 1
         one = _ok(client.get(f"{base}/{message['id']}"), "reading").json()
-        assert (one["content"], one["meta"]) == (content, meta)
+        assert one["content"] == content
+        assert one["meta"] != meta
         stored = _ok(client.get(f"{base}/{message['id']}/data"), "reading the data").json()
         _covers(data, stored)
         thread = _ok(client.get(f"{base}/{message['id']}/thread"), "thread").json()
