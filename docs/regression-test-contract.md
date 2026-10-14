@@ -126,6 +126,25 @@ A test that fails without a code change costs a release its trust in the suite. 
 - **Tie every scripted reply to its prompt** with `reply.answering(prompt)`, and every count of provider requests to the requests of this test, so a request left over from an earlier test cannot take or add a reply.
 - **Pin time.** Compute expected dates in the zone the page uses, keep clear of midnight, and assert relative wording ("a few seconds ago") only where the page promises it.
 
+## Checklist before committing a test
+
+Every test in the suite meets all of these. Check each one against your test before you commit.
+
+1. **It pins one behaviour a person can see.** The name is a sentence about what a user, admin or client sees, and the test fails when that behaviour breaks and for no other reason.
+2. **It is proven.** A narrow test is shown red with its fix undone, a journey test with a named mutation; the `Discriminates:` line says which.
+3. **It asserts on the outside.** HTTP responses, what is stored and read back, what the provider or a local service received, the server log, and in the browser what a person sees, found by role, label or visible text. Never on internal function names, private attributes or CSS classes when anything else identifies the element.
+4. **It cannot pass vacuously.** A loop or `all(...)` over a list first asserts the list is not empty; a check that something did not happen is paired with one showing the same setup does make it happen.
+5. **Its failure message says what went wrong for a person**, with the actual value in it, so a red run can be read without opening the test.
+6. **It owns its state.** Fresh accounts from `make_user()`, unique names (a uuid tag) for everything it creates, global settings changed only after `preserve(...)`. It passes alone, in any order, repeated and next to a parallel run of itself.
+7. **It is deterministic.** The scripted provider and local listeners stand in for every outside service; no internet, no real API keys, no randomness without a fixed seed, no dependence on the wall clock beyond what is pinned.
+8. **It waits on events, never on time.** Every wait is for a state (an element, a stored value, a request seen) with a bound; a fixed sleep appears only to show that nothing more happens, with a one-line comment.
+9. **It is bounded.** It cannot hang CI on any ref, including the one before the fix.
+10. **It hides nothing.** No blanket `except`, no skip except for a named absent dependency, no `xfail`, no retry around an assertion.
+11. **It runs on every backend** (SQLite, Postgres, Redis) or skips on the one it cannot run on and says why.
+12. **It leaves nothing running.** Processes, servers and temporary files it starts are stopped and removed in a `finally` or a fixture.
+13. **It extends before it adds.** It lives in the existing test or module that already walks its path, unless none fits.
+14. **It reads plainly.** Descriptive names, flat control flow, helpers named for what they do, comments only for a non-obvious why, ruff clean.
+
 ## Keeping the remaining unit tests alive
 
 Nothing here is a reason to write a new unit test. It applies only to repairing the ones that are left until a twin replaces them. A unit test breaks whenever upstream renames something the test knows about, so a unit test knows only what its bug requires. It:
