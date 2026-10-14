@@ -42,7 +42,10 @@ def group(admin) -> Iterator[dict]:
 @pytest.fixture
 def shared_knowledge(admin, group) -> Iterator[str]:
     grant = {"principal_type": "group", "principal_id": group["id"], "permission": "read"}
-    with admin.client() as client, knowledge_base(client, "Team notes", [grant]) as knowledge_id:
+    with (
+        admin.client() as client,
+        knowledge_base(client, f"Team notes {group['name']}", [grant]) as knowledge_id,
+    ):
         yield knowledge_id
 
 
@@ -110,10 +113,14 @@ def test_deleting_the_group_takes_both_away(admin, make_user, group, shared_know
     member = make_user()
     change_members(admin, group["id"], "add", member)
 
+    def group_ids() -> list[str]:
+        with admin.client() as client:
+            stored = client.get(f"/api/v1/users/{member.id}").json()
+        return [entry["id"] for entry in stored["groups"]]
+
+    assert group_ids() == [group["id"]]
     with admin.client() as client:
         assert client.delete(f"/api/v1/groups/id/{group['id']}/delete").json() is True
 
     assert what_membership_gives(member, shared_knowledge) == (False, False)
-    with admin.client() as client:
-        groups = client.get(f"/api/v1/users/{member.id}").json()["groups"]
-    assert groups == []
+    assert group_ids() == []

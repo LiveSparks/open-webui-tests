@@ -172,7 +172,8 @@ def test_saved_info_merges_into_what_is_stored(make_user):
 
     assert merged == {"location": "Harbour", "shift": "late", "desk": 4}
     assert read_info(person) == merged
-    assert not read_info(other), "saving info changed another account"
+    others_info = read_info(other)
+    assert not others_info, f"saving info changed another account: {others_info}"
 
 
 # --------------------------------------------------------------------------- variables
@@ -212,13 +213,18 @@ def test_a_system_prompt_reads_the_callers_own_variables(make_user, upstream):
     assert saved.json()["variables"]["shift"] == "line one\nline two"
     system = {"role": "system", "content": "Team: [{{user.variables.team}}]"}
 
-    upstream.queue(reply.text("ok"), reply.text("ok"))
+    prompt = "who am I?"
+    upstream.queue(
+        reply.text("ok", match=reply.answering(prompt)),
+        reply.text("ok", match=reply.answering(prompt)),
+    )
     with person.client() as client:
-        ask(client, "who am I?", history=[system])
+        ask(client, prompt, history=[system])
     with other.client() as client:
-        ask(client, "who am I?", history=[system])
+        ask(client, prompt, history=[system])
 
-    person_request, other_request = upstream.chat_requests()[-2:]
+    sent = [body for body in upstream.chat_requests() if reply.answering(prompt)(body)]
+    person_request, other_request = sent[-2:]
     assert person_request["messages"][0] == {"role": "system", "content": "Team: [harbour pilots]"}
     assert other_request["messages"][0] == {"role": "system", "content": "Team: []"}
 
@@ -234,7 +240,10 @@ def usage(actor, **params):
 def test_usage_counts_the_callers_own_chats_messages_and_tokens(make_user, upstream):
     person, other = make_user(), make_user()
     tokens = {"prompt_tokens": 12, "completion_tokens": 30, "total_tokens": 42}
-    upstream.queue(reply.text("first answer", usage=tokens), reply.text("second answer"))
+    upstream.queue(
+        reply.text("first answer", usage=tokens, match=reply.answering("first question")),
+        reply.text("second answer", match=reply.answering("someone else's question")),
+    )
     with person.client() as client:
         ask(client, "first question")
     with other.client() as client:
@@ -267,7 +276,10 @@ def test_usage_refuses_a_period_it_cannot_cover(make_user, params, status):
 
 def test_chat_statistics_list_only_the_callers_chats(make_user, upstream):
     person, other = make_user(), make_user()
-    upstream.queue(reply.text("an answer"), reply.text("another answer"))
+    upstream.queue(
+        reply.text("an answer", match=reply.answering("a question")),
+        reply.text("another answer", match=reply.answering("another question")),
+    )
     with person.client() as client:
         turn, _ = ask(client, "a question")
     with other.client() as client:

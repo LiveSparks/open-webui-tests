@@ -59,8 +59,8 @@ def tool_results(message: dict) -> dict[str, str]:
     }
 
 
-def replayed_tool_messages(upstream) -> dict[str, str]:
-    requests = upstream.chat_requests()
+def replayed_tool_messages(upstream, prompt: str) -> dict[str, str]:
+    requests = [body for body in upstream.chat_requests() if reply.answering(prompt)(body)]
     assert len(requests) == 2, f"the model was called {len(requests)} time(s), not twice"
     return {
         entry["tool_call_id"]: entry["content"]
@@ -69,36 +69,42 @@ def replayed_tool_messages(upstream) -> dict[str, str]:
     }
 
 
-def test_every_refused_ask_user_call_gets_a_result_and_the_turn_goes_on(user, upstream):
+def test_every_refused_ask_user_call_gets_a_result_and_the_turn_goes_on(make_user, upstream):
+    prompt = "help me choose"
     two_questions = Reply(
         tool_calls=[
             ask_user_call("call_a", {"questions": [question()]}),
             ask_user_call("call_b", {"questions": [question()]}),
-        ]
+        ],
+        match=reply.answering(prompt),
     )
-    upstream.queue(two_questions, reply.text("I will ask one question at a time."))
-    with user.client() as client:
-        _, message = ask(client, "help me choose")
+    closing = reply.text("I will ask one question at a time.", match=reply.answering(prompt))
+    upstream.queue(two_questions, closing)
+    with make_user().client() as client:
+        _, message = ask(client, prompt)
 
     results = tool_results(message)
     assert set(results) == {"call_a", "call_b"}, message["output"]
-    assert all(text.startswith("Error:") and "did not run" in text for text in results.values())
-    assert replayed_tool_messages(upstream) == results
+    refused = all(text.startswith("Error:") and "did not run" in text for text in results.values())
+    assert refused, f"a refused ask_user call got no refusal: {results}"
+    assert replayed_tool_messages(upstream, prompt) == results
     assert message["content"] == "I will ask one question at a time."
 
 
-def test_a_refused_ask_user_does_not_stop_the_other_tool_call(user, upstream):
+def test_a_refused_ask_user_does_not_stop_the_other_tool_call(make_user, upstream):
+    prompt = "what time is it, and which one?"
     mixed = Reply(
         tool_calls=[
             ask_user_call("call_ask", {"questions": [question()]}),
             timestamp_call("call_time"),
-        ]
+        ],
+        match=reply.answering(prompt),
     )
-    upstream.queue(mixed, reply.text("done"))
-    with user.client() as client:
-        _, message = ask(client, "what time is it, and which one?")
+    upstream.queue(mixed, reply.text("done", match=reply.answering(prompt)))
+    with make_user().client() as client:
+        _, message = ask(client, prompt)
 
-    replayed = replayed_tool_messages(upstream)
+    replayed = replayed_tool_messages(upstream, prompt)
     assert set(replayed) == {"call_ask", "call_time"}
     assert replayed["call_ask"].startswith("Error:")
     assert not replayed["call_time"].startswith("Error:")
@@ -133,15 +139,19 @@ REFUSED_ARGUMENTS = [
 
 
 @pytest.mark.parametrize("arguments", REFUSED_ARGUMENTS)
-def test_a_refusal_reaches_the_model_as_a_tool_result(user, upstream, arguments):
-    upstream.queue(Reply(tool_calls=[ask_user_call("call_a", arguments)]), reply.text("retrying"))
-    with user.client() as client:
-        _, message = ask(client, "ask me something")
+def test_a_refusal_reaches_the_model_as_a_tool_result(make_user, upstream, arguments):
+    prompt = "ask me something"
+    upstream.queue(
+        Reply(tool_calls=[ask_user_call("call_a", arguments)], match=reply.answering(prompt)),
+        reply.text("retrying", match=reply.answering(prompt)),
+    )
+    with make_user().client() as client:
+        _, message = ask(client, prompt)
 
     results = tool_results(message)
     assert list(results) == ["call_a"]
     assert results["call_a"].startswith("Error:")
-    assert replayed_tool_messages(upstream) == results
+    assert replayed_tool_messages(upstream, prompt) == results
 
 
 def pending_ask_user(client: httpx.Client, turn: ChatTurn, timeout: float = 30.0) -> dict:
@@ -156,16 +166,26 @@ def pending_ask_user(client: httpx.Client, turn: ChatTurn, timeout: float = 30.0
     raise AssertionError("the ask_user call never reached the pending state")
 
 
-def test_an_accepted_ask_user_call_waits_for_the_user(user, upstream):
-    upstream.queue(reply.tool_call("ask_user", {"questions": [question(header="Scope")]}))
-    with user.client() as client:
-        turn = send_message(client, "ask me something")
-        call = pending_ask_user(client, turn)
+def test_an_accepted_ask_user_call_waits_for_the_user(make_user, upstream):
+    prompt = "ask me something"
+    upstream.queue(
+        reply.tool_call(
+            "ask_user", {"questions": [question(header="Scope")]}, match=reply.answering(prompt)
+        )
+    )
+    with make_user().client() as client:
+        turn = send_message(client, prompt)
+        try:
+            call = pending_ask_user(client, turn)
+            time.sleep(1)  # nothing more should reach the model while the question is open
+            sent = [body for body in upstream.chat_requests() if reply.answering(prompt)(body)]
+        finally:
+            # the open question would otherwise wait two minutes on the shared instance
+            client.post(f"/api/tasks/chat/{turn.chat_id}/stop")
 
     arguments = json.loads(call["arguments"])
     assert call["name"] == "ask_user"
     assert arguments["timeout_ms"] == 120_000
     assert arguments["questions"][0]["header"] == "Scope"
     assert arguments["questions"][0]["options"][0] == {"label": "A", "description": "first"}
-    time.sleep(1)  # nothing more should reach the model while the question is open
-    assert len(upstream.chat_requests()) == 1
+    assert len(sent) == 1, f"the model was called again while the question was open: {sent}"

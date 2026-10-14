@@ -49,12 +49,17 @@ def _save_tool_servers(instance, preserve, *connections: dict) -> None:
 def _timed_tool_result(instance, tool_id: str, tool: str, arguments: dict) -> tuple[str, float]:
     """Have the model call `tool`; returns what the model was told and how long the chat took."""
     person = create_user(instance)
-    instance.upstream.queue(reply.tool_call(tool, arguments), reply.text("Noted."))
+    prompt = f"use {tool}"
+    this_test = reply.answering(prompt)
+    instance.upstream.queue(
+        reply.tool_call(tool, arguments, match=this_test), reply.text("Noted.", match=this_test)
+    )
     started = time.monotonic()
     with person.client() as client:
-        ask(client, f"use {tool}", tool_ids=[tool_id])
+        ask(client, prompt, tool_ids=[tool_id])
     elapsed = time.monotonic() - started
-    follow_up = instance.upstream.chat_requests()[-1]["messages"]
+    sent = [body for body in instance.upstream.chat_requests() if this_test(body)]
+    follow_up = sent[-1]["messages"]
     [tool_message] = [entry for entry in follow_up if entry["role"] == "tool"]
     return tool_message["content"], elapsed
 

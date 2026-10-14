@@ -20,6 +20,8 @@ direct groups come back).
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from harness.access import grant, make_group
@@ -123,34 +125,42 @@ def test_a_group_cannot_move_under_its_own_descendant(admin, chain, descendant):
 def test_deleting_the_middle_group_lifts_the_leaf_and_takes_its_grants(admin, chain):
     on_top = grant("group", chain.top, "read")
     on_middle = grant("group", chain.middle, "read")
+    tag = uuid.uuid4().hex[:8]
     with (
         admin.client() as client,
-        knowledge_base(client, "Top only", [on_top]) as top_knowledge,
-        knowledge_base(client, "Middle only", [on_middle]) as middle_knowledge,
+        knowledge_base(client, f"Top only {tag}", [on_top]) as top_knowledge,
+        knowledge_base(client, f"Middle only {tag}", [on_middle]) as middle_knowledge,
     ):
 
-        def reads(actor, knowledge_id):
+        def read_status(actor, knowledge_id) -> int:
             with actor.client() as own:
-                return own.get(f"/api/v1/knowledge/{knowledge_id}").status_code == 200
+                return own.get(f"/api/v1/knowledge/{knowledge_id}").status_code
 
-        assert reads(chain.leaf_member, middle_knowledge)
-        assert reads(chain.leaf_member, top_knowledge)
+        def group_ids(actor) -> list[str]:
+            stored = client.get(f"/api/v1/users/{actor.id}").json()
+            return [entry["id"] for entry in stored["groups"]]
+
+        assert read_status(chain.leaf_member, middle_knowledge) == 200
+        assert read_status(chain.leaf_member, top_knowledge) == 200
+        assert read_status(chain.middle_member, middle_knowledge) == 200
+        assert chain.middle in group_ids(chain.middle_member)
 
         assert client.delete(f"/api/v1/groups/id/{chain.middle}/delete").json() is True
 
         assert _parent_of(admin, chain.leaf) == chain.top, (
             "the leaf group was not moved up into the deleted group's parent"
         )
-        assert reads(chain.leaf_member, top_knowledge), "the leaf lost the top group's grant"
-        assert not reads(chain.leaf_member, middle_knowledge), (
+        assert read_status(chain.leaf_member, top_knowledge) == 200, (
+            "the leaf lost the top group's grant"
+        )
+        assert read_status(chain.leaf_member, middle_knowledge) != 200, (
             "the deleted group's grant still works"
         )
-        assert not reads(chain.middle_member, middle_knowledge)
-        assert not reads(chain.middle_member, top_knowledge)
+        assert read_status(chain.middle_member, middle_knowledge) != 200
+        assert read_status(chain.middle_member, top_knowledge) != 200
         remaining = client.get(f"/api/v1/knowledge/{middle_knowledge}").json()["access_grants"]
         assert chain.middle not in {entry["principal_id"] for entry in remaining}
-        stored = client.get(f"/api/v1/users/{chain.middle_member.id}").json()
-        assert stored["groups"] == []
+        assert group_ids(chain.middle_member) == []
 
 
 def test_deleting_the_top_group_makes_the_middle_group_top_level(admin, chain):

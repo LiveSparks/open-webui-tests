@@ -134,12 +134,17 @@ def test_a_chat_with_the_knowledge_base_attached_gets_its_points(
 def test_the_knowledge_search_tool_cites_external_points_without_a_file(
     admin, upstream, connection_id
 ):
+    prompt = "search the knowledge for the gate code"
     with admin.client() as client, external_knowledge_base(client, connection_id, COLLECTION) as kb:
         upstream.queue(
-            reply.tool_call("query_knowledge_files", {"query": "gate code", "knowledge_ids": [kb]}),
-            reply.text("The code is 4471."),
+            reply.tool_call(
+                "query_knowledge_files",
+                {"query": "gate code", "knowledge_ids": [kb]},
+                match=reply.answering(prompt),
+            ),
+            reply.text("The code is 4471.", match=reply.answering(prompt)),
         )
-        _, answer = ask(client, "search the knowledge for the gate code")
+        _, answer = ask(client, prompt)
 
     cited = [entry for source in answer["sources"] for entry in source["metadata"]]
     assert [entry["source"] for entry in cited] == ["gates.md", "visitors.md"]
@@ -195,7 +200,7 @@ def test_a_connection_a_knowledge_base_uses_is_kept(admin, connection_id):
             still_listed = connection_id in _connections(client)
 
     assert refused.status_code == 400, refused.text
-    assert still_listed
+    assert still_listed, "a connection a knowledge base uses was deleted"
 
 
 def test_the_connection_test_reports_health_and_saves_it(admin, listener, connection_id):
@@ -313,9 +318,12 @@ def test_the_admin_retrieval_test_searches_a_milvus_collection(admin, milvus_ser
     [(_, vector_field, limit, output_fields)] = searches_of(milvus_service, MILVUS_COLLECTION)
     assert (vector_field, limit) == ("vector", 2)
     assert set(output_fields) == {"data", "metadata", "id"}
-    assert any(call.get("dbname") == "harbour" for call in milvus_service.call_metadata)
+    calls = milvus_service.call_metadata
+    assert any(call.get("dbname") == "harbour" for call in calls), f"no call named the db: {calls}"
     token = base64.b64encode(MILVUS_TOKEN.encode()).decode()
-    assert any(call.get("authorization") == token for call in milvus_service.call_metadata)
+    assert any(call.get("authorization") == token for call in calls), (
+        f"no call sent the token: {calls}"
+    )
 
 
 def test_a_chat_with_a_milvus_knowledge_base_attached_gets_its_rows(
@@ -337,7 +345,7 @@ def test_a_chat_with_a_milvus_knowledge_base_attached_gets_its_rows(
         )
 
     assert answer["content"] == "Cabin 7."
-    assert searches_of(milvus_service, MILVUS_COLLECTION)
+    assert searches_of(milvus_service, MILVUS_COLLECTION), "Milvus was never searched for the chat"
     [chat_request] = [
         body for body in upstream.chat_requests() if reply.answering("dock master")(body)
     ]

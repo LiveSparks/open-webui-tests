@@ -59,14 +59,17 @@ def test_the_empty_sign_in_is_the_sole_admin_account(open_instance):
 
 
 def test_any_credentials_sign_in_to_that_same_account(open_instance):
-    first = sign_in(open_instance).json()
+    first = sign_in(open_instance)
+    assert first.status_code == 200, first.text
     added = create_user(open_instance)
 
     as_someone_else = sign_in(open_instance, added.email, added.password)
     with_nonsense = sign_in(open_instance, "nobody@example.com", "wrong")
 
-    assert as_someone_else.json()["id"] == first["id"]
-    assert with_nonsense.json()["id"] == first["id"]
+    assert as_someone_else.status_code == 200, as_someone_else.text
+    assert as_someone_else.json()["id"] == first.json()["id"]
+    assert with_nonsense.status_code == 200, with_nonsense.text
+    assert with_nonsense.json()["id"] == first.json()["id"]
 
 
 def test_sign_up_is_refused_and_creates_no_account(open_instance):
@@ -80,6 +83,10 @@ def test_sign_up_is_refused_and_creates_no_account(open_instance):
 
     assert refused.status_code == 403, refused.text
     with open_instance.client() as client:
+        found = client.get("/api/v1/users/", params={"query": SOLE_ACCOUNT}).json()["users"]
+        assert [account["email"] for account in found] == [SOLE_ACCOUNT], (
+            f"the admin search found {found}"
+        )
         assert client.get("/api/v1/users/", params={"query": email}).json()["users"] == []
 
 

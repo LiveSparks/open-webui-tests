@@ -19,6 +19,7 @@ import time
 
 import httpx
 import pytest
+import socketio
 
 from harness.apps import (
     ALL_SCOPES,
@@ -169,7 +170,8 @@ def test_an_event_token_verifies_only_while_the_app_is_in_the_channel(raw_app, a
     event = _event_for(raw_app, posted["id"])
     verified = raw_app.request("verify_event", token=event["event_token"])
     with apps_admin.client() as client:
-        client.delete(f"/api/v1/channels/{channel_id}/apps/{raw_app.installed['id']}")
+        removed = client.delete(f"/api/v1/channels/{channel_id}/apps/{raw_app.installed['id']}")
+    assert removed.status_code == 200, removed.text
     after_leaving = raw_app.request("verify_event", token=event["event_token"])
     assert verified["status"] == 200
     assert verified["data"]["message"]["id"] == posted["id"]
@@ -184,8 +186,9 @@ def test_an_event_token_of_one_installation_does_not_verify_for_another(apps_adm
                 assert connect(client, raw.installed["id"]).status_code == 200
                 raw.wait_until_ready()
             channel_id = new_channel(client)
-            invite(client, channel_id, first.installed["id"])
-            invite(client, channel_id, second.installed["id"])
+            for raw in (first, second):
+                invited = invite(client, channel_id, raw.installed["id"])
+                assert invited.status_code == 200, invited.text
             posted = post(client, channel_id, "seen by both")
         token = _event_for(first, posted["id"])["event_token"]
         own = first.request("verify_event", token=token)
@@ -201,7 +204,8 @@ def test_scopes_limit_the_runtime(apps_admin):
             assert connect(client, raw.installed["id"]).status_code == 200
             raw.wait_until_ready()
             channel_id = new_channel(client)
-            invite(client, channel_id, raw.installed["id"])
+            invited = invite(client, channel_id, raw.installed["id"])
+            assert invited.status_code == 200, invited.text
         answers = {
             "list_channels": raw.request("list_channels"),
             "list_messages": raw.request("list_messages", channel_id=channel_id),
@@ -215,14 +219,18 @@ def test_scopes_granted_later_take_effect_without_reconnecting(apps_admin):
     with serving_raw_app() as raw:
         with apps_admin.client() as client:
             raw.installed = install_raw_app(client, raw)
-            client.patch(
+            narrowed = client.patch(
                 f"/api/v1/apps/{raw.installed['id']}",
                 json={"granted_scopes": ["channels:mentions:read"]},
             )
+            assert narrowed.status_code == 200, narrowed.text
             assert connect(client, raw.installed["id"]).status_code == 200
             raw.wait_until_ready()
             before = raw.request("list_channels")
-            client.patch(f"/api/v1/apps/{raw.installed['id']}", json={"granted_scopes": ALL_SCOPES})
+            widened = client.patch(
+                f"/api/v1/apps/{raw.installed['id']}", json={"granted_scopes": ALL_SCOPES}
+            )
+            assert widened.status_code == 200, widened.text
             after = raw.request("list_channels")
     assert before["status"] == 403
     assert after["status"] == 200
@@ -235,7 +243,7 @@ def _runtime_after(raw, change, timeout: float = 20.0):
     while time.monotonic() < deadline:
         try:
             answer = raw.request("get_me")
-        except Exception:
+        except socketio.exceptions.SocketIOError:
             return "disconnected"
         if answer["status"] != 200:
             return answer
@@ -246,7 +254,10 @@ def _runtime_after(raw, change, timeout: float = 20.0):
 def test_a_disabled_app_loses_its_runtime(raw_app, apps_admin):
     def disable():
         with apps_admin.client() as client:
-            client.patch(f"/api/v1/apps/{raw_app.installed['id']}", json={"is_active": False})
+            disabled = client.patch(
+                f"/api/v1/apps/{raw_app.installed['id']}", json={"is_active": False}
+            )
+        assert disabled.status_code == 200, disabled.text
 
     answer = _runtime_after(raw_app, disable)
     assert answer == "disconnected" or answer["status"] == 403, answer
@@ -258,7 +269,8 @@ def test_turning_apps_off_cuts_every_connection(raw_app, apps_admin, apps_instan
     def apps_off():
         with apps_admin.client() as client:
             config = client.get("/api/v1/auths/admin/config").json()
-            client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_APPS": False})
+            saved = client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_APPS": False})
+        assert saved.status_code == 200, saved.text
 
     answer = _runtime_after(raw_app, apps_off)
     assert answer == "disconnected" or answer["status"] in (403, 404), answer
@@ -272,7 +284,10 @@ def test_disabling_channels_cuts_channel_listing(apps_admin, apps_instance, pres
             assert connect(client, raw.installed["id"]).status_code == 200
             raw.wait_until_ready()
             config = client.get("/api/v1/auths/admin/config").json()
-            client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_CHANNELS": False})
+            saved = client.post(
+                "/api/v1/auths/admin/config", json={**config, "ENABLE_CHANNELS": False}
+            )
+            assert saved.status_code == 200, saved.text
         listed = raw.request("list_channels")
         me = raw.request("get_me")
     assert listed == {"status": 403, "error": "Channels are disabled"}
@@ -294,5 +309,7 @@ def test_nothing_but_a_ping_is_served_before_the_connection_is_ready(apps_admin)
 def test_the_runtime_has_no_http_route_left(apps_instance):
     with httpx.Client(base_url=apps_instance.base_url, timeout=30) as client:
         schema = client.get("/openapi.json").json()
-    runtime_paths = [path for path in schema["paths"] if path.startswith("/api/v1/apps/runtime")]
+    app_paths = [path for path in schema["paths"] if path.startswith("/api/v1/apps")]
+    assert app_paths, f"the schema lists no app routes at all: {list(schema['paths'])[:20]}"
+    runtime_paths = [path for path in app_paths if path.startswith("/api/v1/apps/runtime")]
     assert runtime_paths == []

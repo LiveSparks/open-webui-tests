@@ -17,6 +17,8 @@ leaving out the parent turns the thread test red, and asking for `read` instead 
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from harness.channel_quotes import enable_channels, group_channel, post_message
@@ -80,6 +82,7 @@ def test_an_author_posts_edits_and_deletes_their_message(room):
         ("the kettle is on", author.name)
     ]
     assert edited.status_code == 200, edited.text
+    assert read_back.status_code == 200, read_back.text
     assert read_back.json()["content"] == "the kettle has boiled"
     assert deleted.status_code == 200 and deleted.json() is True, deleted.text
     assert _listing(member, channel_id) == []
@@ -165,7 +168,11 @@ def standard_channel(admin, preserve, make_user):
     with admin.client() as client:
         created = client.post(
             "/api/v1/channels/create",
-            json={"name": "announcements", "type": None, "access_grants": [grant]},
+            json={
+                "name": f"announcements-{uuid.uuid4().hex[:8]}",
+                "type": None,
+                "access_grants": [grant],
+            },
         )
     assert created.status_code == 200, created.text
     channel_id = created.json()["id"]
