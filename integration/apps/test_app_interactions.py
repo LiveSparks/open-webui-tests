@@ -6,7 +6,8 @@ channel message, as late as it likes. When a mention cannot be delivered, Open W
 as the app's own "App error:" reply to it, for everyone in the channel; only when the app cannot
 post there (inactive, outside the channel, no write scope) is the asker alone told over their
 socket (`events:app`). The reason is the app's own error text, or Open WebUI's when the app was
-never asked, with the execution token replaced by "[redacted]".
+never asked, with the app's API key, its connection token and the execution token replaced by
+"[redacted]".
 A button press is still answered within 2.5 seconds: a private answer reaches only the presser,
 a channel answer or an update becomes an app message everyone sees, an acknowledgement says
 nothing, and a download or an error goes back to the presser; an app that fails keeps its own
@@ -25,7 +26,7 @@ test_a_failure_the_app_cannot_post_is_told_only_to_the_asker red; it never posti
 reply turns test_a_user_without_access_to_the_app_is_refused,
 test_a_failed_delivery_is_told_to_the_whole_channel and every case of
 test_the_channel_learns_why_a_mention_was_not_delivered red; `send_app_invocation` passing the
-app's error text on unredacted turns test_an_app_error_shows_no_execution_token red; and the
+app's error text on unredacted turns test_an_app_error_shows_none_of_its_credentials red; and the
 message list flagging app data instead of carrying it turns
 test_a_channel_message_with_buttons_stores_them red.
 """
@@ -591,8 +592,9 @@ def test_the_channel_learns_why_a_mention_was_not_delivered(
     assert _contents(apps_admin, channel) == [error["content"], posted["content"]]
 
 
+@pytest.mark.parametrize("secret", ["api-key", "connection-token", "execution-token"])
 @pytest.mark.parametrize("where", ["mention", "button"])
-def test_an_app_error_shows_no_execution_token(apps_admin, raw, channel, where):
+def test_an_app_error_shows_none_of_its_credentials(apps_admin, raw, channel, where, secret):
     created = raw.request(
         "create_message",
         channel_id=channel,
@@ -603,8 +605,13 @@ def test_an_app_error_shows_no_execution_token(apps_admin, raw, channel, where):
     echoed = []
 
     def failing(event):
-        echoed.append(event["execution_token"])
-        return {"status": 500, "error": f"refused {event['execution_token']} here"}
+        value = {
+            "api-key": raw.api_key,
+            "connection-token": raw.connection_token,
+            "execution-token": event["execution_token"],
+        }[secret]
+        echoed.append(value)
+        return {"status": 500, "error": f"refused {value} here"}
 
     raw.answer_with = failing
     if where == "mention":
@@ -617,7 +624,7 @@ def test_an_app_error_shows_no_execution_token(apps_admin, raw, channel, where):
         assert pressed.status_code == 500, pressed.text
         shown = pressed.json()["detail"]
         everything = pressed.text
-    assert echoed and echoed[0], "the app never saw the token it was to echo"
+    assert echoed and echoed[0], "the app never saw the credential it was to echo"
     assert echoed[0] not in everything
     assert "refused [redacted] here" in shown
 
