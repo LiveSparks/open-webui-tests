@@ -6,6 +6,7 @@ HTTP error, a slow stream, a late start, a stream the provider drops halfway) th
 completions consume in order; a reply with `match` only answers a request it accepts, so a title
 or follow-up task cannot eat the reply meant for the chat.
 `requests` holds what Open WebUI actually sent, which is how a test sees the payload it built.
+Every chat completion waits `REPLY_START_DELAY` before its reply starts, as a real provider does.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Iterator
 
 MOCK_MODEL_ID = "mock-model"
+# a real provider never answers before Open WebUI's answer to the send reaches the browser
+REPLY_START_DELAY = 0.25
 
 
 @dataclass
@@ -171,19 +174,20 @@ def _handler(upstream: MockUpstream):
             if not self.path.endswith("/chat/completions"):
                 self._send_json(404, {"error": "not found"})
                 return
+            # picked on arrival, so a late answer cannot take the next test's reply
             reply = upstream.next_reply(body or {})
+            behaviour = dict(upstream.behaviour)
+            time.sleep(REPLY_START_DELAY)
             if reply is not None:
                 self._answer(reply, bool((body or {}).get("stream")))
                 return
-            mode = upstream.behaviour["mode"]
+            mode = behaviour["mode"]
             if mode == "error":
                 self._send_json(500, {"error": {"message": "upstream failed"}})
             elif mode == "stream":
-                self._stream_repeated(
-                    upstream.behaviour["chunks"], upstream.behaviour["chunk_text"]
-                )
+                self._stream_repeated(behaviour["chunks"], behaviour["chunk_text"])
             else:
-                reply = text(upstream.behaviour.get("text", "ok"))
+                reply = text(behaviour.get("text", "ok"))
                 self._answer(reply, bool((body or {}).get("stream")))
 
         def _answer(self, reply: Reply, stream: bool) -> None:

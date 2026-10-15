@@ -492,7 +492,10 @@ def asked_or_ran(client: httpx.Client, turn: ChatTurn, call_id: str = "call_1") 
 
 
 def note_titles(client: httpx.Client) -> list[str]:
-    return [note["title"] for note in client.get("/api/v1/notes/").json()]
+    """The account's own notes; a note another test shared with everyone is listed too."""
+    own_id = client.get("/api/v1/auths/").json()["id"]
+    notes = client.get("/api/v1/notes/").json()
+    return [note["title"] for note in notes if (note.get("user") or {}).get("id") == own_id]
 
 
 @contextlib.contextmanager
@@ -959,11 +962,11 @@ def test_a_builtin_tool_writes_a_note_through_call_tool(tool_search, make_user, 
     )
     with make_user().client() as client:
         _, message = ask(client, "note that the lights are lit")
-        notes = client.get("/api/v1/notes/").json()
+        titles = note_titles(client)
 
     assert items(message, "function_call")["call_1"]["name"] == "write_note"
     assert items(message, "function_call_output")["call_1"]["status"] == "completed"
-    assert [note["title"] for note in notes] == [title]
+    assert titles == [title]
 
 
 def test_an_mcp_tool_runs_through_call_tool(tool_search, admin, preserve, make_user, upstream):
