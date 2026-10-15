@@ -51,3 +51,19 @@ def regenerate_buttons(page: Page) -> Locator:
 def typing_cursor(reply: Locator) -> Locator:
     """The blinking cursor a reply shows while it is still being written."""
     return reply.locator(".animate-cursor-pulse")
+
+
+def close_menu(page: Page) -> None:
+    """Close the open menu and wait until it is gone, so the next click or key reaches the page."""
+    page.keyboard.press("Escape")
+    expect(page.get_by_role("menu")).to_have_count(0)
+
+
+def turn_on_integration(page: Page, name: str) -> None:
+    """Switch `name` on for the next message from the chat's Integrations menu."""
+    expect(chat_input(page)).to_be_visible()
+    page.get_by_label("Integrations").click()
+    switch = page.get_by_role("menu").get_by_role("button", name=name, exact=True)
+    switch.click()
+    expect(switch).to_have_attribute("aria-pressed", "true")
+    close_menu(page)

@@ -7,7 +7,7 @@ import re
 from playwright.sync_api import Locator, Page, expect
 
 from utils.access_control import choose_visibility
-from utils.chat_ui import chat_input, conversation
+from utils.chat_ui import chat_input, close_menu, conversation
 from utils.tooltips import tooltip_button
 
 
@@ -99,7 +99,7 @@ def pick_tool(page: Page, name: str) -> None:
     menu = open_tools_menu(page)
     menu.get_by_role("button", name=name).click()
     expect(menu.get_by_role("button", name=name)).to_have_attribute("aria-pressed", "true")
-    page.keyboard.press("Escape")
+    close_menu(page)
 
 
 def tool_output(page: Page, call_name: str) -> Locator:

@@ -29,7 +29,7 @@ import re
 import uuid
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import expect
 
 from harness import upstream as reply
 from harness.actors import admin_of, create_user
@@ -59,7 +59,7 @@ from utils.cached_chat import (
     offered_tools,
     tool_results,
 )
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import expect_reply, send, turn_on_integration
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -575,14 +575,6 @@ def test_the_automation_and_calendar_tools_only_append(page_for, cached_setup, m
     )
     assert "18:10" in tool_results(requests[-1]), tool_results(requests[-1])
     assert_append_only(requests)
-
-
-def turn_on_integration(page: Page, name: str) -> None:
-    """Switch a feature on for this chat from the Integrations menu, before the first message."""
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("menu").get_by_role("button", name=name, exact=True).click()
-    page.keyboard.press("Escape")
 
 
 def test_the_image_tools_only_append(

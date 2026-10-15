@@ -47,6 +47,7 @@ from utils.chat_ui import (
     last_reply,
     replies,
     send,
+    turn_on_integration,
 )
 from utils.tooltips import tooltip_button
 
@@ -105,8 +106,7 @@ def integrations_menu(page: Page) -> Locator:
 
 
 def turn_on_image(page: Page) -> None:
-    integrations_menu(page).get_by_role("button", name="Image", exact=True).click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Image")
 
 
 def image_chip(page: Page) -> Locator:

@@ -16,7 +16,7 @@ from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from harness.upstream import Reply
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import chat_input, close_menu, expect_reply, send
 from utils.tooltips import tooltip_button
 
 CALL_NUMBERS = itertools.count(1)
@@ -96,5 +96,7 @@ def turn_on_tool(page: Page, tool_name: str) -> None:
     expect(chat_input(page)).to_be_visible()
     page.get_by_label("Integrations").click()
     page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name=tool_name).click()
-    page.keyboard.press("Escape")
+    tool = page.get_by_role("menu").get_by_role("button", name=tool_name)
+    tool.click()
+    expect(tool).to_have_attribute("aria-pressed", "true")
+    close_menu(page)

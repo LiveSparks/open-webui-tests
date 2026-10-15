@@ -23,6 +23,7 @@ from playwright.sync_api import expect
 
 from harness import upstream as reply
 from harness.python_tools import python_tool
+from utils.cached_chat import turn_on_tool
 from utils.chat_ui import conversation, expect_reply, send
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -62,10 +63,7 @@ def test_an_image_returned_inside_a_tool_result_shows_under_the_reply(
     page_for, legacy_tool_user, upstream, chart_tool
 ):
     page = page_for(legacy_tool_user)
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name="Chart renderer").click()
-    page.keyboard.press("Escape")
+    turn_on_tool(page, "Chart renderer")
 
     # legacy mode asks the model which tool to call, then asks again for the answer
     upstream.queue(

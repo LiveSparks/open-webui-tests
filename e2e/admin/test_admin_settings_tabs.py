@@ -39,7 +39,14 @@ from harness.audio_engine import (
 from harness.image_engines import GEMINI_API_KEY, IMAGEN_MODEL, IMAGES_CONFIG, serve_gemini
 from harness.listener import json_answer
 from harness.web_retrieval import RETRIEVAL_CONFIG
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.chat_ui import (
+    chat_input,
+    conversation,
+    expect_reply,
+    last_reply,
+    send,
+    turn_on_integration,
+)
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -61,12 +68,6 @@ def _open_tab(page: Page, tab: str) -> Locator:
 def _save(page: Page, settings: Locator) -> None:
     settings.get_by_role("button", name="Save", exact=True).click()
     expect(page.get_by_text("Settings saved successfully!").first).to_be_visible()
-
-
-def _turn_on(page: Page, integration: str) -> None:
-    page.get_by_label("Integrations").click()
-    page.get_by_role("menu").get_by_role("button", name=integration).click()
-    page.keyboard.press("Escape")
 
 
 def test_a_saved_rag_template_wraps_an_uploaded_file(admin_page, preserve, upstream):
@@ -143,7 +144,7 @@ def test_a_saved_search_engine_answers_the_models_web_search(
     )
     admin_page.goto("/")
     expect(chat_input(admin_page)).to_be_visible()
-    _turn_on(admin_page, "Web Search")
+    turn_on_integration(admin_page, "Web Search")
     send(admin_page, question)
     expect_reply(admin_page, "There are 412 kestrels.")
 
@@ -236,7 +237,7 @@ def test_a_saved_image_engine_draws_the_models_picture(admin_page, preserve, lis
     )
     admin_page.goto("/")
     expect(chat_input(admin_page)).to_be_visible()
-    _turn_on(admin_page, "Image")
+    turn_on_integration(admin_page, "Image")
     send(admin_page, question)
     expect_reply(admin_page, "Here is your red square.")
     expect(last_reply(admin_page).get_by_role("img")).to_be_visible()

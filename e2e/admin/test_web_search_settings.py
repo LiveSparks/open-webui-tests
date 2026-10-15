@@ -20,7 +20,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.listener import json_answer
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import expect_reply, send, turn_on_integration
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -64,10 +64,7 @@ def search_in_a_chat(page: Page, upstream) -> list[dict]:
         reply.tool_call("search_web", {"query": "harbour ferry"}, "call_search", match=answering),
         reply.text("The ferry leaves at noon.", match=answering),
     )
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
     send(page, QUESTION)
     expect_reply(page, "The ferry leaves at noon.")
     return [body for body in upstream.chat_requests() if answering(body)]

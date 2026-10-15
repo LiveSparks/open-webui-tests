@@ -28,7 +28,7 @@ from harness.image_engines import (
     save_image_settings,
     serve_automatic1111,
 )
-from utils.chat_ui import expect_reply, last_reply, send
+from utils.chat_ui import expect_reply, last_reply, send, turn_on_integration
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -45,9 +45,7 @@ def test_a_generated_image_shows_in_the_reply(
     )
     page = page_for(make_user())
 
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name="Image").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Image")
     send(page, "draw a red square")
 
     expect_reply(page, "Here is your red square.")

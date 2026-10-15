@@ -37,6 +37,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.access import grant
 from harness.plugins import installed_function
+from utils.cached_chat import turn_on_tool
 from utils.chat_ui import chat_input, expect_reply, send
 from utils.tooltips import tooltip_button
 from utils.valves import customise, valve
@@ -140,14 +141,6 @@ def tool_results(upstream, question: str) -> list[str]:
         request for request in upstream.chat_requests() if reply.answering(question)(request)
     ]
     return [entry["content"] for entry in answered[-1]["messages"] if entry["role"] == "tool"]
-
-
-def turn_on_tool(page: Page, tool_name: str) -> None:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name=tool_name).click()
-    page.keyboard.press("Escape")
 
 
 def ask_tool(page: Page, upstream, tool_name: str, function_name: str, question: str) -> None:
