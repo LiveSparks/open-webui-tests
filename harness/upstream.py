@@ -24,7 +24,7 @@ from harness import slow_machine
 
 MOCK_MODEL_ID = "mock-model"
 # a real provider never answers before Open WebUI's answer to the send reaches the browser
-REPLY_START_DELAY = slow_machine.scaled(0.09)
+REPLY_START_DELAY = 0.09
 # a held reply never released still ends, so it cannot keep a request open after its test
 HOLD_LIMIT = 60.0
 
@@ -191,7 +191,7 @@ def _handler(upstream: MockUpstream):
             # picked on arrival, so a late answer cannot take the next test's reply
             reply = upstream.next_reply(body or {})
             behaviour = dict(upstream.behaviour)
-            time.sleep(REPLY_START_DELAY)
+            time.sleep(slow_machine.scaled(REPLY_START_DELAY))
             if reply is not None:
                 self._answer(reply, bool((body or {}).get("stream")))
                 return

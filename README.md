@@ -98,7 +98,7 @@ They combine. The Redis switch needs `redis-server` on `PATH` and skips without 
 
 ### Slow machine
 
-Every browser page runs with its CPU throttled fourfold by default (`OWUI_TEST_SLOW=<n>` for n-fold, `OWUI_TEST_SLOW=0` for full speed), and the scripted provider waits as much longer before each reply. A test that races the page, which a fast machine wins and a busy CI runner loses, fails locally instead of on CI.
+Every browser page runs with its CPU throttled fourfold by default (`OWUI_TEST_SLOW=<n>` for n-fold, `OWUI_TEST_SLOW=0` for full speed), and the scripted provider waits as much longer before each reply when the run includes browser tests. A run without them has no page to wait for and keeps the provider at full speed. A test that races the page, which a fast machine wins and a busy CI runner loses, fails locally instead of on CI.
 
 ### Coverage
 

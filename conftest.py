@@ -334,6 +334,10 @@ def _is_drift(excinfo) -> bool:
     )
 
 
+def pytest_collection_finish(session) -> None:
+    slow_machine.limit_to_browser_runs(session.items)
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield

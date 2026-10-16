@@ -17,6 +17,7 @@ from typing import Iterator
 
 import httpx
 
+from harness import slow_machine
 from harness.listener import Answer, Listener, json_answer
 from harness.upstream import REPLY_START_DELAY
 
@@ -76,5 +77,5 @@ class _LateReply:
     body: bytes
 
     def __iter__(self) -> Iterator[bytes]:
-        time.sleep(REPLY_START_DELAY)
+        time.sleep(slow_machine.scaled(REPLY_START_DELAY))
         yield self.body

@@ -5,6 +5,7 @@ focus lands) can pass every time locally and fail there. Every Chromium page the
 runs with its CPU throttled through the DevTools protocol (`DEFAULT_RATE`-fold unless
 `OWUI_TEST_SLOW=<n>` asks for n-fold), and the scripted provider waits as
 much longer before each reply, as it waits for a page that is that much slower.
+A run without browser tests has no page to wait for, so it keeps the provider at full speed.
 """
 
 from __future__ import annotations
@@ -26,6 +27,13 @@ def _rate_from_env() -> float:
 
 
 RATE = _rate_from_env()
+
+
+def limit_to_browser_runs(items: list) -> None:
+    """Switch the slow mode off for a run in which no test opens a browser."""
+    global RATE
+    if not any("browser" in item.fixturenames for item in items):
+        RATE = 0
 
 
 def scaled(seconds: float) -> float:
