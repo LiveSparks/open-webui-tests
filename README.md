@@ -96,6 +96,10 @@ OWUI_TEST_REDIS=1 pytest integration e2e             # a redis-server of its own
 
 They combine. The Redis switch needs `redis-server` on `PATH` and skips without it. An instance a test gives its own database or Redis (a prepared data directory, a Redis stand-in) keeps it. A test that only holds on one backend skips in the other mode and names why.
 
+### Slow machine
+
+`OWUI_TEST_SLOW=1 pytest e2e` runs every browser page with its CPU throttled fourfold (`OWUI_TEST_SLOW=<n>` for n-fold), and the scripted provider waits as much longer before each reply. A test that races the page, which a fast machine wins and a busy CI runner loses, fails here locally. Every new or changed browser test passes five runs in a row with it on.
+
 ### Coverage
 
 `OWUI_TEST_COVERAGE=1 pytest integration e2e` measures which backend lines the run executes (needs `pip install coverage`). Every scratch instance runs under coverage, as does the pytest process itself, so `pytest unit` can be measured the same way. At the end of the session the data is combined into `coverage-report/html/index.html` and `coverage-report/coverage.json` (`OWUI_TEST_COVERAGE_DIR` moves it), and the total is printed. Each session starts from empty data; to merge two sessions, give them separate directories and run `coverage combine --keep` over their `data/` folders.
