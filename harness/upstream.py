@@ -23,7 +23,7 @@ from harness import slow_machine
 
 MOCK_MODEL_ID = "mock-model"
 # a real provider never answers before Open WebUI's answer to the send reaches the browser
-REPLY_START_DELAY = slow_machine.scaled(0.25)
+REPLY_START_DELAY = slow_machine.scaled(0.09)
 
 
 @dataclass
