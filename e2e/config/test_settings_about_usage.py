@@ -18,6 +18,7 @@ import re
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from harness import slow_machine
 from harness import upstream as reply
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import expect_reply, send
@@ -26,12 +27,16 @@ pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.req
 
 RELEASE = re.compile(r"v\d+\.\d+\.\d+")
 NO_USAGE = "No usage data found"
+# a cold app load opening the dialog takes over 5s at the throttled CPU, with nothing racing it
+SETTINGS_OPEN_TIMEOUT_MS = slow_machine.scaled(5_000)
 
 
 def settings_tab(page: Page, tab_id: str, heading: str) -> Locator:
     page.goto(f"/?settings={tab_id}")
     settings = page.get_by_role("dialog")
-    expect(settings.get_by_role("heading", name=heading, exact=True)).to_be_visible()
+    expect(settings.get_by_role("heading", name=heading, exact=True)).to_be_visible(
+        timeout=SETTINGS_OPEN_TIMEOUT_MS
+    )
     return settings
 
 

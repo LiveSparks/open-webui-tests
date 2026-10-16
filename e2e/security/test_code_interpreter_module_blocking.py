@@ -32,9 +32,10 @@ import re
 import pytest
 from playwright.sync_api import expect
 
+from harness import slow_machine
 from harness import upstream as reply
 from harness.actors import create_user
-from utils.chat_ui import expect_reply, last_reply, send
+from utils.chat_ui import REPLY_TIMEOUT_MS, expect_reply, last_reply, send
 
 pytestmark = [
     pytest.mark.regression,
@@ -76,6 +77,8 @@ CHART_CELL = "\n".join(
 )
 SOCKET_REFUSED = "socket => Direct import of module socket is restricted"
 PYODIDE_TIMEOUT_MS = 90_000
+# the reply waits on matplotlib in the browser, which alone takes over 30s at the throttled CPU
+TOOL_CHART_TIMEOUT_MS = slow_machine.scaled(REPLY_TIMEOUT_MS)
 
 
 @pytest.fixture
@@ -182,7 +185,7 @@ def test_a_chart_from_the_execute_code_tool_renders_with_a_blocklist(
         reply.tool_call("execute_code", {"code": CHART_CELL}), reply.text("drew it")
     )
     send(page, "draw a line")
-    expect_reply(page, "drew it")
+    expect(last_reply(page)).to_contain_text("drew it", timeout=TOOL_CHART_TIMEOUT_MS)
 
     result = _tool_result(page)
     expect(result).to_contain_text("Output Image")
