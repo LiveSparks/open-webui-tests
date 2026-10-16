@@ -39,6 +39,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from harness.actors import Actor
+from harness.backends import wait_until
 from harness.chat_history import seed_chat
 from utils.cached_chat import attach
 from utils.chat_ui import chat_input, conversation, expect_reply, send
@@ -210,7 +211,8 @@ def test_a_switched_on_tags_generation_files_the_chat_under_the_models_tags(
     set_switch(settings, "Tags Generation", turn_on=True)
     prompt_field(settings, "Tags Generation Prompt").fill(TAGS_PROMPT)
     save(settings)
-    page = page_for(make_user())
+    asker = make_user()
+    page = page_for(asker)
     upstream.queue(
         reply.text('{"tags": ["Ferries", "Lake travel"]}', match=reply.answering(TAGS_MARKER)),
         reply.text(ANSWER, match=reply.answering(QUESTION)),
@@ -218,6 +220,12 @@ def test_a_switched_on_tags_generation_files_the_chat_under_the_models_tags(
 
     send(page, QUESTION)
     expect_reply(page, ANSWER)
+    expect(page).to_have_url(re.compile(r"/c/[\w-]+$"))
+    chat_id = page.url.rsplit("/", 1)[-1]
+    # the tags are filed after the reply, and the menu reads them once, as it opens
+    with asker.client() as client:
+        filed = wait_until(lambda: len(client.get(f"/api/v1/chats/{chat_id}/tags").json()) == 2, 30)
+    assert filed, "the chat was never filed under the model's two tags"
     page.get_by_role("button", name="Chat actions").first.click()
 
     menu = page.get_by_role("menu")
