@@ -31,10 +31,11 @@ from __future__ import annotations
 import re
 import uuid
 
+import httpx
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from harness.actors import Actor
+from harness.actors import sign_in
 from utils.chat_ui import chat_input
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -70,12 +71,11 @@ def _sign_in(page: Page, email: str, password: str) -> None:
     page.get_by_role("button", name="Sign in", exact=True).click()
 
 
-def _dismiss_changelog(account: Actor) -> None:
-    # an account promoted to admin meets the changelog on its first page load
-    with account.client() as client:
-        dismissed = client.post(
-            "/api/v1/users/user/settings/update", json={"ui": {"showChangelog": False}}
-        )
+def _dismiss_changelog(client: httpx.Client) -> None:
+    # a new admin account meets the changelog on its first page load
+    dismissed = client.post(
+        "/api/v1/users/user/settings/update", json={"ui": {"showChangelog": False}}
+    )
     dismissed.raise_for_status()
 
 
@@ -83,7 +83,8 @@ def test_an_edited_account_signs_in_with_its_new_details_and_opens_the_admin_pan
     admin_page, make_user, page
 ):
     account = make_user()
-    _dismiss_changelog(account)
+    with account.client() as client:
+        _dismiss_changelog(client)
     suffix = uuid.uuid4().hex[:8]
     new_name, new_email, new_password = (
         f"Edited {suffix}",
@@ -235,6 +236,8 @@ def test_an_account_added_as_admin_signs_in_and_opens_the_admin_panel(admin_page
     expect(form).to_be_hidden()
     _search(users, email)
     expect(_row(users, email).get_by_role("button", name="Change User Role")).to_have_text("admin")
+    with instance.client(sign_in(instance, email, password)) as client:
+        _dismiss_changelog(client)
 
     _sign_in(page, email, password)
     expect(chat_input(page)).to_be_visible()
