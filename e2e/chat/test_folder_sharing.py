@@ -1,27 +1,28 @@
 """Journey: a folder shared with a group from its sidebar menu, and what a member then meets.
 
-The owner, in a group allowed to share folders, opens Share in the folder's "More" menu and adds
-the group in the Access List; the folder is shared for writing unless the owner turns the
-group's Access level down to Read. A member of the group finds the folder in their own sidebar,
-lists the owner's chats in it and opens one read-only: no message input, a Clone Chat button in
-its place. A member allowed to write starts a chat on the folder's page: the chat is filed in the
-folder, the folder's system prompt reaches the model for it as for the owner's own chats, and the
-owner finds the member's chat in the folder. A member who may only read gets no message input on
-the folder's page. Dragged onto the shared folder in the sidebar, a writing member's own chat is
-filed there, while a reading member's chat is not taken at all. Removing the group from the
-Access List takes the folder out of the member's sidebar again. Only the owner or an admin
-changes a folder's sharing (8145774e3): a writing member finds no Share entry in the folder's
-sidebar menu or in the menu on its page, while Edit and Export stay; the owner and an admin still
-find Share.
+The owner, in a group allowed to share folders, opens Edit in the folder's "More" menu, then Access
+in the folder editor, and adds the group in the Access List; the folder is shared for writing
+unless the owner turns the group's Access level down to Read. A member of the group finds the
+folder in their own sidebar, lists the owner's chats in it and opens one read-only: no message
+input, a Clone Chat button in its place. A member allowed to write starts a chat on the folder's
+page: the chat is filed in the folder, the folder's system prompt reaches the model for it as for
+the owner's own chats, and the owner finds the member's chat in the folder. A member who may only
+read gets no message input on the folder's page. Dragged onto the shared folder in the sidebar, a
+writing member's own chat is filed there, while a reading member's chat is not taken at all.
+Removing the group from the Access List takes the folder out of the member's sidebar again. Only
+the owner or an admin changes a folder's sharing (8145774e3): a writing member who opens the folder
+editor from its sidebar menu or from the menu on its page finds no Access button there, while the
+owner and an admin still find it.
 
-Discriminates: passes on dev ebc6add67, and on dev b5a20423e once the read share test looks for
-the Clone Chat button that replaced the Read only label (c6dd9a451). In a frontend copy whose
-Share dialog never saves a change the three tests that share or unshare in the dialog go red. In
-backend copies: listing no shared folders turns the read share, unshare and both drag tests red
-at the member's sidebar; the middleware's folder lookup returning no folder turns the writing
-member's test red (no folder prompt); reporting every shared folder as writable turns the
-read-only input and drop tests red. In a frontend copy whose folder menu shows Share to everyone
-(`canShare` forced true) the two tests for a writing member's menus go red.
+Discriminates: passes on dev ebc6add67, and on dev b5a20423e once the read share test looks for the
+Clone Chat button that replaced the Read only label (c6dd9a451), and on dev f5a26f53a once sharing
+is reached through the folder editor's Access button, where f4557ca06 moved the menu's Share entry.
+In a frontend copy whose Access dialog never saves a change the three tests that share or unshare
+in the dialog go red. In backend copies: listing no shared folders turns the read share, unshare
+and both drag tests red at the member's sidebar; the middleware's folder lookup returning no folder
+turns the writing member's test red (no folder prompt); reporting every shared folder as writable
+turns the read-only input and drop tests red. In a frontend copy whose folder editor shows Access
+to everyone the two tests for a writing member go red.
 """
 
 from __future__ import annotations
@@ -131,14 +132,18 @@ def open_sidebar(page: Page) -> Locator:
     return sidebar
 
 
+def open_editor(page: Page, menu: Locator, name: str) -> Locator:
+    menu.get_by_role("button", name="Edit").click()
+    editor = page.get_by_role("dialog").filter(has_text="Edit Folder")
+    # the folder loads after the dialog opens, and with it the Access button
+    expect(editor.get_by_placeholder("Enter folder name")).to_have_value(name)
+    return editor
+
+
 def open_share_dialog(page: Page, name: str) -> Locator:
-    sidebar = open_sidebar(page)
-    row = folder_row(sidebar, name)
-    # focus on the name shows the row's buttons like a hover, and keeps them shown while it slides
-    folder_link(sidebar, name).focus()
-    row.get_by_role("button").last.click()
-    page.get_by_role("menu").get_by_role("button", name="Share").click()
-    dialog = page.get_by_role("dialog").filter(has_text=f"Share: {name}")
+    editor = open_editor(page, open_row_menu(page, name), name)
+    editor.get_by_role("button", name="Access", exact=True).click()
+    dialog = page.get_by_role("dialog").filter(has_text=f"Access: {name}")
     expect(dialog.get_by_role("button", name="Add Access")).to_be_visible()
     return dialog
 
@@ -338,36 +343,37 @@ def open_page_menu(page: Page, folder_id: str) -> Locator:
     return menu
 
 
-def test_a_writing_member_finds_no_share_entry_in_the_sidebar_menu(page_for, crew):
+def test_a_writing_member_finds_no_access_button_editing_from_the_sidebar(page_for, crew):
     owner, member, group_id, _ = crew
     name = folder_name()
     folder_id = create_folder(owner, name)
     share_over_api(owner, folder_id, group_id, "write")
+    member_page = page_for(member)
 
-    members_menu = open_row_menu(page_for(member), name)
+    members_editor = open_editor(member_page, open_row_menu(member_page, name), name)
 
-    expect(members_menu.get_by_role("button", name="Edit")).to_be_visible()
-    expect(members_menu.get_by_role("button", name="Share")).to_have_count(0)
-    owners_menu = open_row_menu(page_for(owner), name)
-    expect(owners_menu.get_by_role("button", name="Share")).to_be_visible()
+    expect(members_editor.get_by_role("button", name="Access", exact=True)).to_have_count(0)
+    owner_page = page_for(owner)
+    owners_editor = open_editor(owner_page, open_row_menu(owner_page, name), name)
+    expect(owners_editor.get_by_role("button", name="Access", exact=True)).to_be_visible()
 
 
-def test_a_writing_member_finds_no_share_entry_in_the_menu_on_the_folders_page(page_for, crew):
+def test_a_writing_member_finds_no_access_button_editing_from_the_folders_page(page_for, crew):
     owner, member, group_id, _ = crew
-    folder_id = create_folder(owner, folder_name())
+    name = folder_name()
+    folder_id = create_folder(owner, name)
     share_over_api(owner, folder_id, group_id, "write")
+    member_page = page_for(member)
 
-    members_menu = open_page_menu(page_for(member), folder_id)
+    members_editor = open_editor(member_page, open_page_menu(member_page, folder_id), name)
 
-    expect(members_menu.get_by_role("button", name="Edit")).to_be_visible()
-    expect(members_menu.get_by_role("button", name="Share")).to_have_count(0)
-    owners_menu = open_page_menu(page_for(owner), folder_id)
-    expect(owners_menu.get_by_role("button", name="Share")).to_be_visible()
+    expect(members_editor.get_by_role("button", name="Access", exact=True)).to_have_count(0)
+    owner_page = page_for(owner)
+    owners_editor = open_editor(owner_page, open_page_menu(owner_page, folder_id), name)
+    expect(owners_editor.get_by_role("button", name="Access", exact=True)).to_be_visible()
 
 
-def test_an_admin_still_finds_share_in_the_menu_of_a_folder_shared_with_them(
-    page_for, crew, make_user
-):
+def test_an_admin_still_finds_access_editing_a_folder_shared_with_them(page_for, crew, make_user):
     owner, _, _, _ = crew
     admin = make_user(role="admin")
     name = folder_name()
@@ -382,6 +388,7 @@ def test_an_admin_still_finds_share_in_the_menu_of_a_folder_shared_with_them(
         )
     assert shared.status_code == 200, shared.text
 
-    admins_menu = open_row_menu(page_for(admin), name)
+    admin_page = page_for(admin)
+    admins_editor = open_editor(admin_page, open_row_menu(admin_page, name), name)
 
-    expect(admins_menu.get_by_role("button", name="Share")).to_be_visible()
+    expect(admins_editor.get_by_role("button", name="Access", exact=True)).to_be_visible()

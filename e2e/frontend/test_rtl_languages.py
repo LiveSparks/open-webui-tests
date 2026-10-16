@@ -9,11 +9,12 @@ sit on the right and an English paragraph under them on the left, a code block r
 right even with the chat direction set to RTL, and a chat titled in Arabic reads right to left in
 the sidebar. Mixed lines in the user's own message are e2e/chat/test_mixed_direction_lines.py.
 
-Discriminates: passes on the dev ebc6add67 build; in a frontend copy whose markdown paragraphs
-and lists lose `dir="auto"` the reply tests go red (the Arabic text sits on the left), dropping
-`dir="ltr"` from the code block turns the code test red, dropping `dir="auto"` from the sidebar
-entry turns the title test red, and a stylesheet that widens the chat input past the window for
-a right-to-left language turns the on-screen tests red.
+Discriminates: passes on the dev ebc6add67 build, and on the dev f5a26f53a build once the list test
+reads the direction of each item, which decides its own side since 6768f52ac; in a frontend copy
+whose markdown paragraphs, lists and list items lose `dir="auto"` the reply tests go red (the
+Arabic text sits on the left), dropping `dir="ltr"` from the code block turns the code test red,
+dropping `dir="auto"` from the sidebar entry turns the title test red, and a stylesheet that widens
+the chat input past the window for a right-to-left language turns the on-screen tests red.
 """
 
 from __future__ import annotations
@@ -135,8 +136,10 @@ def test_an_arabic_list_reads_right_to_left_and_an_english_one_left_to_right(
     ask(page, upstream, "list it in both", answer_text, "second point")
     answer = last_reply(page)
 
-    expect(answer.locator("ul", has_text="مرحبا")).to_have_css("direction", "rtl")
-    expect(answer.locator("ul", has_text="first point")).to_have_css("direction", "ltr")
+    for item in ("مرحبا", "كيف حالك"):
+        expect(answer.locator("li", has_text=item)).to_have_css("direction", "rtl")
+    for item in ("first point", "second point"):
+        expect(answer.locator("li", has_text=item)).to_have_css("direction", "ltr")
 
 
 def set_chat_direction(account: Actor, direction: str) -> None:

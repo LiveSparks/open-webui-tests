@@ -10,9 +10,9 @@ Open visibility gets that copy with no message box. The owner's chat settings st
 the Controls of someone replying show none of the owner's system prompt, the model is not sent it
 for their turn, and a clone made from the link starts without it. A folder shared with Allow
 replies lets its readers reply in the owner's chats in it, taking them off the folder's Access
-List closes the open chat, and only the folder's owner finds Share in its menu. Since 3a54306c5
-someone replying in a shared chat gets no Voice mode button (the owner keeps theirs), and a call
-they left open in a chat of their own closes when they go back to the shared chat.
+List closes the open chat, and only the folder's owner finds Access in its folder editor. Since
+3a54306c5 someone replying in a shared chat gets no Voice mode button (the owner keeps theirs), and
+a call they left open in a chat of their own closes when they go back to the shared chat.
 
 Two tests are red on dev b5a20423e and name the bug. Opening an Allow replies link sends the
 account to the home page, or leaves an empty new chat on the chat's address: the shared page
@@ -25,7 +25,7 @@ chat page ignores the refused rejoin.
 Discriminates: the other eight pass on dev b5a20423e. In a frontend build whose chat page ignores
 the shared chat's socket events the live view, folder reply, Clone only and folder removal tests
 fail; a build that labels every user message with the chat owner's name fails the live view and
-folder reply tests; one with Share always in a folder page's menu fails the folder menu test. In
+folder reply tests; one with Access always in the folder editor fails the folder editor test. In
 backend copies, the access check ignoring Allow replies shares fails the five tests that open a
 shared live chat, no fresh copy on switching back fails the Clone only test, a live chat for any
 signed-in visitor of the link fails the Open visibility test, the owner's settings left in for
@@ -206,7 +206,8 @@ def test_a_group_member_loses_the_open_chat_when_taken_out_of_the_group(
     page_for, make_user, admin, upstream
 ):
     """Red on dev b5a20423e: the chat stays open on screen (open-webui/open-webui#32063, fixed by
-    917f2fd1d)."""
+    917f2fd1d). Red again on dev f5a26f53a, where 4dedaaf6e reloads the chat only when the rejoin
+    is accepted; a build of it that reloads on every rejoin answer passes."""
     owner, member = _accounts(make_user)
     group_id = make_group(admin, [member])
     owner_page = page_for(owner)
@@ -388,9 +389,18 @@ def _folder_page_menu(page: Page, folder_id: str) -> Locator:
     return menu
 
 
+def _folder_editor(page: Page, menu: Locator, name: str) -> Locator:
+    menu.get_by_role("button", name="Edit").click()
+    editor = page.get_by_role("dialog").filter(has_text="Edit Folder")
+    # the folder loads after the dialog opens, and with it the Access button
+    expect(editor.get_by_placeholder("Enter folder name")).to_have_value(name)
+    return editor
+
+
 def _folder_share_dialog(page: Page, name: str) -> Locator:
-    _folder_menu(page, name).get_by_role("button", name="Share").click()
-    dialog = page.get_by_role("dialog").filter(has_text=f"Share: {name}")
+    editor = _folder_editor(page, _folder_menu(page, name), name)
+    editor.get_by_role("button", name="Access", exact=True).click()
+    dialog = page.get_by_role("dialog").filter(has_text=f"Access: {name}")
     expect(dialog.get_by_role("button", name="Add Access")).to_be_visible()
     return dialog
 
@@ -436,9 +446,9 @@ def test_a_reader_taken_off_the_folders_access_list_loses_the_open_chat(page_for
     _sent_home(member_page)
 
 
-def test_only_the_folders_owner_finds_share_in_its_menu(page_for, crew):
+def test_only_the_folders_owner_finds_access_editing_it(page_for, crew):
     owner, member, group_id, _ = crew
-    folder_id, _, _ = _folder_with_chat(owner)
+    folder_id, name, _ = _folder_with_chat(owner)
     _share_folder_over_api(
         owner,
         folder_id,
@@ -446,7 +456,9 @@ def test_only_the_folders_owner_finds_share_in_its_menu(page_for, crew):
         "continue",
     )
 
-    member_menu = _folder_page_menu(page_for(member), folder_id)
-    expect(member_menu.get_by_role("button", name="Share")).to_have_count(0)
-    owner_menu = _folder_page_menu(page_for(owner), folder_id)
-    expect(owner_menu.get_by_role("button", name="Share")).to_be_visible()
+    member_page = page_for(member)
+    member_editor = _folder_editor(member_page, _folder_page_menu(member_page, folder_id), name)
+    expect(member_editor.get_by_role("button", name="Access", exact=True)).to_have_count(0)
+    owner_page = page_for(owner)
+    owner_editor = _folder_editor(owner_page, _folder_page_menu(owner_page, folder_id), name)
+    expect(owner_editor.get_by_role("button", name="Access", exact=True)).to_be_visible()
