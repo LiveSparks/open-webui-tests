@@ -3,14 +3,14 @@
 `AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST` bounds how long the model list waits for each connection,
 `AIOHTTP_CLIENT_STREAM_IDLE_TIMEOUT` how long a streamed answer may go silent and
 `AIOHTTP_CLIENT_TIMEOUT` how long a whole answer may take (docs: env-configuration). On an
-instance booted with all three set low, a connection slower than the list's limit leaves the
-selector with the other models and without its own. An answer that goes silent mid-stream is cut
-off with the timeout shown under the text that arrived; an answer that keeps streaming runs past
-the idle limit and is cut at the total one. The provider is a second connection that streams its
-pieces with the pauses each test sets.
+instance booted with all three set low, a connection that never answers its model list leaves
+the selector with the other models and without its own. An answer that goes silent mid-stream is
+cut off with the timeout shown under the text that arrived; an answer that keeps streaming runs
+past the idle limit and is cut at the total one. The provider is a second connection that streams
+its pieces with the pauses each test sets.
 
 Discriminates: passes on the dev ebc6add67 build; in a backend copy, the model list's timeout
-dropped turns the list test red (the selector waits for the slow connection), the idle timeout
+dropped turns the list test red (the selector waits for the stalled connection), the idle timeout
 dropped from streamed requests turns the stall test red (the answer finishes after the pause) and
 the idle limit applied as the total turns the steady test red.
 """
@@ -18,6 +18,7 @@ the idle limit applied as the total turns the steady test red.
 from __future__ import annotations
 
 import json
+import threading
 import time
 import uuid
 
@@ -45,7 +46,6 @@ TIMEOUTS = {
     "AIOHTTP_CLIENT_STREAM_IDLE_TIMEOUT": str(IDLE_LIMIT_SECONDS),
     "AIOHTTP_CLIENT_TIMEOUT": str(TOTAL_LIMIT_SECONDS),
 }
-SLOW_LISTING_SECONDS = 6
 EVERYONE_READS = {"principal_type": "user", "principal_id": "*", "permission": "read"}
 MODEL = "slow.talker"
 
@@ -101,21 +101,24 @@ def ask_until_cut_off(page: Page, first_text: str) -> None:
 def test_a_connection_slower_than_the_list_limit_leaves_the_other_models(
     page_for, impatient, talker
 ):
-    def slow_models(_request):
-        time.sleep(SLOW_LISTING_SECONDS)
+    listing_released = threading.Event()
+
+    def stalled_models(_request):
+        listing_released.wait()
         return json_answer({"object": "list", "data": [{"id": "sluggish"}]})
 
-    talker.route("GET", "/v1/models", slow_models)
-    page = page_for(create_user(impatient))
-    started = time.monotonic()
-    page.goto("/")
-    expect(chat_input(page)).to_be_visible()
-    expect(model_options(page, reply.MOCK_MODEL_ID)).to_have_count(1)
-    waited = time.monotonic() - started
+    talker.route("GET", "/v1/models", stalled_models)
+    try:
+        page = page_for(create_user(impatient))
+        page.goto("/")
+        expect(chat_input(page)).to_be_visible()
+        # the stalled connection answers only after this, so the list cannot have waited for it
+        expect(model_options(page, reply.MOCK_MODEL_ID)).to_have_count(1)
 
-    expect(model_options(page, "slow.sluggish")).to_have_count(0)
-    assert talker.requests_to("/v1/models"), "the slow connection was never asked"
-    assert waited < SLOW_LISTING_SECONDS - 1, f"the selector waited {waited:.1f}s for the list"
+        expect(model_options(page, "slow.sluggish")).to_have_count(0)
+        assert talker.requests_to("/v1/models"), "the slow connection was never asked"
+    finally:
+        listing_released.set()
 
 
 # --------------------------------------------------------------------------- idle limit
