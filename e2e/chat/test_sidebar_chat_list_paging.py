@@ -14,6 +14,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import expect
 
+from utils.chat_ui import conversation
+
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 PAGE_SIZE = 60
@@ -65,6 +67,5 @@ def test_the_oldest_chat_appears_when_the_list_is_scrolled_to_its_end(page_for, 
 
     expect(page).to_have_url(f"{owner.base_url}/c/{oldest['id']}")
     # the chat that was open stays mounted for a moment while the picked one loads
-    conversation = page.get_by_label("Chat Conversation")
-    expect(conversation).to_have_count(1)
-    expect(conversation).to_contain_text(ANSWER)
+    expect(conversation(page)).to_have_count(1)
+    expect(conversation(page)).to_contain_text(ANSWER)

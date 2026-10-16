@@ -24,7 +24,8 @@ def link_dialog(page: Page) -> Locator:
 
 
 def conversation(page: Page) -> Locator:
-    return page.get_by_label("Chat Conversation")
+    """The open chat's messages, never the preview a hovered sidebar chat shows."""
+    return page.get_by_role("main").get_by_label("Chat Conversation")
 
 
 def replies(page: Page) -> Locator:
