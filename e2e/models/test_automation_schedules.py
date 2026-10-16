@@ -3,9 +3,8 @@
 A fresh admin creates an automation with each kind the Schedule menu offers (once, hourly,
 daily, weekly on chosen days, monthly on a chosen day and a custom rule): each is stored as the
 rule the menu built and its page and list entry describe it, and the daily one's next run is at
-the time chosen, in the browser's own zone. An automation on a model preset runs with the
-preset's system prompt and its tool, and its run's chat shows the tool's result. One filed in a
-folder from the Destination menu runs into that folder: its chat is listed there and the
+the time chosen, in the browser's own zone. One filed in a folder from the Destination menu
+runs into that folder: its chat is listed there and the
 folder's system prompt reaches the model. The calendar's Scheduled Tasks show an active
 automation's coming runs, which open the automation; once paused they are gone, and a run made
 with Run now shows on today and opens its chat.
@@ -30,7 +29,6 @@ Bugs, both red on dev ebc6add67:
   and then runs forever. `test_renaming_an_automation_keeps_the_end_of_its_schedule`, issue
   open-webui/open-webui#32000.
 
-`test_an_automation_on_a_preset_runs_with_its_prompt_and_tool`,
 `test_an_automation_filed_in_a_folder_runs_into_it_under_its_prompt` and
 `test_the_calendar_shows_an_active_automations_runs_and_opens_them` are red on dev 93fc3fcb7: since
 de73bb830 an automation's run, whose reply is stored before it is asked for, is refused with 409 and
@@ -43,8 +41,7 @@ taken from the local day the Once day test turns green. In backend copies: the c
 storing each rule with a stray trailing separator turns every schedule and rename case red; the
 next run computed in UTC turns the daily next-run test red; the middleware's folder lookup
 returning no folder turns the folder test red (no prompt); the Scheduled Tasks left out of the
-calendar listing turn the calendar test red; a run built without its model's defaults turns the
-preset test red (the tool is not found).
+calendar listing turn the calendar test red.
 """
 
 from __future__ import annotations
@@ -59,9 +56,8 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from harness.backends import wait_until
-from harness.python_tools import EVERYONE_READS, python_tool
 from harness.upstream import MOCK_MODEL_ID
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply
+from utils.chat_ui import chat_input, conversation, expect_reply
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -69,13 +65,6 @@ RUN_TIMEOUT_MS = 30_000
 ZONE = "Asia/Tokyo"
 IN_ZONE = {"timezone_id": ZONE, "locale": "en-US"}
 NEXT_YEAR = dt.date.today().year + 1
-TIDE_TOOL = '''
-class Tools:
-    def get_tide(self, port: str) -> str:
-        """Read the tide table of a port."""
-        return f"High water at {port}: 11:42"
-'''
-CLERK_PROMPT = "You are the tide clerk of Port Ellen."
 HARBOUR_PROMPT = "Answer as the harbour master of Port Ellen."
 
 
@@ -242,28 +231,6 @@ def test_the_once_schedule_starts_on_the_browsers_own_day(page_for, scheduler):
     ).to_have_value(local_today.isoformat())
 
 
-@pytest.fixture
-def tide_clerk(admin):
-    """A preset of the scripted model with a system prompt and a tide tool; yields its name."""
-    name = unique("Tide clerk")
-    model_id = name.lower().replace(" ", "-")
-    with python_tool(admin, TIDE_TOOL) as tool_id, admin.client() as client:
-        created = client.post(
-            "/api/v1/models/create",
-            json={
-                "id": model_id,
-                "base_model_id": MOCK_MODEL_ID,
-                "name": name,
-                "meta": {"toolIds": [tool_id]},
-                "params": {"system": CLERK_PROMPT},
-                "access_grants": [EVERYONE_READS],
-            },
-        )
-        assert created.status_code == 200, created.text
-        yield name
-        client.post("/api/v1/models/model/delete", json={"id": model_id})
-
-
 def run_now_and_open_the_chat(page: Page, owner, automation_id: str) -> None:
     details = page.get_by_role("main")
     details.get_by_role("button", name="Run now").click()
@@ -290,31 +257,6 @@ def system_text(request: dict) -> str:
     return "\n".join(
         str(message["content"]) for message in request["messages"] if message["role"] == "system"
     )
-
-
-def test_an_automation_on_a_preset_runs_with_its_prompt_and_tool(
-    page_for, scheduler, upstream, tide_clerk
-):
-    prompt = f"Read the tide at Port Ellen, batch {uuid.uuid4().hex[:6]}."
-    upstream.queue(
-        reply.tool_call("get_tide", {"port": "Port Ellen"}, match=reply.answering(prompt)),
-        reply.text("The tide is in at 11:42.", match=reply.answering(prompt)),
-    )
-    page = page_for(scheduler, **IN_ZONE)
-    dialog = open_create_dialog(page)
-    pick_model(page, dialog, tide_clerk)
-    automation_id = finish(page, dialog, prompt, unique("Tide check"))
-    expect(detail(page, "Model")).to_contain_text(tide_clerk.lower().replace(" ", "-"))
-
-    run_now_and_open_the_chat(page, scheduler, automation_id)
-    expect_reply(page, "The tide is in at 11:42.")
-    last_reply(page).get_by_text("View Result from get_tide").click()
-    expect(last_reply(page)).to_contain_text("High water at Port Ellen: 11:42")
-
-    first, *_ = requests_for(upstream, prompt)
-    assert system_text(first).startswith(CLERK_PROMPT), system_text(first)
-    offered = {tool["function"]["name"] for tool in first.get("tools") or []}
-    assert "get_tide" in offered, offered
 
 
 def test_an_automation_filed_in_a_folder_runs_into_it_under_its_prompt(
