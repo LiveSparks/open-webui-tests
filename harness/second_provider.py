@@ -4,16 +4,21 @@
 connection list with that per-connection config (a `prefix_id`, a `provider`) and registers the
 model it serves. Snapshot `OPENAI_CONFIG` with `preserve` first so the list is restored.
 `sse(...)` is a whole streamed chat reply in the provider's own wire format: reasoning after the
-answer, `reasoning_details`, or a plain JSON error line without the `data:` prefix.
+answer, `reasoning_details`, or a plain JSON error line without the `data:` prefix. Like the
+scripted provider it waits `REPLY_START_DELAY` before the first byte of the reply.
 """
 
 from __future__ import annotations
 
 import json
+import time
+from dataclasses import dataclass
+from typing import Iterator
 
 import httpx
 
-from harness.listener import Answer, Listener, json_answer, text_answer
+from harness.listener import Answer, Listener, json_answer
+from harness.upstream import REPLY_START_DELAY
 
 OPENAI_CONFIG = ("/openai/config", "/openai/config/update")
 
@@ -61,4 +66,15 @@ def sse(*events: dict | str, finish_reason: str = "stop") -> Answer:
         chunk = {"id": "second", "object": "chat.completion.chunk", "choices": [choice]}
         lines.append(f"data: {json.dumps(chunk)}\n\n")
     lines.append("data: [DONE]\n\n")
-    return text_answer("".join(lines), content_type="text/event-stream")
+    return 200, {"Content-Type": "text/event-stream"}, _LateReply("".join(lines).encode())
+
+
+@dataclass
+class _LateReply:
+    """A body that starts only after the provider's usual delay, each time it is sent."""
+
+    body: bytes
+
+    def __iter__(self) -> Iterator[bytes]:
+        time.sleep(REPLY_START_DELAY)
+        yield self.body

@@ -29,6 +29,7 @@ import json
 import pytest
 
 from harness import upstream as reply
+from harness.backends import wait_until
 from harness.chat import ask
 from harness.code_interpreter import fake_jupyter
 from harness.host_names import (
@@ -54,6 +55,7 @@ CODE_EXECUTION_CONFIG = "/api/v1/configs/code_execution"
 PIPELINES = "/api/v1/pipelines"
 TAG_FORMAT = '<code_interpreter type="code" lang="python">'
 UNRESOLVABLE_URL = f"http://{UNRESOLVABLE}:9099"
+OUTLET_WAIT = 30.0
 
 TOOL_SOURCE = '''
 class Tools:
@@ -313,13 +315,18 @@ def test_a_pipelines_filter_and_pipe_serve_chats_by_name(
         upstream.queue(reply.text("answered by the provider"))
         _, filtered = ask(client, "hello there", model=MOCK_MODEL_ID)
         _, piped = ask(client, "hello pipe", model=PIPE_ID)
+        # the outlet runs once the reply is stored as done
+        outlets_called = wait_until(
+            lambda: len(server.requests_to(f"/{FILTER_ID}/filter/outlet")) == 2, OUTLET_WAIT
+        )
 
     assert filtered["content"] == "answered by the provider", filtered
     sent = upstream.chat_requests()[-1]["messages"][-1]["content"]
     assert sent == "hello there [seen by the filter]"
     assert piped["content"] == "piped by name", piped
     assert len(server.requests_to(f"/{FILTER_ID}/filter/inlet")) == 2
-    assert len(server.requests_to(f"/{FILTER_ID}/filter/outlet")) == 2
+    outlets = len(server.requests_to(f"/{FILTER_ID}/filter/outlet"))
+    assert outlets_called, f"the filter's outlet ran {outlets} times, not once per chat"
     [pipe_request] = server.requests_to("/chat/completions")
     assert pipe_request.json()["messages"][-1]["content"] == "hello pipe [seen by the filter]"
 
