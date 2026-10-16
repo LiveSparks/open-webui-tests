@@ -133,6 +133,7 @@ A test that fails without a code change costs a release its trust in the suite. 
 - **Set the starting state; never read it.** Put a setting into the state the test starts from (over the API, after `preserve`) instead of relying on the instance default or branching on what a switch currently shows.
 - **Look for text inside the region that holds it.** A page or dialog can show the same text twice (a search result and its preview, a title and its breadcrumb), and a locator over the whole dialog then matches both. Scope it to the list, row or panel the test is about.
 - **Wait for a filtered list to match its filter.** A search or filter shows the unfiltered items first, so the match is visible before the query has run. Assert the narrowed count first, then what the remaining items hold.
+- **Drive a shared widget through one helper.** When tests in several modules use the same dialog or menu (the search dialog, the model selector), keep its locators and waits in one `utils/` module, so a redesign is repaired in one place instead of drifting apart in each copy.
 - **Check every setup call.** Assert the status of each request that builds the test's state, so a failed setup shows the server's answer instead of a misleading error later.
 
 ## Checklist before committing a test

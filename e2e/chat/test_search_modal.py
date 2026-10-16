@@ -1,42 +1,31 @@
 """The chat search dialog finds a user's own chats, previews them and opens the one they pick.
 
 The dialog opens from the sidebar's Search entry or the search shortcut. Typing sends the query to
-`GET /api/v1/chats/search`, which matches chat titles and message text and understands `tag:`,
-`folder:`, `pinned:` and `archived:` filters, offered as suggestions while typing; a match in the
-text shows as a highlighted snippet. Hovering or arrowing onto a result previews its conversation
-and a click opens it. "Start a new conversation" opens a new chat with the typed text in its
-message box, where the person sends it (since 0ffd86967 the chat address only fills the box).
-Another account's matching chat never appears. The menu on a result renames, pins, clones,
-archives and deletes the chat (after a confirm dialog), and each change is read back after a
-reload or over the API as the owner.
-
-Clicking into the search box suggests all five filters (`tag:`, `folder:`, `pinned:`, `shared:` and
-`archived:`); a filter picked there, by click or by Enter, offers its values, `true` and `false` or
-the account's tags with Untagged for `tag:none`, and each narrows the results to the chats it
-describes. Two `tag:` words list only the chats carrying both. More matches than one page of sixty
-load as the result list is scrolled to its end.
+`GET /api/v1/search` (since b4db56ae9), which matches chat titles and message text; a match in the
+text shows as a highlighted snippet. The highlighted result shows in a preview pane beside the
+list, and hovering or arrowing onto another result moves the preview there; Enter or the Open
+button opens it. "Start a new conversation" in the Actions menu opens a new chat with the typed
+text in its message box, where the person sends it (since 0ffd86967 the chat address only fills
+the box). Another account's matching chat never appears, the Location filter narrows the results
+to one folder, and more matches than one page of 24 load as the result list is scrolled to its end.
 
 Two tests pin fixed bugs: Enter on a highlighted chat closed the dialog without opening the chat
 (#31003, fixed by PR #31004), and a new conversation started from the dialog dropped the text after
 an `&` because the query went into the page address unencoded (#31469, fixed by PR #31592).
 
+The tests for the `tag:`, `pinned:`, `shared:` and `archived:` filters, their suggestions and the
+per-result menu (rename, pin, clone, archive, delete) are red on dev f5a26f53a: b4db56ae9 rebuilt
+the dialog without them, and they wait on a decision whether to delete or retarget them.
+
 Twin of integration/models/test_chat_search_filters.py.
 
-Discriminates: passes on the a5bc78300 build; the two tests above fail on the 176d31d1d build,
-before their fixes. On a build whose sidebar Search entries open nothing, whose snippet never
-highlights, whose result rows ignore the pointer, whose ArrowUp stays put, whose empty result list
-shows no text and whose new-conversation action drops the query, one test each goes red; in a
-backend copy whose chat update drops the title, whose pin or archive toggle stores nothing, whose
-clone stores a chat without the conversation or whose delete route answers without deleting, the
-matching menu test goes red and no other; on a backend whose search matches neither titles nor
-message text, whose filters are ignored or that searches every account's chats,
-the title, snippet, filter and other-account tests go red. The filter suggestion and paging tests
-pass on dev ebc6add67; on a build without the shared: option, the Untagged entry, Enter handling
-and result paging the matching test each fails, on one offering only true for pinned: the pinned
-false test fails, and in a backend copy ignoring shared: or matching any of several tags the
-shared and two tag tests fail. The two new-conversation tests pass on dev 22102e4a2; in a build of
-it that drops the query the sending test fails, and in one that puts the query into the address
-unencoded the ampersand test fails.
+Discriminates: passes on dev f5a26f53a. In a build of it whose Enter opens nothing, whose ArrowUp
+stays put, whose rows ignore the pointer, whose list never loads a second page, whose Location
+filter is never sent, whose new conversation drops the query and whose snippet never highlights,
+the Enter, arrow, hover, paging, Location, both new-conversation and highlight tests go red, and
+the title, no-match and other-account tests stay green. In a build that puts the query into the
+new chat's address unencoded the ampersand test goes red, and in a backend copy whose search
+reaches every account's chats the other-account test goes red.
 """
 
 from __future__ import annotations
@@ -50,6 +39,19 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply
+from utils.search_dialog import (
+    answers_query,
+    no_matches,
+    open_actions,
+    open_search,
+    open_search_from_sidebar,
+    open_selected,
+    preview,
+    result,
+    results,
+    search,
+    search_box,
+)
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -90,43 +92,11 @@ def post(client: httpx.Client, path: str, **body) -> dict:
     return response.json()
 
 
-def ready(page: Page) -> None:
-    # the shortcut and the sidebar are live once the chat input renders
-    expect(chat_input(page)).to_be_visible()
-
-
-def search_box(dialog: Locator) -> Locator:
-    return dialog.get_by_placeholder("Search")
-
-
-def open_from_sidebar(page: Page) -> Locator:
-    ready(page)
-    page.get_by_role("button", name="Search", exact=True).first.click()
-    dialog = page.get_by_role("dialog")
-    expect(search_box(dialog)).to_be_visible()
-    return dialog
-
-
-def open_from_shortcut(page: Page) -> Locator:
-    ready(page)
-    page.keyboard.press("Control+K")
-    dialog = page.get_by_role("dialog")
-    expect(search_box(dialog)).to_be_visible()
-    return dialog
-
-
-def results(dialog: Locator) -> Locator:
-    return dialog.get_by_role("link")
-
-
-def result(dialog: Locator, title: str) -> Locator:
-    return results(dialog).filter(has_text=title)
-
-
 def type_query(dialog: Locator, text: str) -> None:
     """Types the way a person does, so the input's key handling runs as well."""
     search_box(dialog).click()
-    search_box(dialog).press_sequentially(text)
+    with dialog.page.expect_response(answers_query(text)):
+        search_box(dialog).press_sequentially(text)
 
 
 def test_the_sidebar_entry_finds_a_chat_by_its_title_and_opens_it(page_for, make_user):
@@ -137,12 +107,15 @@ def test_the_sidebar_entry_finds_a_chat_by_its_title_and_opens_it(page_for, make
         import_chat(client, "Weekly report")
 
     page = page_for(account)
-    dialog = open_from_sidebar(page)
-    search_box(dialog).fill(word)
+    expect(chat_input(page)).to_be_visible()
+    dialog = open_search_from_sidebar(page)
+    search(dialog, word)
 
-    expect(result(dialog, f"Trip {word}")).to_be_visible()
     expect(results(dialog)).to_have_count(1)
+    expect(result(dialog, f"Trip {word}")).to_be_visible()
     result(dialog, f"Trip {word}").click()
+    expect(preview(dialog)).to_contain_text("Pack a raincoat.")
+    open_selected(dialog)
 
     expect(page).to_have_url(re.compile(f"/c/{chat_id}$"))
     expect(dialog).to_be_hidden()
@@ -158,30 +131,14 @@ def test_the_shortcut_finds_a_chat_by_its_message_text_and_highlights_the_match(
         import_chat(client, "Untitled trip", question=f"Where does the {word} live?")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
-    search_box(dialog).fill(word)
+    dialog = open_search(page)
+    search(dialog, word)
 
     found = result(dialog, "Untitled trip")
+    expect(results(dialog)).to_have_count(1)
     expect(found).to_be_visible()
     expect(found).to_contain_text(f"Where does the {word} live?")
     expect(found.get_by_role("mark")).to_have_text(word)
-
-
-def test_hovering_a_result_previews_its_conversation(page_for, make_user):
-    account = make_user()
-    word = unique_word()
-    with account.client() as client:
-        import_chat(client, f"Recipes {word}", answer="Knead the dough for ten minutes.")
-
-    page = page_for(account)
-    dialog = open_from_shortcut(page)
-    search_box(dialog).fill(word)
-    expect(dialog.get_by_text("Select a conversation to preview")).to_be_visible()
-
-    result(dialog, f"Recipes {word}").hover()
-
-    expect(dialog.get_by_text("Knead the dough for ten minutes.")).to_be_visible()
-    expect(dialog.get_by_text("Select a conversation to preview")).to_be_hidden()
 
 
 @pytest.fixture
@@ -197,34 +154,48 @@ def two_matching_chats(make_user) -> tuple:
     return account, word, older_id, newer_id
 
 
+def test_hovering_a_result_previews_its_conversation(page_for, two_matching_chats):
+    account, word, _older_id, _newer_id = two_matching_chats
+    page = page_for(account)
+    dialog = open_search(page)
+    search(dialog, word)
+    expect(results(dialog)).to_have_count(2)
+    expect(preview(dialog)).to_contain_text("The newer answer.")
+
+    result(dialog, f"Older {word}").hover()
+
+    expect(preview(dialog)).to_contain_text("The older answer.")
+    expect(preview(dialog)).not_to_contain_text("The newer answer.")
+
+
 def test_arrow_keys_move_the_preview_from_result_to_result(page_for, two_matching_chats):
     account, word, _older_id, _newer_id = two_matching_chats
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     type_query(dialog, word)
     expect(results(dialog)).to_have_count(2)
 
     # the selection stops at the last result, however far past it the arrow goes
     for _ in range(6):
         page.keyboard.press("ArrowDown")
-    expect(dialog.get_by_text("The older answer.")).to_be_visible()
+    expect(preview(dialog)).to_contain_text("The older answer.")
 
     page.keyboard.press("ArrowUp")
-    expect(dialog.get_by_text("The newer answer.")).to_be_visible()
-    expect(dialog.get_by_text("The older answer.")).to_be_hidden()
+    expect(preview(dialog)).to_contain_text("The newer answer.")
+    expect(preview(dialog)).not_to_contain_text("The older answer.")
 
 
 @pytest.mark.regression
 def test_enter_opens_the_highlighted_chat(page_for, two_matching_chats):
     account, word, _older_id, newer_id = two_matching_chats
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     type_query(dialog, word)
     expect(results(dialog)).to_have_count(2)
     for _ in range(6):
         page.keyboard.press("ArrowDown")
     page.keyboard.press("ArrowUp")
-    expect(dialog.get_by_text("The newer answer.")).to_be_visible()
+    expect(preview(dialog)).to_contain_text("The newer answer.")
 
     page.keyboard.press("Enter")
 
@@ -239,11 +210,11 @@ def test_a_query_nothing_matches_says_no_results(page_for, make_user):
         import_chat(client, "Weekly report")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     expect(result(dialog, "Weekly report")).to_be_visible()
-    search_box(dialog).fill(unique_word())
+    search(dialog, unique_word())
 
-    expect(dialog.get_by_text("No results found")).to_be_visible()
+    expect(no_matches(dialog)).to_be_visible()
     expect(results(dialog)).to_have_count(0)
 
 
@@ -256,11 +227,11 @@ def test_another_accounts_matching_chat_never_shows(page_for, make_user):
         import_chat(other_client, f"Theirs {word}", question=f"about {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
-    search_box(dialog).fill(word)
+    dialog = open_search(page)
+    search(dialog, word)
 
-    expect(result(dialog, f"Mine {word}")).to_be_visible()
     expect(results(dialog)).to_have_count(1)
+    expect(result(dialog, f"Mine {word}")).to_be_visible()
 
 
 def test_the_tag_suggestion_narrows_the_results_to_that_tag(page_for, make_user):
@@ -273,7 +244,7 @@ def test_the_tag_suggestion_narrows_the_results_to_that_tag(page_for, make_user)
         post(client, f"/api/v1/chats/{tagged_id}/tags", name=tag)
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     type_query(dialog, "tag:")
     dialog.get_by_role("button").filter(has_text=tag).click()
 
@@ -282,7 +253,7 @@ def test_the_tag_suggestion_narrows_the_results_to_that_tag(page_for, make_user)
     expect(results(dialog)).to_have_count(1)
 
 
-def test_the_folder_suggestion_narrows_the_results_to_that_folder(page_for, make_user):
+def test_the_location_filter_narrows_the_results_to_that_folder(page_for, make_user):
     account = make_user()
     word = unique_word()
     folder = f"Travel {word}"
@@ -292,13 +263,16 @@ def test_the_folder_suggestion_narrows_the_results_to_that_folder(page_for, make
         import_chat(client, f"Loose {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
-    type_query(dialog, "folder:")
-    dialog.get_by_role("button").filter(has_text=folder).click()
+    dialog = open_search(page)
+    search(dialog, word)
+    expect(results(dialog)).to_have_count(2)
+    dialog.get_by_role("button", name="Filters").click()
+    page.get_by_role("button", name="Location").click()
+    page.get_by_role("button", name=folder).click()
 
-    expect(search_box(dialog)).to_have_value(f"folder:travel_{word} ")
-    expect(result(dialog, f"Filed {word}")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Remove location filter")).to_have_text(folder)
     expect(results(dialog)).to_have_count(1)
+    expect(result(dialog, f"Filed {word}")).to_be_visible()
 
 
 def test_pinned_true_lists_only_the_pinned_chats(page_for, make_user):
@@ -309,7 +283,7 @@ def test_pinned_true_lists_only_the_pinned_chats(page_for, make_user):
         import_chat(client, f"Unpinned {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     search_box(dialog).fill(f"{word} pinned:true")
 
     expect(result(dialog, f"Pinned {word}")).to_be_visible()
@@ -324,7 +298,7 @@ def test_archived_chats_show_only_under_archived_true(page_for, make_user):
         import_chat(client, f"Current {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     search_box(dialog).fill(word)
     expect(result(dialog, f"Current {word}")).to_be_visible()
     expect(results(dialog)).to_have_count(1)
@@ -336,9 +310,9 @@ def test_archived_chats_show_only_under_archived_true(page_for, make_user):
 
 
 def start_a_new_conversation(page: Page, text: str) -> None:
-    dialog = open_from_shortcut(page)
-    search_box(dialog).fill(text)
-    dialog.get_by_role("button", name="Start a new conversation").click()
+    dialog = open_search(page)
+    search(dialog, text)
+    open_actions(dialog).get_by_role("button", name="Start a new conversation").click()
 
 
 def test_start_a_new_conversation_sends_the_typed_text(page_for, make_user, upstream):
@@ -382,7 +356,7 @@ def owned_chat(make_user) -> tuple:
 
 def open_result_menu(page: Page, word: str, title: str) -> Locator:
     """Searches for `word` and opens the chat menu on the row of `title`."""
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     search_box(dialog).fill(word)
     expect(result(dialog, title)).to_be_visible()
     expect(results(dialog)).to_have_count(1)
@@ -392,7 +366,7 @@ def open_result_menu(page: Page, word: str, title: str) -> Locator:
 
 def search_after_reload(page: Page, text: str) -> Locator:
     page.reload()
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     search_box(dialog).fill(text)
     return dialog
 
@@ -501,7 +475,7 @@ def suggested(dialog: Locator, name: str) -> Locator:
 
 def test_the_search_box_suggests_every_filter(page_for, make_user):
     page = page_for(make_user())
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
 
     search_box(dialog).click()
 
@@ -525,7 +499,7 @@ def test_shared_true_picked_from_the_suggestions_lists_only_the_shared_chats(pag
         post(client, f"/api/v1/chats/{shared_id}/share")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     pick_filter(dialog, word, "shared:", "true")
 
     expect(search_box(dialog)).to_have_value(f"{word} shared:true ")
@@ -542,7 +516,7 @@ def test_shared_false_leaves_the_shared_chats_out(page_for, make_user):
         post(client, f"/api/v1/chats/{shared_id}/share")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     search_box(dialog).fill(f"{word} shared:false")
 
     expect(result(dialog, f"Private {word}")).to_be_visible()
@@ -557,7 +531,7 @@ def test_pinned_false_picked_from_the_suggestions_leaves_the_pinned_chats_out(pa
         import_chat(client, f"Unpinned {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     pick_filter(dialog, word, "pinned:", "false")
 
     expect(search_box(dialog)).to_have_value(f"{word} pinned:false ")
@@ -574,7 +548,7 @@ def test_the_untagged_suggestion_lists_only_the_chats_without_tags(page_for, mak
         post(client, f"/api/v1/chats/{tagged_id}/tags", name=f"Road {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     type_query(dialog, f"{word} tag:")
     dialog.get_by_role("button").filter(has_text="Untagged").click()
 
@@ -594,7 +568,7 @@ def test_two_tags_list_only_the_chats_carrying_both(page_for, make_user):
         post(client, f"/api/v1/chats/{both_id}/tags", name=f"walks{word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     search_box(dialog).fill(f"tag:coast{word}")
     expect(results(dialog)).to_have_count(2)
 
@@ -612,7 +586,7 @@ def test_enter_completes_the_highlighted_filter_and_its_value(page_for, make_use
         import_chat(client, f"Current {word}")
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
+    dialog = open_search(page)
     type_query(dialog, "arch")
     page.keyboard.press("Enter")
     expect(search_box(dialog)).to_have_value("archived:")
@@ -626,7 +600,7 @@ def test_enter_completes_the_highlighted_filter_and_its_value(page_for, make_use
 
 # --------------------------------------------------------------------------- paging
 
-PAGE_SIZE = 60
+PAGE_SIZE = 24
 
 
 def test_more_matches_than_a_page_load_as_the_results_are_scrolled(page_for, make_user):
@@ -645,8 +619,8 @@ def test_more_matches_than_a_page_load_as_the_results_are_scrolled(page_for, mak
         assert imported.status_code == 200, imported.text
 
     page = page_for(account)
-    dialog = open_from_shortcut(page)
-    search_box(dialog).fill(word)
+    dialog = open_search(page)
+    search(dialog, word)
     expect(results(dialog)).to_have_count(PAGE_SIZE)
     expect(result(dialog, f"Log 000 {word}")).to_have_count(0)
 

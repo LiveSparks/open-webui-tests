@@ -30,6 +30,7 @@ from harness import upstream as reply
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import conversation, expect_reply, last_reply, replies, send
+from utils.search_dialog import open_search, results, search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -252,10 +253,9 @@ def _search_api(account, word: str) -> list[dict]:
 
 
 def _search_dialog_hits(page: Page, word: str) -> Locator:
-    page.keyboard.press("Control+K")
-    dialog = page.get_by_role("dialog")
-    dialog.get_by_placeholder("Search").fill(word)
-    return dialog.get_by_role("link").filter(has_text=word)
+    dialog = open_search(page)
+    search(dialog, word)
+    return results(dialog)
 
 
 @pytest.mark.regression

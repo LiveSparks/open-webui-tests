@@ -27,6 +27,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import grant
 from harness.actors import Actor
+from utils.search_dialog import open_actions, open_search_from_sidebar, search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -305,10 +306,9 @@ def test_create_a_new_note_in_the_search_opens_a_note_with_the_typed_text(page_f
     page.goto("/notes")
     expect(page.get_by_role("main").get_by_text("No Notes")).to_be_visible()
 
-    sidebar = page.get_by_role("navigation", name="Chat history")
-    sidebar.get_by_role("button", name="Search", exact=True).click()
-    page.get_by_placeholder("Search").last.fill("call the plumber")
-    page.get_by_role("button", name="Create a new note").click()
+    dialog = open_search_from_sidebar(page)
+    search(dialog, "call the plumber")
+    open_actions(dialog).get_by_role("button", name="Create a new note").click()
     confirm = page.get_by_role("dialog", name="Create a new note")
     expect(confirm).to_contain_text("call the plumber")
     confirm.get_by_role("button", name="Confirm").click()

@@ -21,6 +21,7 @@ from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.search_dialog import no_matches, open_search_from_sidebar, search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -55,11 +56,6 @@ def sidebar_entry(page: Page):
     return page.locator(f'a[href="/c/{chat_id}"]')
 
 
-def search_sidebar(page: Page, text: str) -> None:
-    page.get_by_role("navigation", name="Chat history").get_by_label("Search").first.click()
-    page.get_by_role("dialog").get_by_placeholder("Search").fill(text)
-
-
 def test_a_temporary_chat_is_answered_and_left_out_of_history_search_and_storage(
     page_for, make_user, upstream
 ):
@@ -74,8 +70,9 @@ def test_a_temporary_chat_is_answered_and_left_out_of_history_search_and_storage
 
     expect_reply(page, ANSWER)
     expect(page.locator('a[href^="/c/"]')).to_have_count(0)
-    search_sidebar(page, "Carinthia")
-    expect(page.get_by_text("No results found")).to_be_visible()
+    dialog = open_search_from_sidebar(page)
+    search(dialog, "Carinthia")
+    expect(no_matches(dialog)).to_be_visible()
     assert "/c/" not in page.url
     assert stored_chats(account, "Carinthia") == []
 

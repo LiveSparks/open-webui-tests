@@ -217,12 +217,17 @@ def _hover_chat_row(page: Page, title: str) -> Locator:
     return row
 
 
+def _hover_preview(page: Page, chat_id: str) -> Locator:
+    """The floating preview's message list, which carries the chat's id (b4db56ae9 renamed it)."""
+    return page.locator(f"#chat-preview-{chat_id}")
+
+
 def test_hovering_a_chat_previews_its_messages(page_for, talker):
-    account, _ = talker
+    account, chat_id = talker
     page = page_for(account)
     _hover_chat_row(page, "Owls")
 
-    preview = page.locator("[id^=chat-hover-preview-messages-]")
+    preview = _hover_preview(page, chat_id)
     expect(preview).to_contain_text(FIRST_QUESTION)
     expect(preview).to_contain_text(FIRST_ANSWER)
     expect(preview).to_contain_text(SECOND_QUESTION)
@@ -230,11 +235,11 @@ def test_hovering_a_chat_previews_its_messages(page_for, talker):
 
 
 def test_no_preview_shows_once_chat_hover_previews_is_switched_off(page_for, talker):
-    account, _ = talker
+    account, chat_id = talker
     _save_ui_settings(account, {"chatHoverPreview": False})
     page = page_for(account)
     row = _hover_chat_row(page, "Owls")
 
     expect(row).to_be_visible()
     page.wait_for_timeout(1000)  # the preview opens 300 ms after the hover
-    expect(page.locator("[id^=chat-hover-preview-messages-]")).to_have_count(0)
+    expect(_hover_preview(page, chat_id)).to_have_count(0)

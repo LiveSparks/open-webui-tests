@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import re
 import uuid
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -31,6 +30,7 @@ from harness import upstream as reply
 from harness.python_tools import python_tool
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
 from utils.member_picker import pick_member
+from utils.search_dialog import no_matches, open_search_from_sidebar, result, search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -119,18 +119,6 @@ def sidebar_chats(page: Page) -> Locator:
     return page.locator('a[href^="/c/"]')
 
 
-def open_search(page: Page) -> None:
-    page.get_by_role("navigation", name="Chat history").get_by_label("Search").first.click()
-
-
-def search_for(page: Page, text: str) -> None:
-    """Fill the open search dialog and return once the server has answered that search."""
-    with page.expect_response(
-        lambda response: parse_qs(urlparse(response.url).query).get("text") == [text]
-    ):
-        page.get_by_role("dialog").get_by_placeholder("Search").fill(text)
-
-
 def test_the_subagents_chat_shows_in_no_ones_sidebar_or_search(
     subagents_on, page_for, make_user, upstream
 ):
@@ -150,17 +138,15 @@ def test_the_subagents_chat_shows_in_no_ones_sidebar_or_search(
     expect(sidebar_chats(owner_page)).to_have_count(1)
     owner_page.reload()
     expect(sidebar_chats(owner_page)).to_have_count(1)
-    open_search(owner_page)
-    search_for(owner_page, prompt)
-    expect(
-        owner_page.get_by_role("dialog").get_by_role("link", name=re.compile(prompt))
-    ).to_be_visible()
-    search_for(owner_page, task)
-    expect(owner_page.get_by_text("No results found")).to_be_visible()
+    owner_search = open_search_from_sidebar(owner_page)
+    search(owner_search, prompt)
+    expect(result(owner_search, prompt)).to_be_visible()
+    search(owner_search, task)
+    expect(no_matches(owner_search)).to_be_visible()
     expect(sidebar_chats(other_page)).to_have_count(1)
-    open_search(other_page)
-    search_for(other_page, task)
-    expect(other_page.get_by_text("No results found")).to_be_visible()
+    other_search = open_search_from_sidebar(other_page)
+    search(other_search, task)
+    expect(no_matches(other_search)).to_be_visible()
 
 
 def share_with(page: Page, reader) -> str:
