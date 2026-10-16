@@ -44,6 +44,8 @@ def on_a_phone(page: Page) -> Page:
     page.add_init_script(TAPS_LEAVE_BUTTONS_UNFOCUSED)
     page.reload()
     expect(chat_input(page)).to_be_visible()
+    # the page focuses the message box once after load; let that land before a test blurs it
+    expect(chat_input(page)).to_be_focused()
     return page
 
 

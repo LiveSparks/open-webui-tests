@@ -552,9 +552,11 @@ def test_a_mixed_round_asks_each_call_in_turn_and_a_second_round_asks_again(
         buttons = last_reply(page).get_by_role("button", name=action, exact=True)
         expect(buttons).not_to_have_count(0, timeout=REPLY_TIMEOUT_MS)
         card = last_reply(page).get_by_text("Allow shout?")
-        # several calls fold into one group that opens once
-        if not card.is_visible():
-            last_reply(page).get_by_text(re.compile(r"^Exploring")).last.click()
+        closed_group = last_reply(page).get_by_role("button", name="Toggle details", expanded=False)
+        # the card hides briefly while the next call renders; clicking an open group closes it
+        expect(card.or_(closed_group).first).to_be_visible()
+        if not card.is_visible() and closed_group.count():
+            closed_group.last.click()
         card.click()
         expect(last_reply(page)).to_contain_text(re.compile(rf"Input\s*text\s*{word}"))
         buttons.last.click()

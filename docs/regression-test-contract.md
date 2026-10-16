@@ -135,6 +135,8 @@ A test that fails without a code change costs a release its trust in the suite. 
 - **Look for text inside the region that holds it.** A page or dialog can show the same text twice (a search result and its preview, a title and its breadcrumb), and a locator over the whole dialog then matches both. Scope it to the list, row or panel the test is about.
 - **Wait for a filtered list to match its filter.** A search or filter shows the unfiltered items first, so the match is visible before the query has run. Assert the narrowed count first, then what the remaining items hold.
 - **Drive a shared widget through one helper.** When tests in several modules use the same dialog or menu (the search dialog, the model selector), keep its locators and waits in one `utils/` module, so a redesign is repaired in one place instead of drifting apart in each copy.
+- **Let the page finish what it does on load before undoing it.** The chat page focuses the message box shortly after it shows, so a blur right after the box appears can come first and the focus lands afterwards. Wait for the load-time state (the box focused) and then change it.
+- **Open a toggle by its own state, never by whether its content shows.** Content inside an open group can vanish for a moment while it re-renders, and clicking the toggle then closes it. Click only a toggle that reads closed (`expanded=False`).
 - **Check every setup call.** Assert the status of each request that builds the test's state, so a failed setup shows the server's answer instead of a misleading error later.
 
 ## Checklist before committing a test
