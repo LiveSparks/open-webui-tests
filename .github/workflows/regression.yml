@@ -151,8 +151,8 @@ jobs:
         id: embedding-model
         uses: actions/cache@v4
         with:
-          path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-          key: embedding-model-sentence-transformers-all-MiniLM-L6-v2
+          path: ~/.cache/huggingface/hub
+          key: embedding-model-hub-sentence-transformers-all-MiniLM-L6-v2
 
       # Open Terminal gets an environment of its own; the suite starts it from OPEN_TERMINAL_BIN.
       # The Playwright web loader's spaCy model is installed here; an instance behind the
@@ -266,8 +266,8 @@ jobs:
         id: embedding-model
         uses: actions/cache@v4
         with:
-          path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
-          key: embedding-model-sentence-transformers-all-MiniLM-L6-v2
+          path: ~/.cache/huggingface/hub
+          key: embedding-model-hub-sentence-transformers-all-MiniLM-L6-v2
 
       # The suite starts a redis-server of its own per instance and Postgres through pgserver.
       # The Playwright web loader's spaCy model is installed here; an instance behind the
