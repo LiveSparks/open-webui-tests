@@ -7,9 +7,11 @@ backends took that filter and dropped it, so the store answered with every neigh
 knowledge bases included: Qdrant sent no `query_filter` in either storage mode and Elasticsearch
 only the collection term. The default Chroma store always applied it.
 
-The same search runs on the shared instance (Chroma) and on instances booted on the local Qdrant
-stand-in, in both storage modes, the Elasticsearch stand-in and the Pinecone stand-in, each of
-which applies the filter it is sent.
+The same search runs on an instance of its own on the default Chroma store and on instances booted
+on the local Qdrant stand-in, in both storage modes, the Elasticsearch stand-in and the Pinecone
+stand-in, each of which applies the filter it is sent. The Chroma one is not the shared instance:
+the scripted provider embeds every text alike, and on a store that has collected and deleted the
+knowledge bases of earlier tests, Chroma's filtered search then leaves some matches out.
 
 Twin of unit/security/test_knowledge_search_collection_acl.py, which keeps the audit that no
 vector backend ignores a `filter` argument.
@@ -38,9 +40,9 @@ from harness.qdrant_server import qdrant_env, serving_qdrant
 
 pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_source]
 
-# the stand-in stores each boot an instance of their own
+# each store boots an instance of its own
 STORES = [
-    "chroma",
+    pytest.param("chroma", marks=pytest.mark.slow),
     pytest.param("qdrant-multitenancy", marks=pytest.mark.slow),
     pytest.param("qdrant-collections", marks=pytest.mark.slow),
     pytest.param("elasticsearch", marks=pytest.mark.slow),
@@ -78,7 +80,7 @@ def outside_stores(instance_with, tmp_path_factory):
 @pytest.fixture(params=STORES)
 def store(request):
     if request.param == "chroma":
-        return request.getfixturevalue("instance")
+        return request.getfixturevalue("instance_with")({})
     return request.getfixturevalue("outside_stores")(request.param)
 
 
