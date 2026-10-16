@@ -62,7 +62,7 @@ def test_a_read_grant_does_not_expose_the_source(admin, make_user):
 - **Own your state.** Give anything a test changes to an account from `make_user()`, so the shared `user` stays as the next test expects it. Change a global setting only after `preserve(...)`, which restores it; `preserve(..., on=extra)` does the same on an `instance_with` instance.
 - **Script the model, then read what it was sent.** `upstream.queue(reply.text(...), reply.tool_call(name, args), reply.error(500))` decides the replies; `upstream.chat_requests()` shows the payload Open WebUI built. Assert on that, on stored chats (`harness.chat.wait_for_reply`) and on `instance.log_since(offset)`: all three outlive a refactor that renames every internal.
 - **Keep outside services local.** Point the setting at a `listener` (or a fake in `harness/`) and assert on what it received, so the instance only ever talks to localhost.
-- **Env-only settings get their own instance** through `instance_with({...})`. Reuse one env set across modules where you can; each boot costs about 13 seconds. Mark the tests that use one `slow`.
+- **Env-only settings get their own instance** through `instance_with({...})`. Reuse one env set across modules where you can; each boot costs several seconds. Mark the tests that use one `slow`.
 
 ## Writing a browser test
 

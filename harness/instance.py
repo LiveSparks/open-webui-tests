@@ -2,9 +2,10 @@
 
 The instance runs in its own process on a free port against a scratch data directory, with the
 mock upstream as its only model provider, so a test can read its log, measure its process and
-script every model reply. When the checkout has a built frontend it is served too, which is
-what the browser suite drives. `restart()` stops the server and starts it again on the same
-address, data and settings, as a redeploy does under a page that stays open.
+script every model reply; on Linux the process is forked from a server that has the heavy
+libraries imported already (`harness.preload`). When the checkout has a built frontend it is
+served too, which is what the browser suite drives. `restart()` stops the server and starts it
+again on the same address, data and settings, as a redeploy does under a page that stays open.
 """
 
 from __future__ import annotations
@@ -25,15 +26,14 @@ from typing import Callable, Iterator
 import httpx
 import pytest
 
-from harness import backends
+from harness import backends, preload
 from harness.upstream import MockUpstream
 
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "adminpassword123"
 WEBUI_SECRET_KEY = "integration-secret-key"  # also the key OAuth client info is encrypted with
 
-# `loop="none"` as `open-webui serve` does: uvicorn's default loop leaves Windows sockets unwired
-LAUNCHER = """
+BOOT_IMPORT = """
 import os, sys
 if os.environ.get("COVERAGE_PROCESS_START"):
     import coverage
@@ -42,7 +42,9 @@ sys.path.insert(0, sys.argv[1])
 os.chdir(sys.argv[1])
 import uvicorn
 import open_webui.main  # noqa: F401
-uvicorn.run(
+"""
+# `loop="none"` as `open-webui serve` does: uvicorn's default loop leaves Windows sockets unwired
+BOOT_SERVE = """uvicorn.run(
     "open_webui.main:app",
     host="127.0.0.1",
     port=int(sys.argv[2]),
@@ -51,6 +53,7 @@ uvicorn.run(
     log_level="warning",
 )
 """
+LAUNCHER = BOOT_IMPORT + BOOT_SERVE
 
 
 # set, not just unset: open_webui.env fills unset names from the checkout's .env
@@ -232,17 +235,12 @@ def launch(upstream: MockUpstream, extra_env: dict[str, str]) -> Iterator[Launch
     )
     log_path = scratch / "server.log"
     log_path.touch()
-    processes: list[subprocess.Popen] = []
+    processes: list[subprocess.Popen | preload.ForkedProcess] = []
 
     def start() -> int:
-        # an undrained pipe wedges the child once startup output fills it
-        with open(log_path, "a", encoding="utf-8") as log_file:
-            process = subprocess.Popen(
-                [sys.executable, "-c", LAUNCHER, str(backend), str(port)],
-                env=env,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-            )
+        process = preload.fork(
+            backend, port, env, log_path, BOOT_IMPORT, BOOT_SERVE, ISOLATED_ENV
+        ) or _start_plain(backend, port, env, log_path)
         processes.append(process)
         _wait_for_health(process, base_url, log_path)
         return process.pid
@@ -295,7 +293,18 @@ def launch(upstream: MockUpstream, extra_env: dict[str, str]) -> Iterator[Launch
         services.close()
 
 
-def _stop_process(process: subprocess.Popen) -> None:
+def _start_plain(backend: Path, port: int, env: dict[str, str], log_path: Path) -> subprocess.Popen:
+    # an undrained pipe wedges the child once startup output fills it
+    with open(log_path, "a", encoding="utf-8") as log_file:
+        return subprocess.Popen(
+            [sys.executable, "-c", LAUNCHER, str(backend), str(port)],
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+
+
+def _stop_process(process: subprocess.Popen | preload.ForkedProcess) -> None:
     process.terminate()
     try:
         process.wait(timeout=30)
@@ -303,7 +312,9 @@ def _stop_process(process: subprocess.Popen) -> None:
         process.kill()
 
 
-def _wait_for_health(proc: subprocess.Popen, base_url: str, log_path: Path) -> None:
+def _wait_for_health(
+    proc: subprocess.Popen | preload.ForkedProcess, base_url: str, log_path: Path
+) -> None:
     deadline = time.monotonic() + 300
     while time.monotonic() < deadline:
         if proc.poll() is not None:
