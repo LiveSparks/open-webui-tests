@@ -43,8 +43,9 @@ import redis
 from harness.actors import create_user
 from harness.backends import RedisProcess, wait_until
 from harness.chat import wait_for_reply
-from harness.inflight import LAST_PIECE, start_slow_reply
+from harness.inflight import LAST_PIECE, start_slow_reply, wait_until_streaming
 from harness.instance import free_port
+from harness.socket_client import connected
 
 pytestmark = [
     pytest.mark.regression,
@@ -73,9 +74,9 @@ def _subscribers(url: str) -> int:
 def _stop_mid_stream(instance) -> str:
     """Start a slow reply, stop its chat, and return what the reply ended with."""
     account = create_user(instance)
-    with account.client() as client:
+    with account.client() as client, connected(account) as tab:
         turn = start_slow_reply(client, instance.upstream, chunk_delay=0.3)
-        time.sleep(0.6)
+        wait_until_streaming(tab, turn.chat_id)
         stopped = client.post(f"/api/tasks/chat/{turn.chat_id}/stop")
         assert stopped.status_code == 200, stopped.text
         return wait_for_reply(client, turn, timeout=30)["content"]

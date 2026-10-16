@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import httpx
 
 from harness import upstream as reply
 from harness.chat import ChatTurn, send_message
+from harness.socket_client import SocketSession
 from harness.upstream import MockUpstream
 
 SLOW_PIECES = [f"part-{index} " for index in range(20)]
@@ -19,7 +21,8 @@ def start_slow_reply(
 ) -> ChatTurn:
     """Send a message whose reply streams for `len(SLOW_PIECES) * chunk_delay` seconds.
 
-    Returns once the provider has the request, so the reply's task is running.
+    Returns once the provider has the request, so the reply's task is running; its first piece
+    may still be on the way (`wait_until_streaming`).
     """
     already_sent = len(upstream.chat_requests())
     upstream.queue(reply.text(SLOW_PIECES, chunk_delay=chunk_delay))
@@ -30,6 +33,19 @@ def start_slow_reply(
             raise AssertionError("the provider never received the slow reply's request")
         time.sleep(0.05)
     return turn
+
+
+def wait_until_streaming(tab: SocketSession, chat_id: str, timeout: float = 30.0) -> None:
+    """Return once the account's tab has a piece of the slow reply, so a stop lands mid-stream.
+
+    The provider has the request well before it answers, so the request alone says nothing yet.
+    """
+    first_piece = SLOW_PIECES[0].strip()
+    deadline = time.monotonic() + timeout
+    while not any(first_piece in json.dumps(event) for event in tab.events_of(chat_id)):
+        if time.monotonic() > deadline:
+            raise AssertionError(f"no piece of the reply in chat {chat_id} within {timeout}s")
+        time.sleep(0.05)
 
 
 def wait_until_no_reply_runs(client: httpx.Client, chat_id: str, timeout: float = 30.0) -> None:

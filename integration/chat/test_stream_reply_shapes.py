@@ -15,14 +15,13 @@ stop test and removing the iteration limit message fails the limit test.
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from harness import upstream as reply
 from harness.actors import admin_of
 from harness.chat import ask
-from harness.inflight import start_slow_reply
+from harness.inflight import start_slow_reply, wait_until_no_reply_runs, wait_until_streaming
+from harness.socket_client import connected
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
@@ -104,22 +103,21 @@ def test_a_reply_of_only_whitespace_is_stored_empty(make_user, upstream):
 
 
 def test_an_admin_stops_a_reply_and_keeps_what_arrived(admin, upstream):
-    with admin.client() as client:
+    with admin.client() as client, connected(admin) as tab:
         turn = start_slow_reply(client, upstream, chunk_delay=0.2)
         [task_id] = client.get(f"/api/tasks/chat/{turn.chat_id}").json()["task_ids"]
-        time.sleep(0.5)
+        wait_until_streaming(tab, turn.chat_id)
         stopped = client.post(f"/api/tasks/stop/{task_id}")
-        time.sleep(0.5)
+        assert stopped.status_code == 200, stopped.text
+        assert stopped.json()["status"] is True
+        # the stopped reply is saved before its task is let go
+        wait_until_no_reply_runs(client, turn.chat_id)
         stored = client.get(f"/api/v1/chats/{turn.chat_id}").json()
-        remaining = client.get(f"/api/tasks/chat/{turn.chat_id}").json()["task_ids"]
 
-    assert stopped.status_code == 200, stopped.text
-    assert stopped.json()["status"] is True
     message = stored["chat"]["history"]["messages"][turn.assistant_message_id]
     assert message["content"].startswith("part-0 ")
     assert "part-19" not in message["content"]
     assert [item["status"] for item in message["output"]] == ["incomplete"]
-    assert remaining == []
 
 
 def test_only_an_admin_may_stop_a_task_by_id(make_user, upstream):
