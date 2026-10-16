@@ -6,11 +6,13 @@ on the plain scripted model carries none. Detaching the skill in the editor and 
 reaching the next chat, and a skill switched off after it was attached is not applied. A model
 shared with everyone that carries a skill the chatting account may not read gives that account
 none of its instructions, while a skill shared with the account does reach it. Where the model
-uses native function calling with builtin tools, the system prompt lists the attached skill by
-name and description only, the provider is offered the skill viewer, and when the model calls it
-the chat shows the call and the skill's instructions reach the provider in the tool result.
-Unticking Skills under the editor's Builtin Tools and saving withdraws the list and the viewer
-from the next chat, while the attached skill arrives in full.
+uses native function calling with builtin tools and the admin has switched on lazy skill loading,
+the system prompt lists the attached skill by name and description only, the provider is offered
+the skill viewer, and when the model calls it the chat shows the call and the skill's instructions
+reach the provider in the tool result. Unticking Skills under the editor's Builtin Tools and
+saving withdraws the list and the viewer from the next chat, while the attached skill arrives in
+full. Since 5cf7c0333 a chat sends its model's attached skills as selected, and selected skills
+arrive in full unless `ENABLE_SKILL_LAZY_LOADING` (079fb19e7) is on.
 
 `test_a_skill_attached_in_the_editor_reaches_a_chat_on_that_model` is red now and then on dev
 896056690: since de73bb830 the reply in a new chat sometimes stays blank until a reload although the
@@ -48,6 +50,8 @@ from utils.model_editor import offered_tool_names, pick, set_checkbox
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 NO_BUILTIN_TOOLS = {"builtin_tools": False}
+ADMIN_CONFIG = "/api/v1/auths/admin/config"
+LAZY_LOADING = "ENABLE_SKILL_LAZY_LOADING"
 
 
 def unique(text: str) -> str:
@@ -112,6 +116,18 @@ def make_model(builder) -> Callable[..., dict]:
         return model
 
     return create
+
+
+@pytest.fixture
+def lazy_skills(admin, preserve) -> None:
+    """Selected skills are listed by name and loaded only through the skill viewer."""
+    preserve("admin_config")
+    with admin.client() as client:
+        current = client.get(ADMIN_CONFIG)
+        assert current.status_code == 200, current.text
+        saved = client.post(ADMIN_CONFIG, json={**current.json(), LAZY_LOADING: True})
+    assert saved.status_code == 200, saved.text
+    assert saved.json().get(LAZY_LOADING) is True, f"{LAZY_LOADING} is gone: retarget this test"
 
 
 def open_editor(page: Page, model: dict) -> Locator:
@@ -242,6 +258,7 @@ def test_a_skill_the_chatting_account_may_not_read_is_not_applied(
     assert private_text not in prompt, prompt
 
 
+@pytest.mark.usefixtures("lazy_skills")
 def test_native_function_calling_lists_the_skill_and_the_viewer_loads_it(
     page_for, builder, make_model, make_skill, upstream
 ):
@@ -275,6 +292,7 @@ def test_native_function_calling_lists_the_skill_and_the_viewer_loads_it(
     ).to_be_visible()
 
 
+@pytest.mark.usefixtures("lazy_skills")
 def test_unticking_skills_in_the_editor_withdraws_the_list_and_the_viewer(
     page_for, builder, make_model, make_skill, upstream
 ):
