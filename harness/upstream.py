@@ -2,7 +2,8 @@
 
 `reset(mode)` sets the fallback every reply uses (`ok`, `stream` or `error`). `queue(...)` lines
 up scripted replies (text, reasoning, tool calls, usage or llama.cpp timings, a finish reason, an
-HTTP error, a slow stream, a late start, a stream the provider drops halfway) that the next chat
+HTTP error, a slow stream, a late start, a start held until the test releases it, a stream the
+provider drops halfway) that the next chat
 completions consume in order; a reply with `match` only answers a request it accepts, so a title
 or follow-up task cannot eat the reply meant for the chat.
 `requests` holds what Open WebUI actually sent, which is how a test sees the payload it built.
@@ -24,6 +25,8 @@ from harness import slow_machine
 MOCK_MODEL_ID = "mock-model"
 # a real provider never answers before Open WebUI's answer to the send reaches the browser
 REPLY_START_DELAY = slow_machine.scaled(0.09)
+# a held reply never released still ends, so it cannot keep a request open after its test
+HOLD_LIMIT = 60.0
 
 
 @dataclass
@@ -38,6 +41,7 @@ class Reply:
     error_message: str = "upstream failed"
     chunk_delay: float = 0.0
     delay: float = 0.0  # seconds before the reply starts, headers included
+    hold: threading.Event | None = None  # the reply starts once the test sets it
     hang_up_after: int | None = None  # pieces streamed before the connection drops unfinished
     match: Callable[[dict], bool] | None = None
     finish_reason: str | None = None  # why the reply ended; stop or tool_calls when unset
@@ -194,6 +198,8 @@ def _handler(upstream: MockUpstream):
 
         def _answer(self, reply: Reply, stream: bool) -> None:
             time.sleep(reply.delay)
+            if reply.hold is not None:
+                reply.hold.wait(HOLD_LIMIT)
             if reply.status != 200:
                 self._send_json(reply.status, {"error": {"message": reply.error_message}})
             elif stream:

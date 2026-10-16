@@ -19,6 +19,7 @@ and with the denied switch put back to off the denied test turns green.
 from __future__ import annotations
 
 import re
+import threading
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -60,15 +61,15 @@ def notifications_switch(page: Page) -> Locator:
 
 
 def finish_a_reply_elsewhere(page: Page, upstream, question: str) -> list[dict]:
-    upstream.queue(
-        reply.text(
-            ["The tide ", "turns at noon."], chunk_delay=1.0, match=reply.answering(question)
-        )
-    )
+    left_the_chat = threading.Event()
+    upstream.queue(reply.text(ANSWER, hold=left_the_chat, match=reply.answering(question)))
     page.goto("/")
     send(page, question)
     expect(page).to_have_url(re.compile(r"/c/"))
+    expect(conversation(page)).to_contain_text(question)
     page.get_by_role("link", name="New Chat").click()
+    expect(conversation(page)).to_have_count(0)
+    left_the_chat.set()
     expect(page.get_by_text(ANSWER)).to_be_visible()
     return page.evaluate("window.shownNotifications")
 
