@@ -127,6 +127,8 @@ def serve() -> tuple[MockUpstream, Callable[[], None]]:
     """Start the provider on a daemon thread; returns it with its shutdown function."""
     upstream = MockUpstream(base_url="", behaviour={"mode": "ok"})
     server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(upstream))
+    # shutdown waits for replies still running, so none writes during interpreter exit
+    server.daemon_threads = False
     upstream.base_url = f"http://127.0.0.1:{server.server_port}/v1"
     threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
 
@@ -143,6 +145,12 @@ def _handler(upstream: MockUpstream):
 
         def log_message(self, *args) -> None:
             pass
+
+        def handle(self) -> None:
+            try:
+                super().handle()
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # Open WebUI hung up mid-reply, which ends that reply
 
         def _record(self, body: dict | None) -> None:
             entry = UpstreamRequest(self.command, self.path, dict(self.headers.items()), body)
