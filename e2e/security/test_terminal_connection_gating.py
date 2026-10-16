@@ -7,9 +7,13 @@ the connection without rebuilding the terminal list cached in Redis. The user's 
 still names the terminal, and the reply shows that it is disabled instead of the model being
 offered its tools.
 
-Discriminates: passes on dev ef67cc3fa with its built frontend; with the `enabled` check removed
-from `get_terminal_tools` in a backend copy the model is offered the terminal's tools and the
-reply shows no error.
+The page gets the socket events unheld (`real_socket_timing`), and the test stays red until a
+second bug is fixed (issue to be filed): the refusal comes before the page knows the new chat's
+id, the page drops it, and the person sees an empty reply with a Stop button that never ends.
+
+Discriminates: with the events held, passes on dev ef67cc3fa with its built frontend; with the
+`enabled` check removed from `get_terminal_tools` in a backend copy the model is offered the
+terminal's tools and the reply shows no error.
 """
 
 from __future__ import annotations
@@ -62,6 +66,7 @@ def cached_instance(instance_with, redis, preserve):
 
 
 @pytest.mark.slow
+@pytest.mark.real_socket_timing
 def test_a_terminal_switched_off_mid_chat_offers_no_tools(page_for, cached_instance):
     member = create_user(cached_instance)
     with serving_terminal() as terminal:

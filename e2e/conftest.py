@@ -121,14 +121,15 @@ def context(
     _close_context(browser_context, request.node, "signed-out")
 
 
-def _signed_in_page(context: BrowserContext, token: str) -> Page:
+def _signed_in_page(context: BrowserContext, token: str, hold_events: bool = True) -> Page:
     """A page whose localStorage already carries the session token.
 
     Written through an init script: the sign-in route clears the token as it loads, so a value
     written by visiting /auth first is gone again before the app reads it.
     """
     page = context.new_page()
-    hold_new_chat_events(page)
+    if hold_events:
+        hold_new_chat_events(page)
     page.add_init_script(
         f"try {{ localStorage.setItem('token', {json.dumps(token)}); }} catch (e) {{}}"
     )
@@ -146,12 +147,13 @@ def page_for(
     or `utils.phone.PHONE` for a phone's screen.
     """
     opened: list[BrowserContext] = []
+    hold_events = request.node.get_closest_marker("real_socket_timing") is None
 
     def open_page(actor: Actor, **context_options) -> Page:
         _dismiss_first_run_modals(actor)
         browser_context = _new_context(browser, config, actor.base_url, **context_options)
         opened.append(browser_context)
-        return _signed_in_page(browser_context, actor.token)
+        return _signed_in_page(browser_context, actor.token, hold_events)
 
     yield open_page
     with contextlib.ExitStack() as closing:
