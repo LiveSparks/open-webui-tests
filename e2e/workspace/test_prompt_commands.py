@@ -131,10 +131,12 @@ def test_renaming_a_command_to_a_taken_one_in_the_editor_is_refused(page_for, au
     with account.client() as client:
         assert client.get(f"/api/v1/prompts/id/{moving_id}").json()["command"] == moving
     expect(_slash_menu(page, moving).get_by_role("button", name=moving)).to_have_count(1)
-    menu = _slash_menu(page, held)
+    # a page of its own: this one restores the unsent "/moving" draft over whatever is typed next
+    chat_page = page_for(account)
+    menu = _slash_menu(chat_page, held)
     expect(menu.get_by_role("button", name=held)).to_have_count(1)
     menu.get_by_role("button", name=held).click()
-    expect(chat_input(page)).to_have_text("Held text.")
+    expect(chat_input(chat_page)).to_have_text("Held text.")
 
 
 def test_the_command_follows_the_name_as_a_slug_and_is_offered_under_that_name(page_for, author):
