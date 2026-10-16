@@ -2,14 +2,17 @@
 
 `connected(actor)` joins the account's `user:{id}` room the way the web client does (over a
 websocket, or the `transports` given), records every `events` message the server pushes to it,
-and `call(event, data)` sends an event and returns once the server's handler has finished.
+and `call(event, data)` sends an event and returns the server's answer once its handler has
+finished.
 The client hands each event to its handler on a thread of its own, so a busy machine can record
 them out of order; `connected(actor, in_order=True)` records them on the reading thread, in the
 order they arrived, for a test that compares sequences (its handlers must not wait on the server).
 `join_note` and `edit_note` do what the note editor does with a note's live Yjs document;
 `note_edit(text)` is the raw update it sends after typing `text` into an empty note (built with
 pycrdt, which the backend depends on) and `note_text(state)` reads back a document state the
-server sent. Private app replies (`events:app`) are recorded in `app_events`.
+server sent. Private app replies (`events:app`) are recorded in `app_events`, and what the
+encrypted chat relay sends (`encryption:event`, `encryption:available`) in `encryption_events` and
+`encryption_invitations`; `join_channels()` joins the channel rooms the way the web client does.
 """
 
 from __future__ import annotations
@@ -33,9 +36,28 @@ class SocketSession:
     document_states: list[dict] = field(default_factory=list)
     document_updates: list[dict] = field(default_factory=list)
     app_events: list[dict] = field(default_factory=list)
+    encryption_events: list[dict] = field(default_factory=list)
+    encryption_invitations: list[dict] = field(default_factory=list)
 
-    def call(self, event: str, data: dict) -> None:
-        self.client.call(event, data, timeout=30)
+    def call(self, event: str, data: dict):
+        return self.client.call(event, data, timeout=30)
+
+    def join_channels(self, actor: Actor) -> None:
+        """Join the rooms of every channel the account is in, as the web client does on load."""
+        self.call("user-join", {"auth": {"token": actor.token}})
+
+    def encryption_event(self, kind: str, timeout: float = 30.0) -> dict:
+        """The first `encryption:event` of this kind the relay sent this tab."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            for event in list(self.encryption_events):
+                if event.get("kind") == kind:
+                    return event
+            time.sleep(0.05)
+        raise AssertionError(
+            f"no {kind} event from the encrypted chat relay within {timeout}s: "
+            f"{[event.get('kind') for event in self.encryption_events]}"
+        )
 
     def join_note(self, note_id: str) -> None:
         """Open the note's live document; the server answers with its state."""
@@ -95,6 +117,8 @@ def connected(
     session.client.on("ydoc:document:state", session.document_states.append)
     session.client.on("ydoc:document:update", session.document_updates.append)
     session.client.on("events:app", session.app_events.append)
+    session.client.on("encryption:event", session.encryption_events.append)
+    session.client.on("encryption:available", session.encryption_invitations.append)
     session.client.connect(
         actor.base_url,
         socketio_path="/ws/socket.io",
