@@ -43,10 +43,12 @@ from utils.voice_call import TURN_TIMEOUT_MS, start_call
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 OWN_VOICE = "storyteller"
-PLAYED = """() => {
-    const audio = document.getElementById('audioElement');
-    return audio.src.startsWith('blob:') && audio.played.length > 0;
-}"""
+# the page drops a clip's source once it ends, so playback is recorded as it starts
+RECORD_PLAYBACK = """
+window.playedSources = [];
+document.addEventListener('playing', (event) => window.playedSources.push(event.target.src), true);
+"""
+PLAYED = "() => window.playedSources.some((source) => source.startsWith('blob:'))"
 
 
 def _silent_mp3(frames: int = 20) -> bytes:
@@ -118,6 +120,7 @@ def test_a_users_own_voice_is_the_one_a_reply_is_read_in(page_for, make_user, pl
     playable_speech.voices[OWN_VOICE] = "The Storyteller"
     owner = make_user()
     page = page_for(owner)
+    page.add_init_script(RECORD_PLAYBACK)
     tab = audio_tab(page)
     voice_box = tab.get_by_role("combobox", name="Voice")
     expect(voice_box).to_have_value(VOICE)
@@ -141,6 +144,7 @@ def test_auto_playback_reads_a_new_reply_without_a_tap(
     page_for, make_user, playable_speech, upstream
 ):
     page = page_for(make_user())
+    page.add_init_script(RECORD_PLAYBACK)
     turn_on(page, audio_tab(page), "Auto-Playback Response")
 
     question = "what does the keeper do at dusk?"
