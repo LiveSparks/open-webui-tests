@@ -113,7 +113,7 @@ jobs:
           if-no-files-found: ignore
 
   # The suite boots its own instances from the checkout. Split into shards balanced on
-  # the timings in .test_durations; a release is gated on all of them.
+  # the timings in durations/; a release is gated on all of them.
   integration:
     runs-on: ubuntu-latest
     strategy:
@@ -148,6 +148,7 @@ jobs:
 
       # The instances run offline, so the default embedding model is fetched up front.
       - name: Cache the embedding model
+        id: embedding-model
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
@@ -161,12 +162,28 @@ jobs:
           uv pip install --system 'torch<=2.9.1' --index-url https://download.pytorch.org/whl/cpu
           uv pip install --system -r open-webui/backend/requirements.txt
           uv pip install --system -e "./tests[postgres]"
-          python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')"
           uv pip install --system "$(python -m spacy info en_core_web_sm --url)"
-          python -m playwright install --with-deps chromium
           uv venv "$RUNNER_TEMP/open-terminal"
           uv pip install --python "$RUNNER_TEMP/open-terminal" open-terminal
           echo "OPEN_TERMINAL_BIN=$RUNNER_TEMP/open-terminal/bin/open-terminal" >> "$GITHUB_ENV"
+
+      - name: Download the embedding model
+        if: steps.embedding-model.outputs.cache-hit != 'true'
+        run: python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')"
+
+      - name: Name the Playwright build
+        id: playwright
+        run: echo "version=$(python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright.outputs.version }}
+
+      # With the browser restored from the cache, this only installs its system libraries.
+      - name: Install the browser
+        run: python -m playwright install --with-deps chromium
 
       # The Apps tests drive the reference app in harness/reference_app, built on the oix SDK in an
       # environment of its own and checked here: it must serve its manifest with every scope.
@@ -194,7 +211,7 @@ jobs:
         env:
           OPEN_WEBUI_SOURCE_DIR: ${{ github.workspace }}/open-webui/backend
           OPEN_WEBUI_LOG_DIR: test-results/server-logs
-        run: pytest integration -q --splits 12 --group ${{ matrix.shard }} --splitting-algorithm duration_based_chunks --junitxml=test-results/junit.xml --html=test-results/integration-report.html --self-contained-html
+        run: pytest integration -q --splits 12 --group ${{ matrix.shard }} --splitting-algorithm duration_based_chunks --durations-path durations/integration.json --junitxml=test-results/junit.xml --html=test-results/integration-report.html --self-contained-html
 
       - name: Summarise the results
         if: always()
@@ -246,6 +263,7 @@ jobs:
 
       # The instances run offline, so the default embedding model is fetched up front.
       - name: Cache the embedding model
+        id: embedding-model
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2
@@ -261,12 +279,28 @@ jobs:
           uv pip install --system 'torch<=2.9.1' --index-url https://download.pytorch.org/whl/cpu
           uv pip install --system -r open-webui/backend/requirements.txt
           uv pip install --system -e "./tests[postgres]"
-          python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')"
           uv pip install --system "$(python -m spacy info en_core_web_sm --url)"
-          python -m playwright install --with-deps chromium
           uv venv "$RUNNER_TEMP/open-terminal"
           uv pip install --python "$RUNNER_TEMP/open-terminal" open-terminal
           echo "OPEN_TERMINAL_BIN=$RUNNER_TEMP/open-terminal/bin/open-terminal" >> "$GITHUB_ENV"
+
+      - name: Download the embedding model
+        if: steps.embedding-model.outputs.cache-hit != 'true'
+        run: python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')"
+
+      - name: Name the Playwright build
+        id: playwright
+        run: echo "version=$(python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright.outputs.version }}
+
+      # With the browser restored from the cache, this only installs its system libraries.
+      - name: Install the browser
+        run: python -m playwright install --with-deps chromium
 
       # The Apps tests drive the reference app in harness/reference_app, built on the oix SDK in an
       # environment of its own and checked here: it must serve its manifest with every scope.
@@ -296,7 +330,7 @@ jobs:
           OPEN_WEBUI_LOG_DIR: test-results/server-logs
           OWUI_TEST_DATABASE: postgres
           OWUI_TEST_REDIS: '1'
-        run: pytest integration -q --splits 12 --group ${{ matrix.shard }} --splitting-algorithm duration_based_chunks --junitxml=test-results/junit.xml --html=test-results/integration-report.html --self-contained-html
+        run: pytest integration -q --splits 12 --group ${{ matrix.shard }} --splitting-algorithm duration_based_chunks --durations-path durations/integration-postgres-redis.json --junitxml=test-results/junit.xml --html=test-results/integration-report.html --self-contained-html
 
       - name: Summarise the results
         if: always()
@@ -311,10 +345,10 @@ jobs:
           path: tests/test-results
           if-no-files-found: ignore
 
-  # The shards split on .test_durations. This turns the run's own timings into a refreshed file,
-  # so committing it keeps the split balanced as tests are added and the runners change.
+  # Each mode's shards split on its own timings in durations/. This folds the run's timings into
+  # them; the refresh-durations workflow commits the result after a green run on main.
   durations:
-    needs: [integration, e2e]
+    needs: [integration, integration-postgres-redis, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -335,14 +369,17 @@ jobs:
           path: reports
 
       - name: Refresh the durations
-        run: python scripts/refresh_durations.py .test_durations reports/integration-report-*/junit.xml reports/e2e-report-*/junit.xml
+        run: |
+          python scripts/refresh_durations.py durations/integration.json reports/integration-report-*/junit.xml
+          python scripts/refresh_durations.py durations/integration-postgres-redis.json reports/integration-postgres-redis-report-*/junit.xml
+          python scripts/refresh_durations.py durations/e2e.json reports/e2e-report-*/junit.xml
+          git rev-parse HEAD > durations/tested-commit
 
       - name: Upload the refreshed durations
         uses: actions/upload-artifact@v4
         with:
           name: test-durations-${{ inputs.open-webui-ref }}
-          path: .test_durations
-          include-hidden-files: true
+          path: durations
 
   # Built once for the browser shards, which restore it from the cache.
   e2e-build:
@@ -447,10 +484,23 @@ jobs:
           uv pip install --system -r open-webui/backend/requirements.txt
           uv pip install --system -e ./tests
           uv pip install --system "$(python -m spacy info en_core_web_sm --url)"
-          python -m playwright install --with-deps chromium
           uv venv "$RUNNER_TEMP/open-terminal"
           uv pip install --python "$RUNNER_TEMP/open-terminal" open-terminal
           echo "OPEN_TERMINAL_BIN=$RUNNER_TEMP/open-terminal/bin/open-terminal" >> "$GITHUB_ENV"
+
+      - name: Name the Playwright build
+        id: playwright
+        run: echo "version=$(python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright.outputs.version }}
+
+      # With the browser restored from the cache, this only installs its system libraries.
+      - name: Install the browser
+        run: python -m playwright install --with-deps chromium
 
       # The Apps tests drive the reference app in harness/reference_app, built on the oix SDK in an
       # environment of its own and checked here: it must serve its manifest with every scope.
@@ -481,7 +531,7 @@ jobs:
           LC_ALL: en_US.UTF-8
           OPEN_WEBUI_SOURCE_DIR: ${{ github.workspace }}/open-webui/backend
           OPEN_WEBUI_LOG_DIR: test-results/server-logs
-        run: pytest e2e -q --splits 20 --group ${{ matrix.shard }} --splitting-algorithm duration_based_chunks --junitxml=test-results/junit.xml --html=test-results/e2e-report.html --self-contained-html
+        run: pytest e2e -q --splits 20 --group ${{ matrix.shard }} --splitting-algorithm duration_based_chunks --durations-path durations/e2e.json --junitxml=test-results/junit.xml --html=test-results/e2e-report.html --self-contained-html
 
       - name: Summarise the results
         if: always()

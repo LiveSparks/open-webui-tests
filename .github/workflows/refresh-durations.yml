@@ -1,0 +1,58 @@
+# Commits the shard timings a green regression run of main measured, so each mode's shards stay
+# balanced as tests are added and the runners change. A run that open-webui/open-webui calls
+# belongs to that repository, so it never triggers this.
+name: Refresh shard timings
+
+on:
+  workflow_run:
+    workflows: [Regression suite]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: refresh-durations
+  cancel-in-progress: false
+
+jobs:
+  commit:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      contains(fromJSON('["workflow_dispatch", "schedule"]'), github.event.workflow_run.event)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download the refreshed durations
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-durations-*
+          merge-multiple: true
+          path: refreshed
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      # Timings from a tests ref off main, or from timing files main has changed since, are dropped.
+      # The push from this token starts no workflow; [skip ci] keeps it that way.
+      - name: Commit the durations
+        run: |
+          tested=$(cat refreshed/tested-commit)
+          if ! git merge-base --is-ancestor "$tested" HEAD || ! git diff --quiet "$tested" HEAD -- durations; then
+            echo "The run tested $tested, whose timings no longer match main; nothing to commit."
+            exit 0
+          fi
+          cp refreshed/*.json durations/
+          if git diff --quiet -- durations; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --quiet -m "Shard timings from regression run ${{ github.event.workflow_run.id }} [skip ci]" -- durations
+          git push origin HEAD:main

@@ -1,25 +1,21 @@
 """Refresh a pytest-split durations file from the JUnit reports of a CI run.
 
-python scripts/refresh_durations.py .test_durations reports/*/junit.xml
+python scripts/refresh_durations.py durations/e2e.json reports/e2e-report-*/junit.xml
 
 Every test a report measured gets the mean of that time and its previous one (setup, call and
-teardown, so a module's instance boot counts against its first test); tests no report ran keep
-their old entry. Shards split on these times, so times measured on the CI runners balance the
-shards the CI runners run.
+teardown, so a module's instance boot counts against its first test); a skipped test counts the
+little time its skip took, and tests no report ran keep their old entry. Shards split on these
+times, so times measured on the CI runners balance the shards the CI runners run.
 """
 
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent
-# pytest-playwright names the browser in a test's id ("[chromium]", "[chromium-on]") on some
-# versions only; the durations file keys tests the way the locked version collects them
-BROWSER_PARAMETER = re.compile(r"\[chromium-?(.*)\]$")
 
 
 def node_id(classname: str, name: str) -> str | None:
@@ -28,8 +24,7 @@ def node_id(classname: str, name: str) -> str | None:
     for end in range(len(parts), 0, -1):
         module = Path(*parts[:end]).with_suffix(".py")
         if (ROOT / module).is_file():
-            test = "::".join([module.as_posix(), *parts[end:], name])
-            return BROWSER_PARAMETER.sub(lambda match: f"[{match[1]}]" if match[1] else "", test)
+            return "::".join([module.as_posix(), *parts[end:], name])
     return None
 
 
@@ -37,8 +32,6 @@ def measured(reports: list[Path]) -> dict[str, float]:
     times: dict[str, float] = {}
     for report in reports:
         for case in ElementTree.parse(report).getroot().iter("testcase"):
-            if case.find("skipped") is not None:
-                continue
             test = node_id(case.get("classname", ""), case.get("name", ""))
             if test:
                 times[test] = round(float(case.get("time", 0)), 3)
