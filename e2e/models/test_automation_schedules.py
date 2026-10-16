@@ -58,6 +58,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
+from harness.backends import wait_until
 from harness.python_tools import EVERYONE_READS, python_tool
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply
@@ -263,11 +264,20 @@ def tide_clerk(admin):
         client.post("/api/v1/models/model/delete", json={"id": model_id})
 
 
-def run_now_and_open_the_chat(page: Page) -> None:
+def run_now_and_open_the_chat(page: Page, owner, automation_id: str) -> None:
     details = page.get_by_role("main")
     details.get_by_role("button", name="Run now").click()
+    with owner.client() as client:
+
+        def has_run() -> bool:
+            runs = client.get(f"/api/v1/automations/{automation_id}/runs")
+            assert runs.status_code == 200, runs.text
+            return bool(runs.json())
+
+        assert wait_until(has_run, RUN_TIMEOUT_MS / 1000), "Run now never recorded a run"
+    # the page reads its runs once, two seconds after Run now, so a longer run shows after a reload
+    page.reload()
     view_chat = details.get_by_role("button", name="View chat")
-    expect(view_chat).to_be_visible(timeout=RUN_TIMEOUT_MS)
     view_chat.click()
     expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]+$"))
 
@@ -293,10 +303,10 @@ def test_an_automation_on_a_preset_runs_with_its_prompt_and_tool(
     page = page_for(scheduler, **IN_ZONE)
     dialog = open_create_dialog(page)
     pick_model(page, dialog, tide_clerk)
-    finish(page, dialog, prompt, unique("Tide check"))
+    automation_id = finish(page, dialog, prompt, unique("Tide check"))
     expect(detail(page, "Model")).to_contain_text(tide_clerk.lower().replace(" ", "-"))
 
-    run_now_and_open_the_chat(page)
+    run_now_and_open_the_chat(page, scheduler, automation_id)
     expect_reply(page, "The tide is in at 11:42.")
     last_reply(page).get_by_text("View Result from get_tide").click()
     expect(last_reply(page)).to_contain_text("High water at Port Ellen: 11:42")
@@ -334,7 +344,7 @@ def test_an_automation_filed_in_a_folder_runs_into_it_under_its_prompt(
 
     assert stored(scheduler, automation_id)["folder_id"] == folder_id
     expect(detail(page, "Destination")).to_contain_text(f"Folder: {folder}")
-    run_now_and_open_the_chat(page)
+    run_now_and_open_the_chat(page, scheduler, automation_id)
     expect_reply(page, "Two trawlers and a ferry.")
     chat_id = page.url.rsplit("/", 1)[-1]
     with scheduler.client() as client:
