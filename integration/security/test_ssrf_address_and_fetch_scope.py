@@ -30,8 +30,8 @@ IPv4-compatible and NAT64 cases fail (no refusal logged), with `time` imported f
 again the paced search returns one page of two, blocking every address that embeds an IPv4 one
 fails the public addresses, and in the Playwright loader continuing sub-resource routes,
 continuing a redirected page, opening the page without `service_workers='block'` or dropping the
-websocket route each let the internal host be reached, and a hop limit of 200 fails the endless
-redirect chain.
+websocket route each let the internal host be reached, and a hop limit of 200 in the loader or in
+the attached-link probe fails the endless redirect chain.
 """
 
 from __future__ import annotations
@@ -236,13 +236,14 @@ LOADERS = pytest.mark.parametrize(
 )
 
 
+def is_from_browser(request):
+    # Only Chromium sends client hints; the attached-link probe sends the web loader's headers.
+    return "sec-ch-ua" in request.headers
+
+
 def browser_requests(host):
-    """What the loader fetched for the browser; the attached-link probe comes from `requests`."""
-    return [
-        request
-        for request in host.received
-        if not request.headers.get("User-Agent", "").startswith("python-requests")
-    ]
+    """What the loader fetched for the browser, without the attached-link probe."""
+    return [request for request in host.received if is_from_browser(request)]
 
 
 SUB_RESOURCES = {
@@ -325,6 +326,8 @@ def test_an_endless_redirect_chain_is_abandoned(playwright_client, hosts):
 
     assert not text
     assert len(browser_requests(page_host)) <= 25, "the loader kept following the loop"
+    probed = [request for request in page_host.received if not is_from_browser(request)]
+    assert len(probed) <= 31, f"the attached-link probe kept following the loop: {len(probed)}"
 
 
 def slow_script(_request):
