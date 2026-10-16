@@ -46,7 +46,7 @@ crosses instances red and leaves every switched-off one green; the stock manager
 instances does the reverse; a remote emit handed to every tab of the instance turns the "gets
 nothing" assertions red in the mode of the manager it was put in only; the room manager ignoring
 the shared channel turns the switched-on event call, dropped socket and subscription drop cases
-red; the pattern subscription not renewed on a reconnect turns both Redis loss cases red when on;
+red; the room channels not subscribed again on a reconnect turns both Redis loss cases red when on;
 a room's channel forgotten when one of several local members leaves turns the remaining tab, the
 removed member, the revoked reader and the removed collaborator cases red when on; the switch
 ignored (the room manager always) turns the shared channel and the mixed fleet cases red;
@@ -1209,7 +1209,7 @@ def _model_finished(received: list[dict]) -> bool:
 
 
 def _listeners(url: str, fleet: dict) -> dict[str, tuple[int, int]]:
-    """Each instance's pub/sub clients on a channel, and those on a pattern (the room channels).
+    """Each instance's pub/sub clients on a channel, and those on several (the room channels).
 
     A client counts for the instance whose process holds its end of the connection: Redis can
     hold other subscribers too, which nothing brings back after a restart.
@@ -1233,10 +1233,10 @@ def _listeners(url: str, fleet: dict) -> dict[str, tuple[int, int]]:
     for entry in entries:
         name = owners.get(int(entry["addr"].rsplit(":", 1)[1]))
         if name:
-            on_a_channel, on_a_pattern = listening[name]
+            on_a_channel, on_several = listening[name]
             listening[name] = (
                 on_a_channel + (entry["sub"] != "0"),
-                on_a_pattern + (entry["psub"] != "0"),
+                on_several + (int(entry["sub"]) > 1),
             )
     return listening
 
@@ -1252,7 +1252,8 @@ def _subscriptions(url: str) -> list[tuple[int, int]]:
 
 
 # What an instance listens on once settled: the socket manager, the event listener and the task
-# command listener each on a channel, and with room channels on the manager on a pattern as well.
+# command listener each on a channel, and with room channels on the manager also on the channels
+# of the rooms its tabs are in (one per room since 362b01d0b, a pattern before).
 # Right after a loss the counts pass through other values while each listener reconnects (an old
 # connection still open next to its new one, or one not back yet), so they are only compared once
 # settled, never against a count read while an earlier loss was still being reconnected from.
@@ -1351,12 +1352,12 @@ def test_tabs_open_through_a_redis_loss_hear_the_account_again(
         listening = lambda: _pair_listens(shared_redis.url, fleet, mode)  # noqa: E731
         assert backends.wait_until(listening, timeout=60), (
             f"the instances did not all listen before the Redis {loss}: "
-            f"(on a channel, on a pattern) {_listeners(shared_redis.url, fleet)}"
+            f"(on a channel, on several) {_listeners(shared_redis.url, fleet)}"
         )
         _lose_redis(shared_redis, loss)
         assert backends.wait_until(listening, timeout=60), (
             f"after the Redis {loss} the instances did not all listen again: "
-            f"(on a channel, on a pattern) {_listeners(shared_redis.url, fleet)}, "
+            f"(on a channel, on several) {_listeners(shared_redis.url, fleet)}, "
             f"settled is {SETTLED}"
         )
         heard = _heard_again(account, tab, provider, loss)
