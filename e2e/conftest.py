@@ -30,6 +30,7 @@ from harness.instance import (
     resolve_frontend_build,
 )
 from harness.prepared_data import serving
+from harness.reply_gate import hold_new_chat_events
 
 ARTIFACTS_DIR = Path("test-results")
 
@@ -127,6 +128,7 @@ def _signed_in_page(context: BrowserContext, token: str) -> Page:
     written by visiting /auth first is gone again before the app reads it.
     """
     page = context.new_page()
+    hold_new_chat_events(page)
     page.add_init_script(
         f"try {{ localStorage.setItem('token', {json.dumps(token)}); }} catch (e) {{}}"
     )
