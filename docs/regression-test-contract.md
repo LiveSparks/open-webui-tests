@@ -105,7 +105,7 @@ An unproven regression test is decoration, so every narrow test is shown to fail
 - **Frontend fix:** copy `src/`, `static/` and the build config files to a scratch dir, symlink the checkout's `node_modules`, undo the fix in `src/`, and build with `npm_package_version=<version> NODE_OPTIONS=--max-old-space-size=6144 npx vite build`. Run the browser test with `OPEN_WEBUI_BUILD_DIR` on that build, plus one unrelated journey test as a control that the build itself works. Unrelated frontend mutations can share one build.
 - **Unit tests that stay:** the same, with the unit command above.
 - **A test said to guard nothing** gets the same proof: if it stays green with the fix undone, fix the test or delete it.
-- **Flakes:** run every new module five times on the clean checkout before committing, five more times with `OWUI_TEST_SLOW=1`, and once more with two runs of it in parallel, as a busy CI runner is slower than your machine. A test that fails once in five is a failing test.
+- **Flakes:** run every new module five times on the clean checkout before committing (the browser runs throttled fourfold by default) and once more with two runs of it in parallel, as a busy CI runner is slower than your machine. A test that fails once in five is a failing test.
 
 ## Rules for every test
 
@@ -157,7 +157,7 @@ Every test in the suite meets all of these. Check each one against your test bef
 12. **It leaves nothing running.** Processes, servers and temporary files it starts are stopped and removed in a `finally` or a fixture.
 13. **It extends before it adds.** It lives in the existing test or module that already walks its path, unless none fits.
 14. **It reads plainly.** Descriptive names, flat control flow, helpers named for what they do, comments only for a non-obvious why, ruff clean.
-15. **It passes five runs in a row, normally and on a slow machine.** A new or changed browser test passes `for i in 1 2 3 4 5; do pytest <module> || break; done` and the same loop with `OWUI_TEST_SLOW=1 pytest`. The slow mode throttles the browser's CPU fourfold, so a race a fast machine wins fails here instead of on CI.
+15. **It passes five runs in a row on a slow machine.** A new or changed browser test passes `for i in 1 2 3 4 5; do pytest <module> || break; done` with the default slow mode on. It throttles the browser's CPU fourfold, so a race a fast machine wins fails here instead of on CI. Never switch it off with `OWUI_TEST_SLOW=0` to get a test green.
 
 ## Keeping the remaining unit tests alive
 

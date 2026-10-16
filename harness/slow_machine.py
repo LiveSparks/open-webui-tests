@@ -1,9 +1,9 @@
-"""Opt-in slow machine for the browser suite, switched on with `OWUI_TEST_SLOW=1`.
+"""Slow machine for the browser suite, on by default and switched off with `OWUI_TEST_SLOW=0`.
 
 A CI runner is slower than a laptop, so a test that races the page (a blur before the load-time
-focus lands) can pass every time locally and fail there. With the switch on, every Chromium page
-the suite opens runs with its CPU throttled through the DevTools protocol (`OWUI_TEST_SLOW=1`
-slows it `DEFAULT_RATE`-fold, `OWUI_TEST_SLOW=<n>` n-fold), and the scripted provider waits as
+focus lands) can pass every time locally and fail there. Every Chromium page the suite opens
+runs with its CPU throttled through the DevTools protocol (`DEFAULT_RATE`-fold unless
+`OWUI_TEST_SLOW=<n>` asks for n-fold), and the scripted provider waits as
 much longer before each reply, as it waits for a page that is that much slower.
 """
 
@@ -18,9 +18,9 @@ DEFAULT_RATE = 4
 
 def _rate_from_env() -> float:
     value = os.getenv("OWUI_TEST_SLOW", "").strip().lower()
-    if value in ("", "0", "false", "no"):
+    if value in ("0", "false", "no", "off"):
         return 0
-    if value in ("1", "true", "yes"):
+    if value in ("", "1", "true", "yes", "on"):
         return DEFAULT_RATE
     return float(value)
 

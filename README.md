@@ -98,7 +98,7 @@ They combine. The Redis switch needs `redis-server` on `PATH` and skips without 
 
 ### Slow machine
 
-`OWUI_TEST_SLOW=1 pytest e2e` runs every browser page with its CPU throttled fourfold (`OWUI_TEST_SLOW=<n>` for n-fold), and the scripted provider waits as much longer before each reply. A test that races the page, which a fast machine wins and a busy CI runner loses, fails here locally. Every new or changed browser test passes five runs in a row with it on.
+Every browser page runs with its CPU throttled fourfold by default (`OWUI_TEST_SLOW=<n>` for n-fold, `OWUI_TEST_SLOW=0` for full speed), and the scripted provider waits as much longer before each reply. A test that races the page, which a fast machine wins and a busy CI runner loses, fails locally instead of on CI.
 
 ### Coverage
 
