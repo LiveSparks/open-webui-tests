@@ -131,6 +131,8 @@ A test that fails without a code change costs a release its trust in the suite. 
 
 - **Prove the list loaded before checking something is missing.** `to_have_count(0)` passes at once on a list still empty because it is loading. Wait first for an item the same account surely sees (an everyone-read note, its own prompt), then check the absence.
 - **Set the starting state; never read it.** Put a setting into the state the test starts from (over the API, after `preserve`) instead of relying on the instance default or branching on what a switch currently shows.
+- **Look for text inside the region that holds it.** A page or dialog can show the same text twice (a search result and its preview, a title and its breadcrumb), and a locator over the whole dialog then matches both. Scope it to the list, row or panel the test is about.
+- **Wait for a filtered list to match its filter.** A search or filter shows the unfiltered items first, so the match is visible before the query has run. Assert the narrowed count first, then what the remaining items hold.
 - **Check every setup call.** Assert the status of each request that builds the test's state, so a failed setup shows the server's answer instead of a misleading error later.
 
 ## Checklist before committing a test

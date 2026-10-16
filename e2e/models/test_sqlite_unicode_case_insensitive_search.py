@@ -6,8 +6,7 @@ only, so the search behind the sidebar's Search dialog did not find "ΑΘΗΝΑ"
 
 Twin of unit/models/test_sqlite_unicode_case_insensitive_search.py.
 
-Discriminates: passes on dev bbfa876af; without the `like` override the dialog answers
-"No results found".
+Discriminates: passes on dev f5a26f53a; without the `like` override the dialog lists no result.
 """
 
 from __future__ import annotations
@@ -37,5 +36,7 @@ def test_the_sidebar_search_finds_a_greek_title_typed_in_lowercase(page_for, mak
     dialog = page.get_by_role("dialog")
     dialog.get_by_placeholder("Search").fill("αθηνα")
 
-    expect(dialog.get_by_text("Weekly report")).to_have_count(0)
-    expect(dialog.get_by_text("ΑΘΗΝΑ")).to_be_visible()
+    # An empty query lists recent chats, so wait for the list to narrow to the match.
+    results = dialog.get_by_role("listbox", name="Search results").get_by_role("option")
+    expect(results).to_have_count(1)
+    expect(results).to_contain_text("ΑΘΗΝΑ")
