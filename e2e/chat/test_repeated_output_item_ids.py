@@ -59,7 +59,6 @@ def test_a_reply_with_the_provider_reusing_item_ids_shows_after_a_reload(
 ):
     # an admin account, so the Responses connection's model needs no access grant
     page = page_for(make_user(role="admin"))
-    page.goto("/")
     select_model(page, MODEL)
     responses.answer(
         responses_api.events_stream(
@@ -108,9 +107,7 @@ def test_a_stored_reply_with_repeated_item_ids_opens_with_text_and_tool_call(pag
     ]
     with account.client() as client:
         chat_id, _ = seed_chat(client, history, model=MODEL)
-    page = page_for(account)
-
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
 
     expect_whole_reply(page)
 

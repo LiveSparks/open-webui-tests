@@ -38,7 +38,6 @@ pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.req
 @pytest.fixture
 def chat_page(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     return page
 
 
@@ -262,7 +261,6 @@ def _search_dialog_hits(page: Page, word: str) -> Locator:
 def test_chat_search_finds_a_chat_by_the_text_a_reply_was_edited_to(page_for, make_user, upstream):
     account = make_user()
     page = page_for(account)
-    page.goto("/")
     word = f"quokka{uuid.uuid4().hex[:8]}"
     upstream.queue(reply.text("a plain answer", match=reply.answering("say something")))
     send(page, "say something")
@@ -284,7 +282,6 @@ def test_chat_search_finds_a_chat_by_the_text_of_a_reply_saved_as_a_copy(
 ):
     account = make_user()
     page = page_for(account)
-    page.goto("/")
     word = f"quokka{uuid.uuid4().hex[:8]}"
     upstream.queue(reply.text("the original answer", match=reply.answering("say something")))
     send(page, "say something")

@@ -121,8 +121,7 @@ def terminal_chat(page_for, cached_setup, admin, make_user, preserve, open_termi
     connection = open_terminal.connection(config={"access_grants": [read_grant(person.id)]})
     with admin.client() as client:
         configure_terminals(client, connection)
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
     pick_terminal(page, connection["name"])
     return page
 
@@ -193,8 +192,7 @@ def test_using_the_entire_document_with_file_context_on_rewrites_the_prefix(
 def test_using_the_entire_document_with_file_context_off_does_nothing(
     cached_setup, page_for, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     attach(page, *NOTES)
     use_entire_document(page, NOTES[0])
@@ -209,8 +207,7 @@ def test_using_the_entire_document_with_file_context_off_does_nothing(
 def test_a_whole_knowledge_base_with_file_context_off_does_nothing(
     cached_setup, page_for, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     attach_from_menu(page, "Attach Knowledge", "Harbour handbook")
     use_entire_document(page, "Harbour handbook collection")
@@ -227,8 +224,7 @@ def test_a_whole_knowledge_base_with_file_context_off_does_nothing(
 
 def test_citations_on_rewrite_the_prefix(model_with, page_for, make_user, upstream):
     model = model_with(citations=True)
-    page = page_for(make_user())
-    page.goto(f"/?models={model.id}")
+    page = page_for(make_user(), path=f"/?models={model.id}")
 
     ask(
         page,
@@ -272,8 +268,7 @@ def test_a_memory_added_mid_chat_with_the_system_context_on_rewrites_the_prefix(
     person = make_user()
     with person.client() as client:
         client.post("/api/v1/memories/add", json={"content": FIRST_MEMORY}).raise_for_status()
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
 
     ask(page, upstream, "good morning", reply.text("Morning."))
     add_memory_in_settings(page_for(person), SECOND_MEMORY)
@@ -298,8 +293,7 @@ def test_unchanged_memories_with_the_system_context_on_only_append(
     with person.client() as client:
         for memory in (FIRST_MEMORY, SECOND_MEMORY):
             client.post("/api/v1/memories/add", json={"content": memory}).raise_for_status()
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
 
     ask(page, upstream, "good morning", reply.text("Morning."))
     ask(page, upstream, "what is the weather?", reply.text("Clear."))
@@ -317,8 +311,7 @@ def test_unchanged_memories_with_the_system_context_on_only_append(
 def test_the_first_file_attached_adds_the_file_tools_once(
     cached_setup, page_for, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     ask(page, upstream, "good morning", reply.text("Morning."))
     attach(page, *NOTES)
@@ -418,8 +411,7 @@ def untick_builtin_tool(page: Page, model_id: str, label: str) -> None:
 def test_unticking_a_builtin_tool_category_mid_chat_rewrites_the_prefix(
     cached_setup, page_for, admin, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
 
     untick_builtin_tool(page_for(admin), cached_setup.id, "Notes")
@@ -439,8 +431,7 @@ def test_switching_web_search_on_mid_chat_rewrites_the_prefix(
     preserve(RETRIEVAL_CONFIG)
     with admin.client() as client:
         save_web_settings(client, ENABLE_WEB_SEARCH=True)
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     ask(page, upstream, "good morning", reply.text("Morning."))
     page.get_by_label("Integrations").click()
@@ -473,8 +464,7 @@ def test_a_skill_mentioned_mid_chat_rewrites_the_prefix(
         )
         assert created.status_code == 200, created.text
         try:
-            page = page_for(make_user())
-            page.goto(f"/?models={cached_setup.id}")
+            page = page_for(make_user(), path=f"/?models={cached_setup.id}")
             ask(page, upstream, "good morning", reply.text("Morning."))
             chat_input(page).click()
             page.keyboard.type("$Tide")
@@ -492,8 +482,7 @@ def test_a_workspace_tool_switched_on_mid_chat_rewrites_the_prefix(
     cached_setup, admin, page_for, make_user, upstream
 ):
     with python_tool(admin, TIDE_TOOL, name="Tide clock"):
-        page = page_for(make_user())
-        page.goto(f"/?models={cached_setup.id}")
+        page = page_for(make_user(), path=f"/?models={cached_setup.id}")
         ask(page, upstream, "good morning", reply.text("Morning."))
         turn_on_tool(page, "Tide clock")
         ask(page, upstream, "when is high tide?", reply.text("At noon."))
@@ -510,8 +499,7 @@ def test_a_workspace_tool_switched_on_mid_chat_rewrites_the_prefix(
 def test_an_earlier_question_edited_and_sent_again_rewrites_the_prefix(
     cached_setup, page_for, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     ask(page, upstream, "when does the ferry leave?", reply.text("At 06:40."))
     ask(page, upstream, "and the bus?", reply.text("At 07:15."))
@@ -542,8 +530,7 @@ def test_moving_a_chat_into_a_folder_with_a_prompt_rewrites_the_prefix(
             json={"name": "Harbour", "data": {"system_prompt": "Answer as the harbour master."}},
         )
     assert folder.status_code == 200, folder.text
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     chat_id = page.url.rsplit("/", 1)[-1]
     with person.client() as client:
@@ -562,8 +549,7 @@ def test_a_knowledge_base_attached_after_the_first_turn_rewrites_the_prefix(
 ):
     person = make_user()
     with admin.client() as client, knowledge_base(client, "Timetables", [EVERYONE_READS]):
-        page = page_for(person)
-        page.goto(f"/?models={cached_setup.id}")
+        page = page_for(person, path=f"/?models={cached_setup.id}")
         ask(page, upstream, "good morning", reply.text("Morning."))
         attach_from_menu(page, "Attach Knowledge", "Timetables")
         ask(page, upstream, "when does the bus leave?", reply.text("At 07:15."))
@@ -575,8 +561,7 @@ def test_a_knowledge_base_attached_after_the_first_turn_rewrites_the_prefix(
 def test_a_skill_shared_with_the_person_mid_chat_rewrites_the_prefix(
     page_for, cached_setup, admin, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     skill_id = f"tide-tables-{uuid.uuid4().hex[:6]}"
     with admin.client() as client:

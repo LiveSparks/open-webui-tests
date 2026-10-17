@@ -55,8 +55,7 @@ def toolsmith(make_user):
 
 def test_a_tool_from_the_editor_is_called_and_its_result_shows(page_for, toolsmith, upstream):
     name = f"Lockers {uuid.uuid4().hex[:6]}"
-    page = page_for(toolsmith)
-    page.goto("/workspace/tools/create")
+    page = page_for(toolsmith, path="/workspace/tools/create")
     editor = page.get_by_role("main")
     editor.get_by_role("textbox", name="Tool Name").fill(name)
     editor.get_by_role("textbox", name="Tool Description").fill("who holds which locker")
@@ -100,8 +99,7 @@ def test_a_tool_imported_from_a_link_opens_in_the_editor_and_saves_its_source(
     page_for, toolsmith, listener
 ):
     listener.route("GET", "/tools/locker_desk.py", text_answer(LOCKER_TOOL, "text/x-python"))
-    page = page_for(toolsmith)
-    page.goto("/workspace/tools")
+    page = page_for(toolsmith, path="/workspace/tools")
     page.get_by_label("Open create menu").click()
     page.get_by_role("button", name="Import from URL").click()
     importing = page.get_by_role("dialog")
@@ -134,8 +132,7 @@ MISSING_COLON = """class Tools:
 
 def test_a_tool_that_does_not_parse_is_refused_with_the_error_shown(page_for, toolsmith):
     name = f"Lockers {uuid.uuid4().hex[:6]}"
-    page = page_for(toolsmith)
-    page.goto("/workspace/tools/create")
+    page = page_for(toolsmith, path="/workspace/tools/create")
     editor = page.get_by_role("main")
     editor.get_by_role("textbox", name="Tool Name").fill(name)
     editor.get_by_role("textbox", name="Tool Description").fill("who holds which locker")

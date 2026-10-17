@@ -107,8 +107,7 @@ def assert_called_every(requests: list[dict], tools: set[str]) -> None:
 def test_the_file_tools_on_a_file_attached_in_the_chat_only_append(
     page_for, cached_setup, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     attach(page, *NOTES)
     ask(
@@ -150,8 +149,7 @@ def test_the_file_tools_on_a_file_attached_in_the_chat_only_append(
 def test_the_knowledge_tools_on_the_models_knowledge_only_append(
     page_for, cached_setup, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     handbook = cached_setup.handbook_file_id
 
     ask(page, upstream, "what do you know?", calling("list_knowledge", {}), reply.text("A book."))
@@ -196,8 +194,7 @@ def test_the_knowledge_discovery_tools_only_append(admin, preserve, page_for, ma
     preserve("admin_config")
     turn_off_memory_system_context(admin)
     with cache_optimal_model(admin, with_knowledge=False) as model:
-        page = page_for(make_user())
-        page.goto(f"/?models={model.id}")
+        page = page_for(make_user(), path=f"/?models={model.id}")
         ask(
             page,
             upstream,
@@ -255,8 +252,7 @@ def test_a_knowledge_base_note_and_chat_attached_in_the_chat_only_append(
             json={"chat": {"title": "An earlier trip", "messages": [], "history": {}}},
         )
         assert earlier.status_code == 200, earlier.text
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
 
     attach_from_menu(page, "Attach Knowledge", "Harbour handbook")
     attach_from_menu(page, "Attach Notes", "Packing list")
@@ -299,8 +295,7 @@ def test_the_note_and_chat_history_tools_only_append(page_for, cached_setup, mak
             json={"chat": {"title": "Tide tables for May", "messages": [], "history": {}}},
         )
         assert earlier.status_code == 200, earlier.text
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
 
     ask(
         page,
@@ -340,8 +335,7 @@ def test_the_note_and_chat_history_tools_only_append(page_for, cached_setup, mak
 
 
 def test_every_memory_tool_only_appends(page_for, cached_setup, make_user, upstream):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     ask(
         page,
@@ -406,8 +400,7 @@ def test_every_memory_tool_only_appends(page_for, cached_setup, make_user, upstr
 def test_the_time_task_list_and_question_tools_only_append(
     page_for, cached_setup, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     ask(
         page,
@@ -478,8 +471,7 @@ def test_the_channel_tools_only_append(page_for, cached_setup, admin, make_user,
             json={"content": "by twenty minutes", "parent_id": message_id},
         )
         assert answered.status_code == 200, answered.text
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
 
     ask(
         page,
@@ -516,8 +508,9 @@ def test_the_channel_tools_only_append(page_for, cached_setup, admin, make_user,
 
 
 def test_the_automation_and_calendar_tools_only_append(page_for, cached_setup, make_user, upstream):
-    page = page_for(make_user(role="admin"))  # automations need a permission users lack
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(
+        make_user(role="admin"), path=f"/?models={cached_setup.id}"
+    )  # automations need a permission users lack
 
     ask(
         page,
@@ -583,8 +576,7 @@ def test_the_image_tools_only_append(
     preserve(IMAGES_CONFIG)
     with admin.client() as client:
         save_image_settings(client, **serve_openai_images(listener))
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     turn_on_integration(page, "Image")
 
     ask(
@@ -638,8 +630,7 @@ def test_web_search_fetch_and_a_notification_only_append(
         client.post("/api/v1/notifications/targets", json=target).raise_for_status()
 
     with cache_optimal_model(fetching_admin) as model:
-        page = page_for(person)
-        page.goto(f"/?models={model.id}")
+        page = page_for(person, path=f"/?models={model.id}")
         turn_on_integration(page, "Web Search")
         ask(
             page,

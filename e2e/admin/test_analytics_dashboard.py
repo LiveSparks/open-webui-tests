@@ -127,8 +127,7 @@ def activity(admin, make_user, upstream, presets) -> Activity:
 @pytest.fixture
 def dashboard(page_for, make_user) -> tuple[Page, Locator]:
     """A fresh admin on the analytics dashboard, loaded."""
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/analytics")
+    page = page_for(make_user(role="admin"), path="/admin/analytics")
     settings = page.get_by_role("dialog")
     expect(leaderboard_tab(settings, "Models", selected=True)).to_be_visible()
     return page, settings
@@ -232,8 +231,7 @@ def test_a_model_row_opens_the_models_chats_with_who_had_them(activity, dashboar
 
 def test_a_user_is_sent_back_to_the_chat_and_refused_the_api(page_for, make_user):
     user = make_user()
-    page = page_for(user)
-    page.goto("/admin/analytics")
+    page = page_for(user, path="/admin/analytics")
     expect(chat_input(page)).to_be_visible()
     expect(page).to_have_url(f"{user.base_url}/")
     expect(page.get_by_role("dialog")).to_have_count(0)

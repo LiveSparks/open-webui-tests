@@ -49,8 +49,7 @@ def local_instance(instance_with, tmp_path_factory):
 
 def test_a_knowledge_base_embedded_locally_answers_a_chat(page_for, local_instance):
     name = f"Orchard {uuid.uuid4().hex[:6]}"
-    page = page_for(create_user(local_instance, role="admin"))
-    page.goto("/workspace/knowledge/create")
+    page = page_for(create_user(local_instance, role="admin"), path="/workspace/knowledge/create")
     creating = page.get_by_role("dialog")
     creating.get_by_role("textbox", name="Name your knowledge base").fill(name)
     creating.get_by_role("textbox", name="Describe your knowledge base and objectives").fill(

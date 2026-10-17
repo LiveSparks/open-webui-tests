@@ -62,8 +62,7 @@ def test_an_image_reaches_the_model_at_its_own_size(page_for, make_user, upstrea
 
 
 def test_a_persons_image_compression_shrinks_the_image_sent(page_for, make_user, upstream):
-    page = page_for(make_user())
-    page.goto("/?settings=interface")
+    page = page_for(make_user(), path="/?settings=interface")
     tab = page.locator("#tab-interface")
     with page.expect_response(lambda response: "/user/settings/update" in response.url):
         tab.get_by_role("switch", name="Image Compression", exact=True).click()
@@ -83,8 +82,7 @@ def test_the_admins_image_compression_shrinks_every_accounts_image(
     page_for, make_user, upstream, preserve
 ):
     preserve(RETRIEVAL_CONFIG)
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/settings/documents")
+    admin_page = page_for(make_user(role="admin"), path="/admin/settings/documents")
     settings = admin_page.get_by_role("dialog")
     for label in ("Image Compression Width", "Image Compression Height"):
         field = settings.get_by_text(label, exact=True)

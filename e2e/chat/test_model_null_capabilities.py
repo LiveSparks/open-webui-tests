@@ -53,7 +53,6 @@ def account(admin, make_user):
 def test_a_chat_with_the_model_gets_its_reply(page_for, account, upstream):
     upstream.queue(reply.text("the report is ready"))
     page = page_for(account)
-    page.goto("/")
 
     page.get_by_role("button", name=re.compile("^Selected model")).first.click()
     page.get_by_role("option", name=f"Select {MODEL_NAME} model").click()

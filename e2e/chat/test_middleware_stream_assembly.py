@@ -62,8 +62,7 @@ def second_provider(preserve, admin, listener):
 @pytest.fixture
 def second_model_page(page_for, make_user, second_provider):
     """A signed-in admin's chat page with the second connection's model selected."""
-    page = page_for(make_user(role="admin"))
-    page.goto(f"/?models={SECOND_MODEL}")
+    page = page_for(make_user(role="admin"), path=f"/?models={SECOND_MODEL}")
     return page
 
 
@@ -129,8 +128,7 @@ def test_a_provider_that_hangs_up_after_a_tool_call_shows_an_error(
 def test_a_plain_json_error_line_shows_after_a_reload(page_for, make_user, second_provider):
     second_provider.route("POST", "/v1/chat/completions", sse('{"error": "rate limit exceeded"}'))
     owner = make_user(role="admin")
-    page = page_for(owner)
-    page.goto(f"/?models={SECOND_MODEL}")
+    page = page_for(owner, path=f"/?models={SECOND_MODEL}")
     with connected(owner) as socket:
         send(page, "hello")
         socket.wait_for(_chat_id(page), "chat:active", active=False)
@@ -160,5 +158,4 @@ def test_thinking_after_a_tool_call_does_not_stream_as_the_answer(chat_page_for_
 @pytest.fixture
 def chat_page_for_user(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     return page

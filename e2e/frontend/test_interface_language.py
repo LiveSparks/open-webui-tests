@@ -117,8 +117,7 @@ def user_row(page: Page, account: Actor) -> Locator:
 def test_dates_in_the_user_list_follow_the_picked_language(page_for, make_user, admin):
     viewer = make_user(role="admin")
     created = created_on(admin, viewer)
-    page = page_for(viewer, **IN_UTC)
-    page.goto("/admin/users")
+    page = page_for(viewer, path="/admin/users", **IN_UTC)
     english = f"{ENGLISH_MONTHS[created.month - 1]} {created.day}, {created.year}"
     expect(user_row(page, viewer)).to_contain_text(english)
 

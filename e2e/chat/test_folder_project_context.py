@@ -121,8 +121,7 @@ def test_the_folder_prompt_leads_every_turn_in_the_folder_and_no_chat_outside(
 ):
     owner = make_user()
     folder_id = create_folder(owner, "Harbour", HARBOUR_PROMPT)
-    page = page_for(owner)
-    page.goto(f"/folders/{folder_id}")
+    page = page_for(owner, path=f"/folders/{folder_id}")
 
     ask(page, upstream, "when is high tide?", "High tide at noon.")
     expect(page).to_have_url(re.compile("/c/"))
@@ -144,8 +143,7 @@ def test_a_chat_moved_in_takes_the_prompt_and_dragged_out_loses_it(page_for, mak
     folder_id = create_folder(owner, "Harbour", HARBOUR_PROMPT)
     title = f"Loose ends {uuid.uuid4().hex[:6]}"
     chat_id = seeded_chat(owner, title)
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     ask(page, upstream, "before the move?", "Still loose.")
 
     page.get_by_label("Chat actions").click()
@@ -178,9 +176,8 @@ def test_a_subfolder_chat_gets_the_subfolders_prompt_and_not_its_parents(
     owner = make_user()
     garden_id = create_folder(owner, "Garden", GARDEN_PROMPT)
     seeds_id = create_folder(owner, "Seeds", SEEDS_PROMPT, parent_id=garden_id)
-    page = page_for(owner)
+    page = page_for(owner, path=f"/folders/{seeds_id}")
 
-    page.goto(f"/folders/{seeds_id}")
     ask(page, upstream, "which beans keep longest?", "Broad beans.")
     page.goto(f"/folders/{garden_id}")
     ask(page, upstream, "when to prune roses?", "In March.")
@@ -203,7 +200,6 @@ def test_a_subfolder_dragged_under_another_folder_keeps_its_chats_and_its_prompt
     title = f"Bean trials {uuid.uuid4().hex[:6]}"
     chat_id = seeded_chat(owner, title, seeds_id)
     page = page_for(owner)
-    page.goto("/")
     sidebar = open_sidebar(page)
     seeds_row = folder_row(sidebar, "Seeds")
     expect(seeds_row).to_be_visible()
@@ -288,8 +284,7 @@ def test_the_folders_knowledge_and_file_are_cited_in_its_chats_only(
     page_for, harbour_knowledge, upstream
 ):
     owner, folder_id, tides_name, moorings_name = harbour_knowledge
-    page = page_for(owner)
-    page.goto(f"/folders/{folder_id}")
+    page = page_for(owner, path=f"/folders/{folder_id}")
 
     search_and_answer(page, upstream, "where may I moor?", "Not at berth 4.")
     sources = conversation(page).get_by_role("button", name=re.compile(r"^Toggle \d+ sources?$"))

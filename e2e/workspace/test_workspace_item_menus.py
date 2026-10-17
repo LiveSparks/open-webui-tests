@@ -246,8 +246,7 @@ def test_a_version_in_the_prompt_history_can_be_deleted_but_not_the_live_one(pag
         f"/api/v1/prompts/id/{prompt['id']}/update",
         {**form, "content": "Summarise in one line.", "commit_message": "Shorter"},
     )
-    page = page_for(builder)
-    page.goto(f"/workspace/prompts/{prompt['id']}")
+    page = page_for(builder, path=f"/workspace/prompts/{prompt['id']}")
     expect(page.get_by_role("textbox", name="Prompt Content")).to_have_value(
         "Summarise in one line."
     )

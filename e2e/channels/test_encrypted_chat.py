@@ -152,9 +152,8 @@ def test_encrypted_chat_is_offered_once_the_admin_turns_it_on_and_grants_it(
     _withhold_permission_by_default(admin)
     person, other = make_user(), make_user()
     channel_id = _direct_message(person, other)
-    admin_page = page_for(admin)
+    admin_page = page_for(admin, path="/admin/settings/general")
 
-    admin_page.goto("/admin/settings/general")
     settings = admin_page.get_by_role("dialog")
     switch = settings.get_by_role("switch", name="Encrypted channels", exact=True)
     switch.click()

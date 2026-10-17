@@ -46,8 +46,7 @@ def model_on_a_retired_base(admin):
 
 def test_saving_a_new_description_keeps_the_base_model(page_for, admin, model_on_a_retired_base):
     model_id, base_model_id = model_on_a_retired_base
-    page = page_for(admin)
-    page.goto(f"/workspace/models/edit?id={model_id}")
+    page = page_for(admin, path=f"/workspace/models/edit?id={model_id}")
 
     description = page.get_by_placeholder("Add a short description about what this model does")
     expect(description).to_have_value("before")

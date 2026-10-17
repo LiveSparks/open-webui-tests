@@ -107,8 +107,7 @@ def test_a_group_permission_gives_web_search_back_to_its_members(
     page_for, admin, make_user, upstream, withheld_by_default, crew
 ):
     name, member = crew
-    admin_page = page_for(admin)
-    admin_page.goto("/admin/users/groups")
+    admin_page = page_for(admin, path="/admin/users/groups")
     groups = admin_page.get_by_role("main")
     groups.get_by_role("textbox", name="Search Groups").fill(name)
     groups.get_by_role("button", name=re.compile(rf"^{name} 1 direct members")).click()
@@ -133,8 +132,7 @@ def test_a_group_permission_gives_web_search_back_to_its_members(
 def test_a_web_search_link_gives_no_search_without_the_permission(
     page_for, make_user, upstream, withheld_by_default
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={MOCK_MODEL_ID}&web-search=true")
+    page = page_for(make_user(), path=f"/?models={MOCK_MODEL_ID}&web-search=true")
 
     offered = offered_tools(page, upstream, "Is the sea calm at the harbour mouth?")
 

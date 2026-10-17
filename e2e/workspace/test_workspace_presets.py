@@ -61,8 +61,7 @@ def _pick_model(page: Page, name: str) -> None:
 def test_a_preset_sends_its_system_prompt_with_the_chat(page_for, builder, upstream):
     suffix = uuid.uuid4().hex[:6]
     name, system_prompt = f"Pirate {suffix}", f"Answer like a pirate, crew {suffix}."
-    page = page_for(builder)
-    page.goto("/workspace/models/create")
+    page = page_for(builder, path="/workspace/models/create")
     editor = page.get_by_role("main")
     editor.get_by_role("textbox", name="Model Name").fill(name)
     editor.get_by_role("button", name="Select a base model", exact=True).click()
@@ -86,8 +85,7 @@ def test_a_preset_sends_its_system_prompt_with_the_chat(page_for, builder, upstr
 def test_a_saved_prompt_is_offered_by_its_slash_command_and_sent(page_for, builder, upstream):
     suffix = uuid.uuid4().hex[:6]
     command, text = f"seahaiku{suffix}", f"Write a haiku about the sea at dawn, take {suffix}."
-    page = page_for(builder)
-    page.goto("/workspace/prompts")
+    page = page_for(builder, path="/workspace/prompts")
     page.get_by_role("main").get_by_role("button", name="Create", exact=True).click()
     creating = page.get_by_role("dialog").filter(has_text="Create Prompt")
     creating.get_by_role("textbox", name="Prompt Name").fill(f"Sea haiku {suffix}")

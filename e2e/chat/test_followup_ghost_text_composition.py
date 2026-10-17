@@ -37,8 +37,7 @@ def open_chat_with_follow_up(page_for, make_user) -> Page:
                 {"role": "assistant", "content": "Twice a day.", "followUps": [FOLLOW_UP]},
             ],
         )
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect(chat_input(page).locator("p[data-suggestion]")).to_have_attribute(
         "data-suggestion", FOLLOW_UP
     )

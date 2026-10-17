@@ -71,16 +71,17 @@ def voice_page_for(
 ) -> Generator[Callable[[Actor], Page], None, None]:
     """`voice_page_for(actor)`: a signed-in page whose microphone plays `SPOKEN_TURN`.
 
-    Further keywords go to the browser context, such as `reduced_motion="reduce"`.
+    `path` opens that page directly, as with `page_for`. Further keywords go to the browser
+    context, such as `reduced_motion="reduce"`.
     """
     opened = []
 
-    def open_page(actor: Actor, **context_options) -> Page:
+    def open_page(actor: Actor, path: str = "/", **context_options) -> Page:
         _dismiss_first_run_modals(actor)
         browser_context = _new_context(speaking_browser, config, actor.base_url, **context_options)
         browser_context.grant_permissions(["microphone"])
         opened.append(browser_context)
-        return _signed_in_page(browser_context, actor.token, config.navigation_timeout)
+        return _signed_in_page(browser_context, actor.token, config.navigation_timeout, path=path)
 
     yield open_page
     with contextlib.ExitStack() as closing:

@@ -187,7 +187,6 @@ def test_filters_sign_the_reply_in_the_order_of_their_priority_valve(
         installed_function(admin, signing_filter("south", 2), is_global=True),
     ):
         page = page_for(make_user())
-        page.goto("/")
         expect_signed_reply(page, upstream, "when does the tide turn?", " [north] [south]")
 
         admin_page = page_for(admin)

@@ -42,8 +42,7 @@ def switchable(instance_with):
 
 def test_requiring_an_authenticator_signs_everyone_out_into_setup(switchable, page_for):
     admin = admin_of(switchable)
-    page = page_for(admin)
-    page.goto("/admin/settings/authentication")
+    page = page_for(admin, path="/admin/settings/authentication")
     settings = page.get_by_role("dialog")
     require = settings.get_by_role("switch", name=REQUIRE)
     expect(require).not_to_be_checked()

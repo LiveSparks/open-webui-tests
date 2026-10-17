@@ -282,8 +282,7 @@ def test_a_call_in_an_existing_chat_tells_the_provider_the_conversation(
             client,
             [{"role": "user", "content": question}, {"role": "assistant", "content": answer}],
         )
-    page = voice_page_for(caller)
-    page.goto(f"/c/{chat_id}")
+    page = voice_page_for(caller, path=f"/c/{chat_id}")
     expect_reply(page, answer)
 
     start_call(page)

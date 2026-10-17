@@ -39,8 +39,7 @@ def harbour_reply(page_for, make_user) -> tuple[Page, Locator]:
                 {"role": "assistant", "content": f"{FIRST_PARAGRAPH}\n\n{SECOND_PARAGRAPH}"},
             ],
         )
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect_reply(page, SECOND_PARAGRAPH)
     return page, page.locator(f"#floating-buttons-{chat_id}-{reply_id}")
 

@@ -81,8 +81,7 @@ def test_a_referenced_chat_reaches_the_model_with_the_message(
 
 def test_the_open_chat_is_not_offered_as_a_reference_to_itself(page_for, account, referenced):
     chat_id, title = referenced
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     expect(conversation(page).get_by_text(REFERENCED_FACT)).to_be_visible()
 
     picker = _chat_picker(page)

@@ -50,8 +50,7 @@ def test_an_orphaned_reply_gets_its_sibling_switcher(page_for, make_user):
         created = client.post("/api/v1/chats/new", json={"chat": chat})
     assert created.status_code == 200, created.text
 
-    page = page_for(owner)
-    page.goto(f"/c/{created.json()['id']}")
+    page = page_for(owner, path=f"/c/{created.json()['id']}")
     expect_reply(page, "The second answer")
     expect(conversation(page).get_by_text("2/2")).to_be_visible()
 

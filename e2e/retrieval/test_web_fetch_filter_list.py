@@ -55,8 +55,7 @@ def is_attachment_answer(response) -> bool:
 
 def open_chat_about(page_for, launched, link: str):
     """The chat page attaching `link`, once confirmed and answered by the server."""
-    page = page_for(create_user(launched))
-    page.goto(f"/?models={MOCK_MODEL_ID}&load-url={link}")
+    page = page_for(create_user(launched), path=f"/?models={MOCK_MODEL_ID}&load-url={link}")
     with page.expect_response(is_attachment_answer, timeout=30_000):
         link_dialog(page).get_by_role("button", name="Confirm").click()
     return page

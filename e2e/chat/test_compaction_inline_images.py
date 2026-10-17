@@ -58,8 +58,7 @@ def test_the_status_panel_does_not_count_an_inline_image_as_text(page_for, make_
                 {"role": "assistant", "content": "a blank square"},
             ],
         )
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     expect_reply(page, "a blank square")
 
     chat_input(page).click()

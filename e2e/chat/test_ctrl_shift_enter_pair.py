@@ -38,7 +38,6 @@ def ctrl_enter_page(page_for, make_user) -> Page:
             "/api/v1/users/user/settings/update", json={"ui": {"ctrlEnterToSend": True}}
         ).raise_for_status()
     page = page_for(account)
-    page.goto("/")
     expect(chat_input(page)).to_be_visible()
     chat_input(page).click()
     return page

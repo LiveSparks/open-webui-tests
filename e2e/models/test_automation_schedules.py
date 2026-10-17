@@ -329,9 +329,8 @@ def test_the_calendar_shows_an_active_automations_runs_and_opens_them(
     assert created.status_code == 200, created.text
     automation_id = created.json()["id"]
     upstream.queue(reply.text("Ferries at ten and four.", match=reply.answering(prompt)))
-    page = page_for(scheduler, **IN_ZONE)
+    page = page_for(scheduler, path="/calendar", **IN_ZONE)
 
-    page.goto("/calendar")
     upcoming = calendar_chips(page, title)
     expect(upcoming.first).to_contain_text(re.compile(r"9:00\s?AM"))
     upcoming.first.click()
@@ -380,8 +379,7 @@ def rename_in_the_edit_dialog(page_for, scheduler, rule: str) -> str:
         )
     assert created.status_code == 200, created.text
     automation_id = created.json()["id"]
-    page = page_for(scheduler, **IN_ZONE)
-    page.goto(f"/automations/{automation_id}")
+    page = page_for(scheduler, path=f"/automations/{automation_id}", **IN_ZONE)
     expect(page.get_by_role("main")).to_contain_text("Post the rota.")
 
     page.get_by_role("button", name="Edit", exact=True).click()

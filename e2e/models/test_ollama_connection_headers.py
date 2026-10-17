@@ -55,8 +55,7 @@ def gated_ollama(admin, preserve, listener):
 
 
 def test_verifying_a_gated_ollama_connection_passes_the_gateway(page_for, make_user, gated_ollama):
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/settings/connections")
+    page = page_for(make_user(role="admin"), path="/admin/settings/connections")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_role("heading", name="Connections", exact=True)).to_be_visible()
 

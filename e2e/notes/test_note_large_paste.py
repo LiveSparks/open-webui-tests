@@ -63,8 +63,7 @@ def _note_editor(page: Page) -> Locator:
 def test_a_large_paste_into_a_note_is_still_there_after_a_reload(page_for, make_user):
     owner = make_user()
     note_id = _create_note(owner)
-    page = page_for(owner, permissions=CLIPBOARD)
-    page.goto(f"/notes/{note_id}")
+    page = page_for(owner, path=f"/notes/{note_id}", permissions=CLIPBOARD)
     editor = _note_editor(page)
     expect(editor).to_have_attribute("contenteditable", "true")
 

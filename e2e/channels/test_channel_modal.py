@@ -202,8 +202,7 @@ def test_a_deleted_channel_leaves_the_sidebar_and_sends_a_member_home(
     expect(page.get_by_text("Channel deleted successfully")).to_be_visible()
     _sent_home(page)
     expect(_entry(page, "channel-")).to_have_count(0)
-    member_page = page_for(member)
-    member_page.goto(f"/channels/{channel_id}")
+    member_page = page_for(member, path=f"/channels/{channel_id}")
     _sent_home(member_page)
     expect(_entry(member_page, "channel-")).to_have_count(0)
 

@@ -121,9 +121,8 @@ def test_renaming_a_command_to_a_taken_one_in_the_editor_is_refused(page_for, au
     held, moving = f"held-{suffix}", f"moving-{suffix}"
     add(held, "Held text.")
     moving_id = add(moving, "Moving text.")
-    page = page_for(account)
+    page = page_for(account, path=f"/workspace/prompts/{moving_id}")
 
-    page.goto(f"/workspace/prompts/{moving_id}")
     field = page.get_by_role("textbox", name="command")
     field.fill(held)
 

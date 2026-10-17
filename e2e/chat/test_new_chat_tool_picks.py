@@ -87,7 +87,6 @@ def test_a_tool_picked_in_a_new_chat_stays_after_switching_chats(
     page_for, user, upstream, puffin_tool
 ):
     page = page_for(user)
-    page.goto("/")
     other_question = f"other chat {uuid.uuid4().hex[:6]}"
     ask(page, upstream, other_question)
     page.wait_for_url(re.compile(r"/c/"))

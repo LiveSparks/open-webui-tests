@@ -68,7 +68,6 @@ def test_an_admin_finds_the_admin_tabs_in_named_groups(page_for, make_user):
 
 def test_a_person_without_the_admin_role_sees_no_admin_tabs(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
     page.get_by_role("button", name="Settings").click()

@@ -94,8 +94,7 @@ def test_the_thread_panel_clears_them_too(channel, page_for):
     post_message(
         reader, channel_id, "my answer in the thread", parent_id=root_id, reply_to_id=quoted_id
     )
-    reader_page = page_for(reader)
-    reader_page.goto(f"/channels/{channel_id}")
+    reader_page = page_for(reader, path=f"/channels/{channel_id}")
     starter = message_rows(reader_page, root_id).first
     expect(starter).to_contain_text("a thread starter")
 

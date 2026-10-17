@@ -55,8 +55,7 @@ def youtube_instance(instance_with, fake_youtube):
 
 
 def open_chat_about(page_for, launched, video_id: str):
-    page = page_for(create_user(launched))
-    page.goto(f"/?models={MOCK_MODEL_ID}&youtube={video_id}")
+    page = page_for(create_user(launched), path=f"/?models={MOCK_MODEL_ID}&youtube={video_id}")
     link_dialog(page).get_by_role("button", name="Confirm").click()
     return page
 

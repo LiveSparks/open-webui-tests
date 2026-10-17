@@ -129,9 +129,13 @@ APP_LOADED = """() => !document.getElementById('splash-screen')
 
 
 def _signed_in_page(
-    context: BrowserContext, token: str, load_timeout_ms: float, hold_events: bool = True
+    context: BrowserContext,
+    token: str,
+    load_timeout_ms: float,
+    hold_events: bool = True,
+    path: str = "/",
 ) -> Page:
-    """A page whose localStorage already carries the session token, handed over once loaded.
+    """A page on `path` whose localStorage carries the session token, handed over once loaded.
 
     Written through an init script: the sign-in route clears the token as it loads, so a value
     written by visiting /auth first is gone again before the app reads it.
@@ -142,7 +146,7 @@ def _signed_in_page(
     page.add_init_script(
         f"try {{ localStorage.setItem('token', {json.dumps(token)}); }} catch (e) {{}}"
     )
-    page.goto("/")
+    page.goto(path)
     # a cold load is slow on a busy runner; the test's first default wait should not pay for it
     page.wait_for_function(APP_LOADED, timeout=load_timeout_ms)
     return page
@@ -154,17 +158,20 @@ def page_for(
 ) -> Generator[Callable[[Actor], Page], None, None]:
     """`page_for(actor)` opens a signed-in page on the actor's instance, in a browser of its own.
 
+    `path` opens that page directly in place of the chat page, such as `path="/admin/users"`.
     Further keywords go to the browser context, such as `timezone_id` for a browser in another zone
     or `utils.phone.PHONE` for a phone's screen.
     """
     opened: list[BrowserContext] = []
     hold_events = request.node.get_closest_marker("real_socket_timing") is None
 
-    def open_page(actor: Actor, **context_options) -> Page:
+    def open_page(actor: Actor, path: str = "/", **context_options) -> Page:
         _dismiss_first_run_modals(actor)
         browser_context = _new_context(browser, config, actor.base_url, **context_options)
         opened.append(browser_context)
-        return _signed_in_page(browser_context, actor.token, config.navigation_timeout, hold_events)
+        return _signed_in_page(
+            browser_context, actor.token, config.navigation_timeout, hold_events, path
+        )
 
     yield open_page
     with contextlib.ExitStack() as closing:

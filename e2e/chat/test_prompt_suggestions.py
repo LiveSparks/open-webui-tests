@@ -133,9 +133,8 @@ def test_a_models_own_suggestions_replace_the_defaults(
 ):
     default_suggestions([TIDES])
     account, model_id = model_with_suggestions
-    page = page_for(account)
+    page = page_for(account, path=f"/?model={model_id}")
 
-    page.goto(f"/?model={model_id}")
     expect(page.get_by_role("button", name=f"Selected model: {model_id}")).to_be_visible()
     expect(suggestion(page, "Knots")).to_be_visible()
     expect(suggestion(page, "Tide table")).to_have_count(0)

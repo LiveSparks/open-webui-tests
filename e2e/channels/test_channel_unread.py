@@ -68,8 +68,7 @@ def _choose_notifications(page: Page, channel_name: str, choice: str) -> None:
 
 
 def _open_quiet_channel(page_for, reader, quiet_id: str) -> Page:
-    page = page_for(reader)
-    page.goto(f"/channels/{quiet_id}")
+    page = page_for(reader, path=f"/channels/{quiet_id}")
     expect(chat_input(page)).to_be_visible()
     return page
 
@@ -109,8 +108,7 @@ def test_a_channel_muted_from_its_menu_stays_quiet_until_the_reader_is_mentioned
     page = _open_quiet_channel(page_for, reader, quiet_id)
     busy_name = _channel_name(reader, busy_id)
     expect(_sidebar_entry(page, busy_name)).to_be_visible()
-    writer_page = page_for(writer)
-    writer_page.goto(f"/channels/{busy_id}")
+    writer_page = page_for(writer, path=f"/channels/{busy_id}")
     expect(chat_input(writer_page)).to_be_visible()
 
     _choose_notifications(page, busy_name, "Mentions only")

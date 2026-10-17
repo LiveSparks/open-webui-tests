@@ -104,8 +104,7 @@ def reply_stored_earlier(page_for, account, upstream) -> Page:
                 {"role": "assistant", "content": STORED_WITH_DETAILS},
             ],
         )
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     return page
 
 

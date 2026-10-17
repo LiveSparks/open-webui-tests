@@ -116,7 +116,6 @@ def test_the_model_chosen_in_the_dialog_is_the_folders_default(
     owner = make_user()
     folder_id = create_folder(owner)
     page = page_for(owner)
-    page.goto("/")
     dialog = open_edit_dialog(page)
 
     choose_default(page, dialog, folder_model)
@@ -134,8 +133,7 @@ def test_a_chat_started_in_the_folder_opens_on_its_default_model(
 ):
     owner = make_user()
     folder_id = create_folder(owner, {"model_ids": [folder_model]})
-    page = page_for(owner)
-    page.goto(f"/folders/{folder_id}")
+    page = page_for(owner, path=f"/folders/{folder_id}")
     upstream.queue(reply.text("lamp lit", match=reply.answering("who keeps the light?")))
 
     assert sent_model(page, "who keeps the light?") == folder_model
@@ -146,7 +144,6 @@ def test_the_reset_button_clears_the_default(page_for, make_user, folder_model):
     owner = make_user()
     folder_id = create_folder(owner, {"model_ids": [folder_model]})
     page = page_for(owner)
-    page.goto("/")
     dialog = open_edit_dialog(page)
 
     dialog.get_by_role("button", name="Reset").click()
@@ -162,8 +159,7 @@ def test_switching_models_in_a_folder_chat_leaves_the_folders_default(
 ):
     owner = make_user()
     folder_id = create_folder(owner, {"model_ids": [folder_model]})
-    page = page_for(owner)
-    page.goto(f"/folders/{folder_id}")
+    page = page_for(owner, path=f"/folders/{folder_id}")
     page.get_by_role("button", name=re.compile("Selected model")).click()
     page.get_by_role("textbox", name="Search In Models").fill(MOCK_MODEL_ID)
     page.get_by_role("option", name=f"Select {MOCK_MODEL_ID} model").click()
@@ -183,7 +179,6 @@ def test_a_folder_without_a_default_does_not_inherit_the_last_chats_model(
     owner = make_user()
     folder_id = create_folder(owner)
     page = page_for(owner)
-    page.goto("/")
     page.get_by_role("button", name=re.compile("Selected model")).click()
     page.get_by_role("textbox", name="Search In Models").fill(folder_model)
     page.get_by_role("option", name=f"Select {folder_model} model").click()

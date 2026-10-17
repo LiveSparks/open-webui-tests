@@ -47,7 +47,6 @@ def ask_user_call(call_id: str) -> dict:
 @pytest.fixture
 def chat_page(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     return page
 
 

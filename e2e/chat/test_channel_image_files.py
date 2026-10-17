@@ -34,8 +34,7 @@ def test_a_generated_image_shows_in_the_channel(
         channel_id, _ = channel_chat.mention(client, model, "draw a cat")
         channel_chat.model_reply(client, channel_id)
 
-        page = page_for(admin)
-        page.goto(f"/channels/{channel_id}")
+        page = page_for(admin, path=f"/channels/{channel_id}")
 
         expect(page.get_by_text("a cat", exact=True)).to_be_visible()
         expect(page.get_by_role("img", name="generated-image.png")).to_be_visible()

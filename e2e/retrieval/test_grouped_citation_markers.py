@@ -48,8 +48,7 @@ def open_cited_chat(page_for, make_user, answer: str) -> Page:
                 {"role": "assistant", "content": answer, "sources": sources},
             ],
         )
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     expect_reply(page, "End of notes.")
     return page
 

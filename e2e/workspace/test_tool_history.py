@@ -238,8 +238,7 @@ def test_a_user_who_may_only_read_the_tool_is_sent_away_from_its_editor(
             json={"access_grants": [grant("user", reader.id, "read")]},
         )
     assert shared.status_code == 200, shared.text
-    page = page_for(reader)
-    page.goto(f"/workspace/tools/edit?id={tool['id']}")
+    page = page_for(reader, path=f"/workspace/tools/edit?id={tool['id']}")
 
     expect(page.get_by_text("You do not have permission to edit this tool")).to_be_visible()
     expect(page).to_have_url(re.compile(r"/workspace/tools$"))

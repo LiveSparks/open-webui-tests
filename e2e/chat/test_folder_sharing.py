@@ -194,8 +194,7 @@ def test_a_writing_member_starts_a_chat_in_the_folder_under_its_prompt(page_for,
     expect(dialog.get_by_role("combobox", name="Access level")).to_have_value("write")
     eventually_grants(owner, folder_id, {("group", group_id, "read"), ("group", group_id, "write")})
 
-    member_page = page_for(member)
-    member_page.goto(f"/folders/{folder_id}")
+    member_page = page_for(member, path=f"/folders/{folder_id}")
     upstream.queue(reply.text("Berth 4 is free.", match=reply.answering("where may I moor?")))
     send(member_page, "where may I moor?")
     expect_reply(member_page, "Berth 4 is free.")
@@ -246,12 +245,10 @@ def test_a_reading_member_gets_no_message_input_on_the_folders_page(page_for, cr
     title = f"Tide log {uuid.uuid4().hex[:6]}"
     filed_chat(owner, folder_id, title)
     share_over_api(owner, folder_id, group_id, "read")
-    writer_page = page_for(owner)
-    writer_page.goto(f"/folders/{folder_id}")
+    writer_page = page_for(owner, path=f"/folders/{folder_id}")
     expect(chat_input(writer_page)).to_be_visible()
 
-    member_page = page_for(member)
-    member_page.goto(f"/folders/{folder_id}")
+    member_page = page_for(member, path=f"/folders/{folder_id}")
     expect(member_page.get_by_role("link", name=re.compile(re.escape(title)))).to_be_visible()
     expect(chat_input(member_page)).to_have_count(0)
 
@@ -296,8 +293,7 @@ def test_a_writing_member_drags_their_own_chat_into_the_shared_folder(page_for, 
         drag(member_page, sidebar.get_by_role("button", name=title), folder_row(sidebar, name))
 
     assert stored_folder_id(member, chat_id) == folder_id
-    owner_page = page_for(owner)
-    owner_page.goto(f"/folders/{folder_id}")
+    owner_page = page_for(owner, path=f"/folders/{folder_id}")
     expect(owner_page.get_by_role("link", name=re.compile(re.escape(title)))).to_be_visible()
 
 

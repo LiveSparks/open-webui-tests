@@ -330,8 +330,7 @@ def test_a_writer_sees_the_controls_in_the_workspace_editor_and_saves_them_uncha
     ]
     controls = {"thinking": THINKING, "length": LENGTH}
     with preset_with_controls(builder, controls, access_grants=grants) as preset:
-        page = page_for(writer)
-        page.goto(f"/workspace/models/edit?id={preset['id']}")
+        page = page_for(writer, path=f"/workspace/models/edit?id={preset['id']}")
         editor = page.get_by_role("main")
         expect(editor.get_by_placeholder("Model Name")).to_have_value(preset["name"])
         expect(editor.get_by_text("Model controls", exact=True)).to_be_visible()

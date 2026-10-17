@@ -209,9 +209,7 @@ def test_a_stranger_sees_nothing_of_the_skill(page_for, skill_owner, make_user, 
     stranger = make_user()
     grant_permissions(stranger)
     skill = _skill_with_two_versions(skill_owner, [])
-    page = page_for(stranger)
-
-    page.goto(f"/workspace/skills/edit?id={skill['id']}")
+    page = page_for(stranger, path=f"/workspace/skills/edit?id={skill['id']}")
 
     expect(page).to_have_url(re.compile(r"/workspace/skills$"))
     expect(page.get_by_text(INSTRUCTIONS)).to_have_count(0)

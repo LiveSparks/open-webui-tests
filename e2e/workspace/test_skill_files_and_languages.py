@@ -167,8 +167,7 @@ def test_a_rows_own_export_downloads_that_skill_alone_with_its_instructions(page
     suffix = uuid.uuid4().hex[:6]
     exported_id = _create(keeper, f"Exported {suffix}", "Keep the log tidy.")
     _create(keeper, f"Neighbour {suffix}", "Stay out of it.")
-    page = page_for(keeper)
-    page.goto("/workspace/skills")
+    page = page_for(keeper, path="/workspace/skills")
     row = _list_rows(page, f"Exported {suffix}").filter(has_text=f"Exported {suffix}")
     row.hover()
     row.get_by_role("button", name="Skill Menu").last.click()

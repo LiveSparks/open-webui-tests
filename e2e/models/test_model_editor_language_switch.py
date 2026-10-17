@@ -58,8 +58,7 @@ def translated_model(builder) -> dict:
 def test_switching_between_two_languages_shows_each_languages_text(
     page_for, builder, translated_model
 ):
-    page = page_for(builder)
-    page.goto(f"/workspace/models/edit?id={translated_model['id']}")
+    page = page_for(builder, path=f"/workspace/models/edit?id={translated_model['id']}")
     editor = page.get_by_role("main")
     expect(editor.get_by_placeholder("Model Name")).to_have_value(translated_model["name"])
     language = page.get_by_label("Editing language")

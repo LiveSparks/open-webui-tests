@@ -57,8 +57,7 @@ def open_chat(page_for, make_user, messages: list[dict]) -> Page:
     owner = make_user()
     with owner.client() as client:
         chat_id, _ = seed_chat(client, messages)
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     return page
 
 

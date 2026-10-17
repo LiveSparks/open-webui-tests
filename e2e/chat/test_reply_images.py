@@ -164,8 +164,7 @@ def test_the_images_are_shown_again_after_a_reload(page_for, make_user, listener
                 {"role": "assistant", "content": answer},
             ],
         )
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     expect_reply(page, "That is all.")
     expect_loaded(last_reply(page).get_by_alt_text("Harbour chart"))
 

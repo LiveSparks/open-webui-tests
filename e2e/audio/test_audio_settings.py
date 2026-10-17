@@ -191,8 +191,7 @@ def test_instant_auto_send_sends_the_transcript_as_the_message(
 def test_the_web_api_engines_hide_their_controls_for_the_admin_and_the_user(
     page_for, make_user, speech_engine
 ):
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/settings/audio")
+    admin_page = page_for(make_user(role="admin"), path="/admin/settings/audio")
     settings = admin_page.get_by_role("dialog")
     tts_engine = settings.get_by_role("combobox", name="Select a mode", exact=True)
     stt_engine = settings.get_by_role("combobox", name="Select an engine")

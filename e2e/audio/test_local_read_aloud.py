@@ -56,8 +56,7 @@ def test_an_answer_is_read_aloud_by_the_local_voice(page_for, speaking):
             client,
             [{"role": "user", "content": "lamp?"}, {"role": "assistant", "content": ANSWER}],
         )
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect(page.get_by_text(ANSWER)).to_be_visible()
 
     with page.expect_response(_is_speech) as spoken:
@@ -96,8 +95,7 @@ def test_the_speaker_named_in_the_audio_tab_reads_the_answer(page_for, speaking)
                 client,
                 [{"role": "user", "content": "ferry?"}, {"role": "assistant", "content": answer}],
             )
-        admin_page = page_for(create_user(speaking, role="admin"))
-        admin_page.goto("/admin/settings/audio")
+        admin_page = page_for(create_user(speaking, role="admin"), path="/admin/settings/audio")
         settings = admin_page.get_by_role("dialog")
         model_box = settings.get_by_role("combobox", name="CMU ARCTIC speaker embedding name")
         expect(model_box).to_have_value(FIRST_SPEAKER)
@@ -105,8 +103,7 @@ def test_the_speaker_named_in_the_audio_tab_reads_the_answer(page_for, speaking)
         settings.get_by_role("button", name="Save", exact=True).click()
         expect(admin_page.get_by_text("Settings saved successfully!").first).to_be_visible()
 
-        page = page_for(owner)
-        page.goto(f"/c/{chat_id}")
+        page = page_for(owner, path=f"/c/{chat_id}")
         expect(page.get_by_text(answer)).to_be_visible()
         with page.expect_response(_is_speech) as spoken:
             page.get_by_role("button", name="Read Aloud").click()

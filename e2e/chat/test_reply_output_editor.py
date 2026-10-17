@@ -81,8 +81,7 @@ def _open_seeded_reply(page_for, make_user, steps: list[dict]) -> Page:
                 {"role": "assistant", "content": AFTER_THE_TOOL, "output": steps},
             ],
         )
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect_reply(page, AFTER_THE_TOOL)
     return page
 

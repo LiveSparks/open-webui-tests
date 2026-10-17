@@ -81,8 +81,7 @@ def _tide_skill(owner) -> dict:
 
 def test_a_new_skill_is_saved_with_a_second_file_made_in_the_editor(page_for, owner):
     skill_id = new_id("knots")
-    page = page_for(owner)
-    page.goto("/workspace/skills/create")
+    page = page_for(owner, path="/workspace/skills/create")
     editor = page.get_by_role("main")
     editor.get_by_placeholder("Skill Name").fill(skill_id)
     expect(code_editor(page)).to_be_visible()

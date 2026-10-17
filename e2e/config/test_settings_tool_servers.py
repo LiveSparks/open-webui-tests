@@ -96,8 +96,7 @@ def test_the_integrations_tab_is_offered_once_both_are_on(page_for, make_user, a
 def test_the_admins_direct_integrations_switch_takes_the_tab_away(
     page_for, admin, make_user, allowed
 ):
-    admin_page = page_for(admin)
-    admin_page.goto("/admin/settings/integrations")
+    admin_page = page_for(admin, path="/admin/settings/integrations")
     switch = admin_page.get_by_role("dialog").get_by_role("switch", name="Direct Integrations")
     expect(switch).to_be_checked()
     with admin_page.expect_response(lambda response: "/configs/connections" in response.url):
@@ -110,8 +109,7 @@ def test_the_admins_direct_integrations_switch_takes_the_tab_away(
 def test_the_default_permission_takes_the_tab_away_from_users_only(
     page_for, admin, make_user, allowed
 ):
-    admin_page = page_for(admin)
-    admin_page.goto("/admin/users/groups")
+    admin_page = page_for(admin, path="/admin/users/groups")
     admin_page.get_by_role("button", name="Default permissions").click()
     dialog = admin_page.get_by_role("dialog")
     switch = dialog.get_by_role("switch", name="Direct Tool Servers", exact=True)

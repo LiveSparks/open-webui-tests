@@ -329,8 +329,7 @@ def _share_with(account, reader) -> str:
 def test_delete_all_closes_the_accounts_share_links(owner, make_user, page_for):
     reader = make_user()
     share_id = _share_with(owner, reader)
-    reader_page = page_for(reader)
-    reader_page.goto(f"/s/{share_id}")
+    reader_page = page_for(reader, path=f"/s/{share_id}")
     expect(conversation(reader_page).get_by_text("the dunes")).to_be_visible()
 
     page = page_for(owner)

@@ -202,8 +202,7 @@ def test_the_realtime_speech_engine_reads_a_reply_with_the_admins_prompt(
             client,
             [{"role": "user", "content": "ferry?"}, {"role": "assistant", "content": answer}],
         )
-    page = page_for(reader)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(reader, path=f"/c/{chat_id}")
     expect(last_reply(page)).to_contain_text(answer)
     last_reply(page).hover()
     conversation(page).get_by_role("button", name="Read Aloud").last.click()

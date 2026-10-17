@@ -183,15 +183,13 @@ def test_a_writer_changes_the_instructions_and_a_reader_meets_a_read_only_editor
     expect(page.get_by_text("Saved").last).to_be_visible()
     _add_access(page, dialog, reader.name)
 
-    writer_page = page_for(writer)
-    writer_page.goto(f"/workspace/skills/edit?id={skill['id']}")
+    writer_page = page_for(writer, path=f"/workspace/skills/edit?id={skill['id']}")
     expect(code_editor(writer_page)).to_contain_text("Tie a reef knot.")
     replace_text(writer_page, "Tie a sheet bend.")
     writer_page.get_by_role("main").get_by_role("button", name="Save", exact=True).click()
     expect(writer_page.get_by_text("Skill updated successfully")).to_be_visible()
 
-    reader_page = page_for(reader)
-    reader_page.goto(f"/workspace/skills/edit?id={skill['id']}")
+    reader_page = page_for(reader, path=f"/workspace/skills/edit?id={skill['id']}")
     expect(reader_page.get_by_text("Read Only", exact=True)).to_be_visible()
     expect(reader_page.get_by_text("Tie a sheet bend.")).to_be_visible()
     expect(code_editor(reader_page)).to_have_attribute("contenteditable", "false")

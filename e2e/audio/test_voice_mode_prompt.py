@@ -94,7 +94,6 @@ def test_a_switched_off_voice_mode_prompt_sends_no_voice_instructions(
     set_voice_mode_prompt(settings, turn_on=False)
     save(settings)
     page = voice_page_for(make_user())
-    page.goto("/")
 
     start_call(page)
     wait_for_transcriptions(speech_engine, 1, timeout=60.0)

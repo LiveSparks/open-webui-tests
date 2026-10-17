@@ -220,8 +220,7 @@ def test_header_menu_scroll_to_top_brings_the_first_message_into_view(make_user,
         messages.append({"role": "user", "content": f"Question {turn}"})
     with account.client() as client:
         chat_id, _ = seed_chat(client, messages)
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     first = page.get_by_text(opening, exact=True)
     expect(page.get_by_text("Question 11", exact=True)).to_be_in_viewport()
     expect(first).not_to_be_in_viewport()

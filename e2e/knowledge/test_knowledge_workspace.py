@@ -180,8 +180,7 @@ def _list_row(page: Page, name: str) -> Locator:
 
 def test_a_knowledge_base_is_created_found_in_the_list_and_deleted(page_for, curator):
     name = _unique("Harbour")
-    page = page_for(curator)
-    page.goto("/workspace/knowledge/create")
+    page = page_for(curator, path="/workspace/knowledge/create")
     creating = page.get_by_role("dialog")
     creating.get_by_role("textbox", name="Name your knowledge base").fill(name)
     creating.get_by_role("textbox", name="Describe your knowledge base and objectives").fill(

@@ -65,8 +65,7 @@ def _open_new_note(page: Page, query: str = "") -> str:
 
 def test_new_note_address_lands_in_an_editor_for_a_note_titled_with_today(page_for, make_user):
     author = make_user()
-    page = page_for(author)
-    page.goto("/notes/new")
+    page = page_for(author, path="/notes/new")
     expect(_confirm_dialog(page)).to_be_visible()
     assert _stored_notes(author) == [], "the address made a note before it was confirmed"
 

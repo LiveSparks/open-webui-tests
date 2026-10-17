@@ -165,13 +165,11 @@ def test_prompts_access_with_import_reaches_the_members_and_not_an_outsider(
 
     save_group_switches(admin_page, group, {"Prompts Access": True, "Import Prompts": True})
 
-    member_page = page_for(member)
-    member_page.goto("/workspace/prompts")
+    member_page = page_for(member, path="/workspace/prompts")
     member_page.get_by_label("Open create menu").click()
     import_entry = member_page.get_by_role("menu").get_by_role("button", name="Import JSON")
     expect(import_entry).to_be_visible()
-    outsider_page = page_for(outsider)
-    outsider_page.goto("/workspace/prompts")
+    outsider_page = page_for(outsider, path="/workspace/prompts")
     outsider_page.wait_for_url(lambda url: "/workspace" not in url)
 
 

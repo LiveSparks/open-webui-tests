@@ -42,7 +42,6 @@ def browser(home, page_for, make_user, admin, preserve, open_terminal) -> Locato
     with admin.client() as client:
         configure_terminals(client, connection)
     page = page_for(person)
-    page.goto("/")
     pick_terminal(page, connection["name"])
     region = page.get_by_role("region", name="File browser")
     expect(region.get_by_text("harbour-rules.py", exact=True)).to_be_visible()

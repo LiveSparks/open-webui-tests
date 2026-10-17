@@ -110,7 +110,6 @@ def test_a_connection_slower_than_the_list_limit_leaves_the_other_models(
     talker.route("GET", "/v1/models", stalled_models)
     try:
         page = page_for(create_user(impatient))
-        page.goto("/")
         expect(chat_input(page)).to_be_visible()
         # the stalled connection answers only after this, so the list cannot have waited for it
         expect(model_options(page, reply.MOCK_MODEL_ID)).to_have_count(1)

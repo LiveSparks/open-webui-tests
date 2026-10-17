@@ -51,8 +51,7 @@ def test_an_event_moved_a_week_later_in_the_editor_shows_on_its_new_day(page_for
         )
     assert created.status_code == 200, created.text
 
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
     expect(_day_cell(page, title).get_by_text("1", exact=True)).to_be_visible()
     page.get_by_role("button", name=title).last.click()
 

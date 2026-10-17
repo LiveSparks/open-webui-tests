@@ -57,8 +57,7 @@ def workspace_user(admin, preserve, make_user):
 
 
 def test_the_editor_refuses_a_provider_model_id(page_for, admin, workspace_user, provider_model_id):
-    page = page_for(workspace_user)
-    page.goto("/workspace/models/create")
+    page = page_for(workspace_user, path="/workspace/models/create")
 
     page.get_by_placeholder("Model Name").fill("Hijack")
     page.get_by_placeholder("Model ID").fill(provider_model_id)

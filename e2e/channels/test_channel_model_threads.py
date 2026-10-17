@@ -45,8 +45,7 @@ def _reply_mode(admin, mode: str) -> None:
 
 
 def _open_channel(page_for, account, channel_id: str) -> Page:
-    page = page_for(account)
-    page.goto(f"/channels/{channel_id}")
+    page = page_for(account, path=f"/channels/{channel_id}")
     expect(chat_input(page)).to_be_visible()
     return page
 

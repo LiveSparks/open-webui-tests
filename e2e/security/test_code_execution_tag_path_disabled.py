@@ -41,8 +41,7 @@ def chat_page(page_for, make_user):
                     json={"ui": {"params": {"function_calling": function_calling}}},
                 )
             saved.raise_for_status()
-        page = page_for(account)
-        page.goto("/?code-interpreter=true")
+        page = page_for(account, path="/?code-interpreter=true")
         return page
 
     return open_chat

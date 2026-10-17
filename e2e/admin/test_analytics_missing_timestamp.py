@@ -62,8 +62,7 @@ def test_all_time_loads_with_a_message_stored_without_a_time(instance, admin, ma
     with admin.client() as client:
         group_name = client.get(f"/api/v1/groups/id/{group_id}").json()["name"]
 
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/analytics")
+    page = page_for(make_user(role="admin"), path="/admin/analytics")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_role("button", name="Models", exact=True, pressed=True)).to_be_visible()
     settings.get_by_role("combobox").filter(has_text="All Users").select_option(label=group_name)

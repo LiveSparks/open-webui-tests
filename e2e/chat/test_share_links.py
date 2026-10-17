@@ -81,8 +81,7 @@ def test_a_granted_account_reads_the_link_until_the_owner_deletes_it(
     viewer = make_user()
     _grant(dialog, viewer)
 
-    viewer_page = page_for(viewer)
-    viewer_page.goto(share_path)
+    viewer_page = page_for(viewer, path=share_path)
     expect(conversation(viewer_page).get_by_text(QUESTION)).to_be_visible()
     expect(conversation(viewer_page).get_by_text(ANSWER)).to_be_visible()
 
@@ -99,8 +98,7 @@ def test_a_granted_account_clones_the_chat_and_carries_on_in_its_copy(
     owner_page, dialog, share_path = shared_chat
     viewer = make_user()
     _grant(dialog, viewer)
-    viewer_page = page_for(viewer)
-    viewer_page.goto(share_path)
+    viewer_page = page_for(viewer, path=share_path)
     viewer_page.get_by_role("button", name="Clone Chat").click()
 
     expect(viewer_page).to_have_url(re.compile(r"/c/"))
@@ -121,8 +119,7 @@ def test_a_granted_account_clones_the_chat_and_carries_on_in_its_copy(
 
 def test_an_account_left_off_the_access_list_is_sent_home(shared_chat, page_for, make_user):
     _, _, share_path = shared_chat
-    stranger_page = page_for(make_user())
-    stranger_page.goto(share_path)
+    stranger_page = page_for(make_user(), path=share_path)
     _sent_home(stranger_page)
 
 
@@ -155,8 +152,7 @@ def test_updating_the_link_shares_the_messages_sent_since(
     send(owner_page, LATER_QUESTION)
     expect_reply(owner_page, LATER_ANSWER)
 
-    viewer_page = page_for(viewer)
-    viewer_page.goto(share_path)
+    viewer_page = page_for(viewer, path=share_path)
     expect(conversation(viewer_page).get_by_text(ANSWER)).to_be_visible()
     expect(conversation(viewer_page).get_by_text(LATER_ANSWER)).to_have_count(0)
 

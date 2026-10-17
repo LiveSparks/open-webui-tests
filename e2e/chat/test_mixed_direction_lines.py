@@ -88,7 +88,6 @@ def test_a_sent_english_line_under_an_arabic_one_reads_left_to_right(page_for, m
 
 def test_an_arabic_line_typed_under_an_english_one_sits_on_the_right(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     type_lines(page, ENGLISH, ARABIC)
 
     assert_sits_on_the_right(chat_input(page))

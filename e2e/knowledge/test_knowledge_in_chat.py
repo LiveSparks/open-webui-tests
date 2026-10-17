@@ -41,8 +41,7 @@ def curator(make_user):
 
 def test_an_uploaded_file_is_retrieved_and_cited_in_a_chat(page_for, curator, upstream):
     name = f"Lake {uuid.uuid4().hex[:6]}"
-    page = page_for(curator)
-    page.goto("/workspace/knowledge/create")
+    page = page_for(curator, path="/workspace/knowledge/create")
     creating = page.get_by_role("dialog")
     creating.get_by_role("textbox", name="Name your knowledge base").fill(name)
     creating.get_by_role("textbox", name="Describe your knowledge base and objectives").fill(

@@ -115,8 +115,7 @@ def test_a_subfolder_named_with_spaces_is_refused(sidebar, owner):
 
 
 def test_renaming_on_the_folder_page_to_spaces_is_refused(page_for, owner, folder_id):
-    page = page_for(owner)
-    page.goto(f"/folders/{folder_id}")
+    page = page_for(owner, path=f"/folders/{folder_id}")
     page.get_by_label("Folder options").click()
     page.get_by_role("menu").get_by_role("button", name="Edit").click()
     submit_folder_modal(page, "   ")

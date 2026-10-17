@@ -74,8 +74,7 @@ def test_switching_channels_drops_the_pending_reply_and_a_message_sent_there_arr
 ):
     author, reader, first, second = channels
     post_message(author, first, "the boat leaves at nine")
-    page = page_for(reader)
-    page.goto(f"/channels/{first}")
+    page = page_for(reader, path=f"/channels/{first}")
     quoted = page.locator("[id^='message-']").filter(has_text="the boat leaves at nine").first
     expect(quoted).to_be_visible()
     quoted.hover()

@@ -60,8 +60,7 @@ def open_answered_chat(page_for, account, upstream) -> Page:
             parent_id=first.assistant_message_id,
             history=history,
         )
-    page = page_for(account)
-    page.goto(f"/c/{first.chat_id}")
+    page = page_for(account, path=f"/c/{first.chat_id}")
     expect(last_reply(page)).to_contain_text(FOLLOW_UP_ANSWER)
     return page
 

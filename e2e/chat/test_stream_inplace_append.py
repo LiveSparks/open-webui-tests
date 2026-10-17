@@ -87,7 +87,6 @@ def account(streaming) -> Actor:
 @pytest.fixture
 def chat_page(page_for, account) -> Page:
     page = page_for(account)
-    page.goto("/")
     return page
 
 
@@ -443,8 +442,7 @@ def test_a_chat_opened_on_a_second_page_mid_stream_shows_the_text_so_far_then_al
     send(chat_page, "both pages")
     expect(last_reply(chat_page)).to_contain_text("Thinking", timeout=REPLY_TIMEOUT_MS)
 
-    second = page_for(account)
-    second.goto(f"/c/{chat_id_of(chat_page)}")
+    second = page_for(account, path=f"/c/{chat_id_of(chat_page)}")
     expect(thought_button(second)).to_have_count(1, timeout=REPLY_TIMEOUT_MS)
     expect(last_reply(second)).to_contain_text("word-", timeout=REPLY_TIMEOUT_MS)
     assert "word-7" not in last_reply(second).inner_text(), "the reply had already ended"
@@ -489,8 +487,7 @@ def channel_member(streaming, account, preserve, page_for):
         enable_channels(client, reply_mode="channel")
     member = create_user(streaming)
     channel_id = group_channel(account, member)
-    page = page_for(member)
-    page.goto(f"/channels/{channel_id}")
+    page = page_for(member, path=f"/channels/{channel_id}")
     expect(page.locator("#chat-input")).to_be_visible()
     return page, channel_id
 

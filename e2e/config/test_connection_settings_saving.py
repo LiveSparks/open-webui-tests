@@ -132,8 +132,7 @@ def test_the_next_admin_connection_does_not_inherit_the_advanced_settings(
     page_for, make_user, admin, preserve
 ):
     preserve(OPENAI_CONFIG)
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/settings/connections")
+    page = page_for(make_user(role="admin"), path="/admin/settings/connections")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_role("tab", selected=True)).to_be_visible()
 
@@ -189,8 +188,7 @@ def refuse_then_save_headers(page, form, url: str, is_save) -> None:
 
 def test_an_admin_connection_saves_once_its_headers_are_fixed(page_for, make_user, admin, preserve):
     preserve(OPENAI_CONFIG)
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/settings/connections")
+    page = page_for(make_user(role="admin"), path="/admin/settings/connections")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_role("tab", selected=True)).to_be_visible()
 

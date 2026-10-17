@@ -133,8 +133,7 @@ def test_switching_direct_connections_off_hides_them_from_a_user_who_has_one(
     user_page.get_by_role("dialog").get_by_role("button", name="Back").click()
     expect(model_options(user_page, direct_model_id)).to_have_count(1)
 
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/settings/connections")
+    admin_page = page_for(make_user(role="admin"), path="/admin/settings/connections")
     switch = admin_page.get_by_role("dialog").get_by_role("switch", name="Direct Connections")
     expect(switch).to_be_checked()
     with admin_page.expect_response(lambda response: "/configs/connections" in response.url):

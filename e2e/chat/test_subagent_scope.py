@@ -178,8 +178,7 @@ def test_a_chat_shared_by_link_shows_the_reader_the_delegation_and_its_answer(
     reader = make_user()
     path = share_with(owner_page, reader)
 
-    reader_page = page_for(reader)
-    reader_page.goto(path)
+    reader_page = page_for(reader, path=path)
 
     expect(conversation(reader_page).get_by_text("The helper is done.")).to_be_visible()
     delegated_row(reader_page, task).click()

@@ -99,9 +99,8 @@ def test_an_edit_saved_as_a_draft_goes_live_only_when_set_as_production(page_for
         assert live.status_code == 200, live.text
         history = client.get(f"/api/v1/prompts/id/{prompt_id}/history").json()
     [first] = [entry for entry in history if entry["snapshot"]["content"].endswith("three lines.")]
-    page = page_for(account)
+    page = page_for(account, path=f"/workspace/prompts/{prompt_id}")
 
-    page.goto(f"/workspace/prompts/{prompt_id}")
     content = page.get_by_role("textbox", name="Prompt Content")
     expect(content).to_have_value("Summarise this.")
     picker = page.get_by_label("History", exact=True)
@@ -188,8 +187,7 @@ def test_a_prompt_shared_with_a_group_in_the_access_dialog_is_offered_until_the_
     command = f"crew{uuid.uuid4().hex[:8]}"
     prompt_id = add(command, "Brief the crew.")
 
-    page = page_for(account)
-    page.goto(f"/workspace/prompts/{prompt_id}")
+    page = page_for(account, path=f"/workspace/prompts/{prompt_id}")
     page.get_by_role("main").get_by_role("button", name="Access").click()
     dialog = page.get_by_role("dialog").filter(has_text="Access Control")
     dialog.get_by_role("button", name="Add Access").click()

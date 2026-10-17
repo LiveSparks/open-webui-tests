@@ -516,8 +516,7 @@ def sees_model(account, model_id: str) -> bool:
 def test_a_new_model_is_private_until_shared_with_a_group(page_for, builder, crew):
     group_name, member, stranger = crew
     model = {"id": f"editor-{uuid.uuid4().hex[:8]}", "name": unique("Crew guide")}
-    page = page_for(builder)
-    page.goto("/workspace/models/create")
+    page = page_for(builder, path="/workspace/models/create")
     editor = page.get_by_role("main")
     editor.get_by_placeholder("Model Name").fill(model["name"])
     editor.get_by_placeholder("Model ID").fill(model["id"])

@@ -256,7 +256,6 @@ def test_azure_transcribes_a_dictation_through_the_admin_tab(
     save_admin_audio(admin_page, settings)
 
     page = voice_page_for(make_user())
-    page.goto("/")
     dictate(page)
 
     expect(chat_input(page)).to_contain_text(TRANSCRIPT)
@@ -300,7 +299,6 @@ def test_mistral_transcribes_a_dictation_through_the_admin_tab(
     save_admin_audio(admin_page, settings)
 
     page = voice_page_for(make_user())
-    page.goto("/")
     dictate(page)
 
     expect(chat_input(page)).to_contain_text(TRANSCRIPT)
@@ -385,7 +383,6 @@ def test_the_admins_speech_to_text_model_is_the_one_the_engine_is_asked_for(
     save_admin_audio(admin_page, settings)
 
     page = voice_page_for(make_user())
-    page.goto("/")
     dictate(page)
 
     expect(chat_input(page)).to_contain_text(TRANSCRIPT)

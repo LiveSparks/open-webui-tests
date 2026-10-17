@@ -31,8 +31,7 @@ def sidebar_entry(page: Page, name: str):
 
 def test_saving_and_removing_an_override_relabels_the_open_page(page_for, make_user, preserve):
     preserve("admin_config")
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/settings/general")
+    page = page_for(make_user(role="admin"), path="/admin/settings/general")
 
     page.get_by_role("button", name="Add translation").click()
     page.get_by_role("textbox", name="Key").fill(ORIGINAL)
@@ -67,8 +66,7 @@ def test_deleting_one_languages_translation_keeps_the_others(admin, page_for, ma
         current = client.get(ADMIN_CONFIG).json()
         overrides = {"en-US": {ORIGINAL: OVERRIDE}, "de-DE": {ORIGINAL: "Etwas Neues"}}
         client.post(ADMIN_CONFIG, json={**current, "I18N": overrides}).raise_for_status()
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/settings/general")
+    page = page_for(make_user(role="admin"), path="/admin/settings/general")
     expect(page.get_by_role("textbox", name="Value")).to_have_value(OVERRIDE)
 
     page.get_by_role("button", name="Delete").click()

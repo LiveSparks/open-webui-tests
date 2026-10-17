@@ -102,9 +102,7 @@ def test_a_long_chat_opens_at_its_end_and_the_button_returns_there(page_for, mak
         turns.append({"role": "assistant", "content": "\n\n".join(paragraphs)})
     with account.client() as client:
         chat_id, _ = seed_chat(client, turns)
-    page = page_for(account)
-
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
 
     last_answer = conversation(page).get_by_text("Answer number 4, part 12.", exact=True)
     first_question = conversation(page).get_by_text("Question number 1", exact=True)

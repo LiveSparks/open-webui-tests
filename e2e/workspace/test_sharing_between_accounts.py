@@ -227,8 +227,7 @@ def test_a_base_revoked_while_attached_sends_none_of_its_text(owner, make_user, 
     _knowledge_offered(reader_page, base).click()
     expect(reader_page.get_by_role("button", name=base["name"])).to_be_visible()
 
-    owner_page = page_for(owner)
-    owner_page.goto(f"/workspace/knowledge/{base['id']}")
+    owner_page = page_for(owner, path=f"/workspace/knowledge/{base['id']}")
     with owner_page.expect_response(lambda response: "/access/update" in response.url) as saved:
         _revoke_in_dialog(_access_dialog(owner_page), reader)
     assert saved.value.ok
@@ -250,8 +249,7 @@ def test_a_base_revoked_while_its_page_is_open_no_longer_opens_its_files(
     base = _knowledge(owner, [grant("user", reader.id, "read")])
     with owner.client() as client:
         add_text_file(client, base["id"], "gate.txt", "The harbour gate code is 4242.")
-    reader_page = page_for(reader)
-    reader_page.goto(f"/workspace/knowledge/{base['id']}")
+    reader_page = page_for(reader, path=f"/workspace/knowledge/{base['id']}")
     opened = reader_page.get_by_role("main")
     expect(opened.get_by_text("Read Only")).to_be_visible()
 
@@ -284,8 +282,7 @@ def test_a_model_revoked_while_its_chat_is_open_refuses_the_next_message(
     send(reader_page, first)
     expect_reply(reader_page, "All clear.")
 
-    owner_page = page_for(owner)
-    owner_page.goto(f"/workspace/models/edit?id={model['id']}")
+    owner_page = page_for(owner, path=f"/workspace/models/edit?id={model['id']}")
     _revoke_in_dialog(_access_dialog(owner_page), reader)
     owner_page.keyboard.press("Escape")
     owner_page.get_by_role("main").get_by_role("button", name="Save & Update").click()

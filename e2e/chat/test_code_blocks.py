@@ -262,8 +262,7 @@ def test_a_saved_block_in_a_reply_without_output_items_keeps_its_dollar_signs(pa
                 {"role": "assistant", "content": answer},
             ],
         )
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     box = last_reply(page)
     expect(editor_lines(box).first).to_have_text("total = 1")
 

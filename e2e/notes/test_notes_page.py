@@ -95,8 +95,7 @@ def _open_notes_page(page: Page, title: str) -> None:
 
 def test_importing_txt_and_md_files_makes_a_note_of_each(page_for, make_user):
     author = make_user()
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
     expect(page.get_by_role("main").get_by_text("No Notes")).to_be_visible()
 
     page.get_by_role("main").get_by_role("button", name="Open create menu").first.click()
@@ -122,8 +121,7 @@ def test_importing_txt_and_md_files_makes_a_note_of_each(page_for, make_user):
 
 def test_a_markdown_file_dropped_on_the_list_becomes_a_note(page_for, make_user):
     author = make_user()
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
     expect(page.get_by_role("main").get_by_text("No Notes")).to_be_visible()
 
     page.evaluate(DROP_FILE, ["#notes-container", "Recipes.md", "text/markdown", "leek soup"])
@@ -134,8 +132,7 @@ def test_a_markdown_file_dropped_on_the_list_becomes_a_note(page_for, make_user)
 
 def test_a_file_that_is_not_text_is_refused(page_for, make_user):
     author = make_user()
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
     expect(page.get_by_role("main").get_by_text("No Notes")).to_be_visible()
 
     page.evaluate(DROP_FILE, ["#notes-container", "Scan.pdf", "application/pdf", "%PDF-1.4"])
@@ -302,8 +299,7 @@ def test_holding_shift_deletes_a_note_at_once(page_for, make_user, layout):
 
 def test_create_a_new_note_in_the_search_opens_a_note_with_the_typed_text(page_for, make_user):
     author = make_user()
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
     expect(page.get_by_role("main").get_by_text("No Notes")).to_be_visible()
 
     dialog = open_search_from_sidebar(page)

@@ -27,8 +27,7 @@ SAVED = "Settings saved successfully!"
 def documents(make_user, page_for, preserve) -> tuple[Page, Locator]:
     """A fresh admin on the Documents tab, the retrieval settings restored afterwards."""
     preserve(RETRIEVAL_CONFIG)
-    page = page_for(make_user(role="admin"))
-    page.goto("/admin/settings/documents")
+    page = page_for(make_user(role="admin"), path="/admin/settings/documents")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_role("tab", selected=True)).to_be_visible()
     return page, settings

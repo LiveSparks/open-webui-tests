@@ -54,8 +54,7 @@ def message(page: Page, text: str) -> Locator:
 
 
 def phone_in_channel(page_for, member, channel_id: str) -> Page:
-    page = page_for(member, **PHONE)
-    page.goto(f"/channels/{channel_id}")
+    page = page_for(member, path=f"/channels/{channel_id}", **PHONE)
     expect_on_screen(chat_input(page))
     return page
 
@@ -69,8 +68,7 @@ def test_a_channel_opens_from_the_drawer_and_a_tapped_send_reaches_the_other_mem
         name = client.get(f"/api/v1/channels/{channel_id}").json()["name"]
     phone = page_for(on_phone, **PHONE)
     expect_on_screen(chat_input(phone))
-    desk = page_for(at_desk)
-    desk.goto(f"/channels/{channel_id}")
+    desk = page_for(at_desk, path=f"/channels/{channel_id}")
     expect(chat_input(desk)).to_be_visible()
 
     tap_on_screen(phone.get_by_role("button", name="Open Sidebar").last)

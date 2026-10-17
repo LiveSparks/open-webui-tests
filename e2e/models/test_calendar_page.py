@@ -211,8 +211,7 @@ def test_an_event_created_late_in_the_evening_ends_on_its_own_day(page_for, make
 def test_clicking_an_empty_day_starts_an_event_at_nine_that_day(page_for, make_user):
     owner = make_user()
     title = _title("Call")
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
 
     # the sidebar's mini calendar comes first and has a "20" too
     page.get_by_role("button", name="20", exact=True).last.click()
@@ -231,8 +230,7 @@ def test_an_edited_event_shows_its_new_title_and_keeps_its_time(page_for, make_u
     owner = make_user()
     title, renamed = _title("Standup"), _title("Retro")
     event_id = _event(owner, title, _this_month(14, 9), location="Room 1")
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
 
     _chip(page, title).click()
     editor = page.get_by_role("dialog")
@@ -258,8 +256,7 @@ def test_a_deleted_event_leaves_the_calendar(page_for, make_user):
     owner = make_user()
     title = _title("Lunch")
     event_id = _event(owner, title, _this_month(11, 12))
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
 
     _chip(page, title).click()
     page.get_by_role("dialog").get_by_role("button", name="Delete", exact=True).click()
@@ -280,8 +277,7 @@ def test_the_week_and_day_views_show_only_their_own_days(page_for, make_user):
     tomorrow = today + dt.timedelta(days=1)
     _event(owner, today_title, today)
     _event(owner, tomorrow_title, tomorrow)
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
     expect(_chip(page, today_title)).to_be_visible()
 
     _switch_view(page, "Month", "Week")
@@ -348,8 +344,7 @@ def test_saving_a_later_occurrence_keeps_the_series_start(page_for, make_user):
     title, renamed = _title("Review"), _title("Design review")
     series_start = _this_month(1, 10)
     event_id = _event(owner, title, series_start, rrule="FREQ=WEEKLY")
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
 
     expect(_chip(page, title).first).to_be_visible()
     _chip(page, title).nth(2).click()
@@ -371,8 +366,7 @@ def test_saving_a_later_occurrence_keeps_the_series_start(page_for, make_user):
 def test_hiding_a_calendar_in_the_sidebar_hides_its_events(page_for, make_user):
     owner = make_user()
     name, title = _title("Club"), _title("Match")
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
 
     page.get_by_title("New calendar").click()
     dialog = page.get_by_role("dialog")
@@ -405,8 +399,7 @@ def test_an_event_the_model_made_shows_at_its_local_time(page_for, make_user, up
             {"title": title, "start": f"{tokyo_month.isoformat()} 09:00"},
         )
 
-    page = page_for(owner, **IN_TOKYO)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar", **IN_TOKYO)
 
     expect(_chip(page, title)).to_have_text(re.compile(rf"^\s*9:00\W*AM\s*{title}\s*$"))
     assert _days_showing(page, title) == [20]
@@ -424,11 +417,9 @@ def test_another_account_sees_an_event_only_once_its_calendar_is_shared(page_for
     _event(owner, title, _this_month(22, 11), calendar_id=shared.json()["id"])
     _event(stranger, own_title, _this_month(22, 13))
 
-    stranger_page = page_for(stranger)
-    stranger_page.goto("/calendar")
+    stranger_page = page_for(stranger, path="/calendar")
     expect(_chip(stranger_page, own_title)).to_be_visible()
     expect(_chip(stranger_page, title)).to_have_count(0)
 
-    reader_page = page_for(reader)
-    reader_page.goto("/calendar")
+    reader_page = page_for(reader, path="/calendar")
     expect(_chip(reader_page, title)).to_be_visible()

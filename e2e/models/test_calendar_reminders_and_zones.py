@@ -157,7 +157,6 @@ def test_a_reminder_raises_a_toast_that_opens_the_calendar_and_none_stays_quiet(
     reminded, quiet = _title("Board meeting"), _title("Dentist")
     # the toast arrives on the account's other open page, which is not on the calendar
     listener = page_for(owner, **context)
-    listener.goto("/")
     expect(listener.locator("#chat-input")).to_be_visible()
     editor_page = page_for(owner, **context)
 
@@ -230,8 +229,9 @@ def test_a_shared_event_shows_to_the_reader_at_the_readers_time_and_day(page_for
     expect(_chip(owner_page, title)).to_have_text(re.compile(rf"^\s*8:00\W*AM\s*{title}\s*$"))
     assert _days_showing(owner_page, title) == [day.day]
 
-    reader_page = page_for(reader, timezone_id="America/Los_Angeles", locale="en-US")
-    reader_page.goto("/calendar")
+    reader_page = page_for(
+        reader, path="/calendar", timezone_id="America/Los_Angeles", locale="en-US"
+    )
     expect(_chip(reader_page, title)).to_have_text(
         re.compile(rf"^\s*{reader_start.hour - 12}:00\W*PM\s*{title}\s*$")
     )
@@ -268,8 +268,7 @@ def test_deleting_a_repeating_event_from_one_occurrence_removes_every_occurrence
     title = _title("Choir")
     start = dt.datetime.combine(_month_grid(dt.date.today())[3], dt.time(18)).astimezone()
     event_id = _event(owner, title, start, rrule="FREQ=WEEKLY")
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
     expect(_chip(page, title)).to_have_count(6)
 
     _chip(page, title).nth(3).click()
@@ -287,8 +286,7 @@ def test_deleting_a_repeating_event_from_one_occurrence_removes_every_occurrence
 def test_an_event_put_on_a_new_calendar_in_the_editor_wears_its_colour(page_for, make_user):
     owner = make_user()
     name, title = _title("Garden"), _title("Planting")
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
 
     page.get_by_title("New calendar").click()
     dialog = page.get_by_role("dialog")
@@ -318,8 +316,7 @@ def test_the_week_view_puts_an_event_in_the_column_of_the_day_it_starts(page_for
         early,
         dt.datetime.combine(tuesday + dt.timedelta(days=1), dt.time(0, 30)).astimezone(),
     )
-    page = page_for(owner)
-    page.goto("/calendar")
+    page = page_for(owner, path="/calendar")
     expect(page.get_by_role("button", name="Month", exact=True)).to_be_visible()
     page.get_by_role("button", name="Month", exact=True).click()
     page.get_by_role("button", name="Week", exact=True).click()

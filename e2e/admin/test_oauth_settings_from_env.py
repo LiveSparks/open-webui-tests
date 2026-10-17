@@ -31,8 +31,7 @@ pytestmark = [
 def oauth_signup_switch(page_for, launched):
     if not launched.serves_frontend:
         pytest.skip("no built frontend (set OPEN_WEBUI_BUILD_DIR)")
-    page = page_for(admin_of(launched))
-    page.goto("/admin/settings/authentication")
+    page = page_for(admin_of(launched), path="/admin/settings/authentication")
     return page.get_by_role("switch", name="OAuth Signup")
 
 

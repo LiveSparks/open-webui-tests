@@ -257,8 +257,7 @@ def test_a_model_with_image_generation_by_default_starts_with_the_chip_on(
 ):
     image_engine()
     with admin.client() as client, drawing_model(client) as model_id:
-        page = page_for(make_user(role="admin"))
-        page.goto(f"/?models={model_id}")
+        page = page_for(make_user(role="admin"), path=f"/?models={model_id}")
         open_chat(page)
         expect(image_chip(page)).to_be_visible()
         draw(page, upstream, "draw a blue circle", "Here is your blue circle.")

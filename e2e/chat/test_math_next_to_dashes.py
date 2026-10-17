@@ -37,9 +37,7 @@ def test_three_formulas_touching_dashes_all_render(page_for, make_user, form, da
             client,
             [{"role": "user", "content": "Euler?"}, {"role": "assistant", "content": written}],
         )
-    page = page_for(owner)
-
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
 
     reply = last_reply(page)
     expect(reply).to_contain_text("in one equation")

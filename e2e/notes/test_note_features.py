@@ -161,9 +161,7 @@ def test_a_writer_in_a_shared_group_edits_the_note(page_for, make_user, admin):
 def test_an_account_the_note_was_not_shared_with_is_sent_away(page_for, make_user):
     owner, stranger = make_user(), make_user()
     note_id = _create_note(owner, _unique("Private"), "for my eyes only")
-    page = page_for(stranger)
-
-    page.goto(f"/notes/{note_id}")
+    page = page_for(stranger, path=f"/notes/{note_id}")
 
     expect(page).to_have_url(f"{stranger.base_url}/")
     expect(chat_input(page)).to_be_visible()
@@ -183,8 +181,7 @@ def test_a_note_downloads_as_its_markdown(page_for, make_user, format_name, exte
     title = _unique("Recipe")
     markdown = "# Soup\n\n- leeks\n- **potatoes**"
     _create_note(author, title, markdown)
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
 
     _note_card(page, title).get_by_role("button", name="Note Menu").first.click()
     page.get_by_role("menu").get_by_role("button", name="Download").hover()
@@ -204,8 +201,7 @@ def test_the_notes_search_keeps_only_matching_notes(page_for, make_user):
     heron, otter = _unique("Heron sightings"), _unique("Otter tracks")
     _create_note(author, heron, "by the reed bed")
     _create_note(author, otter, "on the muddy bank")
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
     expect(_note_card(page, heron)).to_have_count(1)
     expect(_note_card(page, otter)).to_have_count(1)
 

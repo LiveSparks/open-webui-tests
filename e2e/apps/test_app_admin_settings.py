@@ -163,8 +163,7 @@ def test_a_manual_install_of_a_post_only_app(page_for, apps_admin, apps_instance
 
 
 def test_the_apps_tab_is_offered_while_apps_are_on(page_for, apps_admin):
-    page = page_for(apps_admin)
-    page.goto("/admin/settings/general")
+    page = page_for(apps_admin, path="/admin/settings/general")
     tab = page.locator("#settings-tabs-container").get_by_role("tab", name="Apps", exact=True)
     tab.click()
     expect(page.get_by_text("Connected apps")).to_be_visible()
@@ -175,8 +174,7 @@ def test_the_apps_tab_is_hidden_while_apps_are_off(page_for, apps_admin, apps_in
     with apps_admin.client() as client:
         config = client.get("/api/v1/auths/admin/config").json()
         client.post("/api/v1/auths/admin/config", json={**config, "ENABLE_APPS": False})
-    page = page_for(apps_admin)
-    page.goto("/admin/settings/general")
+    page = page_for(apps_admin, path="/admin/settings/general")
     tabs = page.locator("#settings-tabs-container")
     expect(tabs.get_by_role("tab").first).to_be_visible()
     expect(tabs.get_by_role("tab", name="Apps", exact=True)).to_have_count(0)

@@ -95,8 +95,7 @@ def _stored_rating_once(account, holds: Callable[[dict], object], timeout: float
 
 
 def _feedback_rows(page_for, admin, account, result: str):
-    page = page_for(admin)
-    page.goto("/admin/evaluations/feedback")
+    page = page_for(admin, path="/admin/evaluations/feedback")
     name = re.compile(rf"^{re.escape(account.name)} {MOCK_MODEL_ID} {result}\b")
     return page.get_by_role("row", name=name)
 

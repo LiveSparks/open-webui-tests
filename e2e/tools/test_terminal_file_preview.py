@@ -73,7 +73,6 @@ def browser(home_files, page_for, make_user, admin, preserve, open_terminal):
     with admin.client() as client:
         configure_terminals(client, connection)
     page = page_for(person)
-    page.goto("/")
     pick_terminal(page, connection["name"])
     return page.get_by_role("region", name="File browser")
 

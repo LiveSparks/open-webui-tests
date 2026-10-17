@@ -136,8 +136,7 @@ def test_copy_link_on_the_notes_page_copies_the_notes_address(page_for, make_use
     author = make_user()
     title = _unique("Listed")
     note_id = _create_note(author, title, "in the list")
-    page = page_for(author, permissions=CLIPBOARD)
-    page.goto("/notes")
+    page = page_for(author, path="/notes", permissions=CLIPBOARD)
     row = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
 
     row.get_by_label("Note Menu").click()
@@ -415,8 +414,7 @@ def test_removing_a_person_from_the_access_list_shuts_them_out(page_for, sharer,
 
     expect(panel.get_by_text("No access grants. Private to you.")).to_be_visible()
     _eventually(lambda: _stored_grants(sharer, note_id), set())
-    shut_out = page_for(former)
-    shut_out.goto(f"/notes/{note_id}")
+    shut_out = page_for(former, path=f"/notes/{note_id}")
     expect(shut_out).to_have_url(f"{former.base_url}/")
     expect(chat_input(shut_out)).to_be_visible()
 

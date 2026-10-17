@@ -129,8 +129,7 @@ def test_a_pending_visitor_gets_in_once_an_admin_activates_the_account(
     _sign_up(page, name, email)
     expect(page.get_by_text("Account Activation Pending")).to_be_visible(timeout=PAGE_TIMEOUT_MS)
 
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/users")
+    admin_page = page_for(make_user(role="admin"), path="/admin/users")
     users = admin_page.get_by_role("main")
     users.get_by_role("textbox", name="Search").fill(email)
     row = users.get_by_role("row").filter(has_text=email)

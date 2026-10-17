@@ -430,9 +430,8 @@ def test_the_folder_page_lists_its_chats_and_files_a_new_chat_there(page_for, ma
     folder_id = create_folder(owner, "Recipes")
     filed_chat_id = create_chat(owner, "Bread starter", folder_id)
     create_chat(owner, "Unfiled musings")
-    page = page_for(owner)
+    page = page_for(owner, path=f"/folders/{folder_id}")
 
-    page.goto(f"/folders/{folder_id}")
     expect(page.get_by_text("Recipes", exact=True).first).to_be_visible()
     expect(page.get_by_role("link", name=re.compile("Bread starter"))).to_have_attribute(
         "href", f"/c/{filed_chat_id}"
@@ -480,8 +479,7 @@ def test_a_folders_icon_and_background_image_show_and_are_stored(page_for, make_
     folder_id = create_folder(owner, "Seascapes")
     picture = tmp_path / "backdrop.png"
     picture.write_bytes(base64.b64decode(PNG_BASE64))
-    page = page_for(owner)
-    page.goto(f"/folders/{folder_id}")
+    page = page_for(owner, path=f"/folders/{folder_id}")
     background = page.locator("[style*='background-image']")
     expect(background).to_have_count(0)
 

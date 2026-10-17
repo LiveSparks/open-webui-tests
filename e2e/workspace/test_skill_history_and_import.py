@@ -121,8 +121,7 @@ def _row_menu(page: Page, name: str, item: str) -> None:
 
 def test_the_version_picker_lists_saved_versions_and_compares_one_to_the_current(page_for, owner):
     first, _ = _edited_twice(owner)
-    page = page_for(owner)
-    page.goto(f"/workspace/skills/edit?id={first['id']}")
+    page = page_for(owner, path=f"/workspace/skills/edit?id={first['id']}")
     expect(code_editor(page)).to_contain_text("Ignore the tides.")
 
     _pick_version(page, "First draft")
@@ -157,8 +156,7 @@ def test_setting_an_old_version_as_production_brings_back_its_files_for_the_next
     page_for, owner, upstream
 ):
     first, latest = _edited_twice(owner)
-    page = page_for(owner)
-    page.goto(f"/workspace/skills/edit?id={first['id']}")
+    page = page_for(owner, path=f"/workspace/skills/edit?id={first['id']}")
     expect(code_editor(page)).to_contain_text("Ignore the tides.")
 
     _pick_version(page, "First draft")
@@ -197,9 +195,8 @@ def test_a_zip_of_skill_folders_is_imported_through_the_dialog(page_for, owner):
             f"{second}/SKILL.md": skill_md(second, "Reef early."),
         }
     )
-    page = page_for(owner)
+    page = page_for(owner, path="/workspace/skills")
 
-    page.goto("/workspace/skills")
     page.get_by_label("Open create menu").click()
     with page.expect_file_chooser() as chooser:
         page.get_by_role("button", name="Import", exact=True).click()
@@ -222,9 +219,8 @@ def test_importing_an_existing_skill_offers_skip_and_replace_saves_a_new_version
         owner, {"SKILL.md": skill_md(skill_id, "Single lines.")}, skill_id=skill_id, name=skill_id
     )
     archive = _zip({f"{skill_id}/SKILL.md": skill_md(skill_id, "Double the lines.")})
-    page = page_for(owner)
+    page = page_for(owner, path="/workspace/skills")
 
-    page.goto("/workspace/skills")
     page.get_by_label("Open create menu").click()
     with page.expect_file_chooser() as chooser:
         page.get_by_role("button", name="Import", exact=True).click()
@@ -315,8 +311,7 @@ def test_clone_opens_a_new_skill_with_the_same_files(page_for, owner):
 
 def test_an_old_version_is_deleted_from_the_version_picker(page_for, owner):
     first, latest = _edited_twice(owner)
-    page = page_for(owner)
-    page.goto(f"/workspace/skills/edit?id={first['id']}")
+    page = page_for(owner, path=f"/workspace/skills/edit?id={first['id']}")
     expect(code_editor(page)).to_contain_text("Ignore the tides.")
 
     page.get_by_label("Select version", exact=True).click()

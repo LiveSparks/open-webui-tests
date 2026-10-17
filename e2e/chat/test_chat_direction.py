@@ -27,7 +27,6 @@ pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.req
 @pytest.fixture
 def chat_page(page_for, make_user, upstream):
     page = page_for(make_user())
-    page.goto("/")
     upstream.queue(reply.text("plain english answer"))
     send(page, "hello there")
     expect_reply(page, "plain english answer")
@@ -102,7 +101,6 @@ def test_the_choice_survives_a_reload_and_is_the_accounts_own(chat_page, make_us
     expect(_open_direction_button(chat_page)).to_contain_text("RTL")
 
     other = page_for(make_user())
-    other.goto("/")
     expect(other.locator("#chat-input")).to_be_visible()
     expect(_composer(other)).to_have_css("direction", "ltr")
     expect(_open_direction_button(other)).to_contain_text("Auto")

@@ -108,8 +108,7 @@ def cached_setup(admin, preserve):
 
 def test_a_long_chat_in_the_browser_only_appends(page_for, cached_setup, make_user, upstream):
     person = make_user()
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
 
     attach(page, *NOTES)
     ask(
@@ -137,8 +136,7 @@ def test_a_long_chat_in_the_browser_only_appends(page_for, cached_setup, make_us
     page.reload()
     ask(page, upstream, "is that every day?", reply.text("Every day, the handbook says."))
 
-    second = page_for(person)
-    second.goto(chat_url)
+    second = page_for(person, path=chat_url)
     expect(second.get_by_text("Every day, the handbook says.")).to_be_visible()
     time.sleep(1.5)  # a clock value in the prompt would move on between the turns
     ask(
@@ -161,8 +159,7 @@ def test_a_long_chat_in_the_browser_only_appends(page_for, cached_setup, make_us
 
 
 def test_a_chat_about_an_attached_image_only_appends(page_for, cached_setup, make_user, upstream):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     attach(page, "harbour.png", SNAPSHOT_PNG, "image/png")
     ask(page, upstream, "what is in this picture?", reply.text("A calm harbour."))
@@ -198,8 +195,7 @@ def _terminal_chat(page_for, cached_setup, admin, person, preserve, open_termina
     with admin.client() as client:
         configure_terminals(client, connection)
     (open_terminal.home / "tickets").mkdir(exist_ok=True)
-    page = page_for(person)
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(person, path=f"/?models={cached_setup.id}")
     pick_terminal(page, connection["name"])
     return page
 
@@ -362,8 +358,7 @@ def test_a_chat_in_a_folder_with_its_own_prompt_and_knowledge_only_appends(
     with person.client() as client:
         created = client.post("/api/v1/folders/", json={"name": "Harbour", "data": folder})
     assert created.status_code == 200, created.text
-    page = page_for(person)
-    page.goto(f"/folders/{created.json()['id']}")
+    page = page_for(person, path=f"/folders/{created.json()['id']}")
 
     ask(page, upstream, "good morning", reply.text("Morning."))
     ask(
@@ -382,8 +377,7 @@ def test_a_chat_in_a_folder_with_its_own_prompt_and_knowledge_only_appends(
 
 
 def test_regenerating_the_last_reply_only_appends(page_for, cached_setup, make_user, upstream):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     ask(page, upstream, "when does the ferry leave?", reply.text("Soon."))
 
@@ -403,8 +397,7 @@ def test_regenerating_the_last_reply_only_appends(page_for, cached_setup, make_u
 def test_a_temperature_and_model_description_change_mid_chat_only_append(
     page_for, cached_setup, admin, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
 
     page.get_by_role("navigation").get_by_role("button", name="Controls").click()
@@ -449,8 +442,7 @@ def harbour_skill(admin):
 def test_a_skill_loaded_on_demand_only_appends(
     page_for, cached_setup, harbour_skill, make_user, upstream
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     ask(
         page,
@@ -492,8 +484,7 @@ def requests_of_chat(upstream, opening: str) -> list[dict]:
 
 def test_a_sub_agent_only_appends(page_for, cached_setup, make_user, subagents_on, upstream):
     subagents_on()
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     upstream.queue(reply.text("It leaves at 06:40.", match=reply.answering("find the ferry time")))
     ask(
@@ -515,8 +506,7 @@ def test_a_timer_firing_into_the_open_chat_keeps_the_prefix(
     page_for, cached_setup, make_user, subagents_on, upstream
 ):
     subagents_on()
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     upstream.queue(reply.text("Time to go.", match=reply.answering(TIMER_PROMPT)))
     ask(
         page,
@@ -542,8 +532,7 @@ def test_a_background_sub_agent_report_keeps_the_prefix(
     page_for, cached_setup, make_user, subagents_on, upstream
 ):
     subagents_on(SUBAGENTS_BACKGROUND_ENABLED=True)
-    page = page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = page_for(make_user(), path=f"/?models={cached_setup.id}")
     task = f"find the ferry time {uuid.uuid4().hex[:6]}"
     upstream.queue(
         reply.text("It leaves at 06:40.", match=reply.answering(task), delay=3),
@@ -604,8 +593,7 @@ def test_a_workspace_tool_picked_before_the_first_turn_only_appends(
     page_for, cached_setup, admin, make_user, upstream
 ):
     with python_tool(admin, TIDE_TOOL, name="Tide clock") as tool_id:
-        page = page_for(make_user())
-        page.goto(f"/?models={cached_setup.id}")
+        page = page_for(make_user(), path=f"/?models={cached_setup.id}")
         turn_on_tool(page, "Tide clock")
         ask(page, upstream, "good morning", reply.text("Morning."))
         ask(

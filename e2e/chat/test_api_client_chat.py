@@ -101,8 +101,7 @@ def test_the_answer_a_script_asks_for_arrives_in_the_owners_open_chat(
     upstream.queue(reply.text(ANSWER, match=reply.answering(QUESTION)))
     with instance.client(api_key) as client:
         chat_id, answer_id = _create_chat(client)
-        page = page_for(account)
-        page.goto(f"/c/{chat_id}")
+        page = page_for(account, path=f"/c/{chat_id}")
         expect(conversation(page)).to_contain_text(QUESTION, timeout=REPLY_TIMEOUT_MS)
 
         accepted = client.post(

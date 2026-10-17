@@ -48,8 +48,7 @@ def _note_card(page: Page, title: str):
 
 def test_a_written_note_survives_a_reload_and_a_deleted_one_is_gone(page_for, make_user):
     author = make_user()
-    page = page_for(author)
-    page.goto("/notes")
+    page = page_for(author, path="/notes")
     page.get_by_role("main").get_by_role("button", name="Create", exact=True).click()
     expect(page).to_have_url(re.compile(r"/notes/[0-9a-f-]+$"))
     note_id = page.url.rsplit("/", 1)[1]

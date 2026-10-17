@@ -57,8 +57,7 @@ def author(make_user, admin):
 def test_a_global_filter_from_the_editor_signs_the_reply_with_its_valve(page_for, author, upstream):
     name = f"Signer {uuid.uuid4().hex[:6]}"
     signature = f"checked by {name}"
-    page = page_for(author)
-    page.goto("/admin/functions/create")
+    page = page_for(author, path="/admin/functions/create")
     editor = page.get_by_role("main")
     editor.get_by_role("textbox", name="Function Name").fill(name)
     editor.get_by_role("textbox", name="Function Description").fill("signs every reply")

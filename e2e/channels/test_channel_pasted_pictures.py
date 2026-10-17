@@ -47,8 +47,7 @@ def channels_on(admin, preserve) -> None:
 
 
 def open_channel(page_for, account: Actor, channel_id: str) -> Page:
-    page = page_for(account, permissions=CLIPBOARD)
-    page.goto(f"/channels/{channel_id}")
+    page = page_for(account, path=f"/channels/{channel_id}", permissions=CLIPBOARD)
     expect(chat_input(page)).to_be_visible()
     return page
 

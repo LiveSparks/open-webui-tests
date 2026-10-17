@@ -24,8 +24,7 @@ def _folder_sharing_switch(page: Page):
 
 def test_enabled_folder_sharing_is_still_on_after_a_reload(page_for, admin, preserve):
     preserve("permissions")
-    page = page_for(admin)
-    page.goto("/admin/users/groups")
+    page = page_for(admin, path="/admin/users/groups")
 
     switch = _folder_sharing_switch(page)
     expect(switch).to_have_attribute("aria-checked", "false")

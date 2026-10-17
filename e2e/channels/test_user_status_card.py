@@ -129,8 +129,7 @@ def test_the_card_shows_when_the_person_was_last_seen_in_the_viewers_zone(people
 def test_hovering_a_mention_of_a_person_shows_their_card(people, page_for):
     person, viewer, channel_id = people
     post_message(viewer, channel_id, f"<@U:{person.id}|{person.name}> are you at the bay?")
-    page = page_for(viewer)
-    page.goto(f"/channels/{channel_id}")
+    page = page_for(viewer, path=f"/channels/{channel_id}")
 
     page.get_by_text(f"@{person.name}", exact=True).hover()
 

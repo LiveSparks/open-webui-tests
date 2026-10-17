@@ -597,8 +597,7 @@ def test_a_pending_dispatch_survives_a_reload_and_another_tab_can_allow_it(
     page.reload()
     approval_button(page, "Allow")
     expect(last_reply(page)).to_contain_text("Allow shout?")
-    other_tab = page_for(account)
-    other_tab.goto(page.url)
+    other_tab = page_for(account, path=page.url)
     expect(last_reply(other_tab)).to_contain_text("Allow shout?")
     approval_button(other_tab, "Allow").click()
 

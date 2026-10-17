@@ -91,8 +91,7 @@ def pipe_card(page: Page, pipe_id: str) -> Locator:
 
 def test_new_code_that_does_not_parse_is_refused_with_the_error_shown(page_for, editor_admin):
     name = f"Tide clock {uuid.uuid4().hex[:6]}"
-    page = page_for(editor_admin)
-    page.goto("/admin/functions/create")
+    page = page_for(editor_admin, path="/admin/functions/create")
     editor = page.get_by_role("main")
     editor.get_by_role("textbox", name="Function Name").fill(name)
     editor.get_by_role("textbox", name="Function Description").fill("tells the tide")
@@ -145,8 +144,7 @@ def test_a_function_imported_from_a_link_is_saved_and_answers(page_for, editor_a
     file_name = f"tide_clock_{uuid.uuid4().hex[:6]}"
     source = clock_pipe("Low tide at three.")
     listener.route("GET", f"/functions/{file_name}.py", text_answer(source, "text/x-python"))
-    page = page_for(editor_admin)
-    page.goto("/admin/functions")
+    page = page_for(editor_admin, path="/admin/functions")
     page.get_by_label("Open create menu").click()
     page.get_by_role("button", name="Import from URL").click()
     importing = page.get_by_role("dialog")

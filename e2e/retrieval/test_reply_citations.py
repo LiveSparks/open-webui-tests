@@ -133,8 +133,7 @@ def test_a_shared_link_shows_the_sources(page_for, make_user, upstream):
         )
         assert granted.status_code == 200, granted.text
 
-    viewer_page = page_for(viewer)
-    viewer_page.goto(f"/s/{shared.json()['share_id']}")
+    viewer_page = page_for(viewer, path=f"/s/{shared.json()['share_id']}")
     expect(conversation(viewer_page).get_by_text("They wait in the reeds.")).to_be_visible()
     citation = _open_listed_source(viewer_page, HERONS[0])
     expect(citation).to_contain_text(HERONS[1])
@@ -163,8 +162,7 @@ def model_without_citations(admin):
 def test_a_model_with_citations_off_shows_no_sources(
     page_for, make_user, upstream, model_without_citations
 ):
-    page = page_for(make_user())
-    page.goto(f"/?models={model_without_citations}")
+    page = page_for(make_user(), path=f"/?models={model_without_citations}")
     question = _ask_with_files(page, upstream, "Herons wait in the reeds [1].", HERONS)
     assert _source_ids_sent(upstream, question) == {"1": HERONS[0]}
 

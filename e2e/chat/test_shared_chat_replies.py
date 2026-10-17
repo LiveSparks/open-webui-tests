@@ -153,8 +153,7 @@ def test_the_link_opens_the_owners_live_chat_straight_away(page_for, make_user, 
     chat_id = _start_chat(page_for(owner), upstream)
     share_path = _share_over_api(owner, chat_id, [grant("user", member.id, "read")], "continue")
 
-    member_page = page_for(member)
-    member_page.goto(share_path)
+    member_page = page_for(member, path=share_path)
 
     expect(
         conversation(member_page).get_by_text(ANSWER),
@@ -260,8 +259,7 @@ def test_a_visitor_through_open_visibility_reads_a_copy_without_a_message_box(
     share_path = _share_over_api(owner, chat_id, grants, "continue")
     _ask(owner_page, upstream, "is the cafe open?", "Until six.")
 
-    visitor_page = page_for(make_user())
-    visitor_page.goto(share_path)
+    visitor_page = page_for(make_user(), path=share_path)
     expect(conversation(visitor_page).get_by_text(ANSWER)).to_be_visible()
     expect(_user_message(visitor_page, QUESTION)).to_contain_text(owner.name)
     expect(visitor_page).to_have_url(re.compile(re.escape(share_path) + "$"))
@@ -303,8 +301,7 @@ def test_a_clone_from_the_link_starts_without_the_owners_system_prompt(
     chat_id = _start_chat(owner_page, upstream)
     share_path = _share_over_api(owner, chat_id, [grant("user", member.id, "read")], None)
 
-    member_page = page_for(member)
-    member_page.goto(share_path)
+    member_page = page_for(member, path=share_path)
     member_page.get_by_role("button", name="Clone Chat").click()
     expect(member_page).to_have_url(re.compile(r"/c/"))
     expect(member_page).not_to_have_url(re.compile(chat_id))
@@ -418,8 +415,7 @@ def test_a_reader_of_a_folder_shared_with_replies_answers_in_the_owners_chat(
     owner_page.goto(f"/c/{chat_id}")
     expect_reply(owner_page, ANSWER)
 
-    member_page = page_for(member)
-    member_page.goto(f"/c/{chat_id}")
+    member_page = page_for(member, path=f"/c/{chat_id}")
     expect(conversation(member_page).get_by_text(ANSWER)).to_be_visible()
     expect(chat_input(member_page)).to_be_visible()
     _ask(member_page, upstream, "where do I buy a ticket?", "At the kiosk.")
@@ -432,8 +428,7 @@ def test_a_reader_taken_off_the_folders_access_list_loses_the_open_chat(page_for
     owner, member, group_id, group_name = crew
     folder_id, name, chat_id = _folder_with_chat(owner)
     _share_folder_over_api(owner, folder_id, [grant("group", group_id, "read")], "continue")
-    member_page = page_for(member)
-    member_page.goto(f"/c/{chat_id}")
+    member_page = page_for(member, path=f"/c/{chat_id}")
     expect(conversation(member_page).get_by_text(ANSWER)).to_be_visible()
     expect(chat_input(member_page)).to_be_visible()
 

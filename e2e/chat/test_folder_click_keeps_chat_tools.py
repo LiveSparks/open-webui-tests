@@ -132,8 +132,7 @@ def test_an_open_chat_keeps_its_own_tools_after_a_folder_click(
             [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi there"}],
             model=chat_model,
         )
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect(page.get_by_text("hi there")).to_be_visible()
 
     visit_folder_and_return(page, "hi there")

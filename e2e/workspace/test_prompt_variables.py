@@ -139,9 +139,8 @@ def test_a_prompt_made_in_the_create_dialog_fills_its_built_in_placeholders(
     zone = "Pacific/Auckland"
     suffix = uuid.uuid4().hex[:6]
     name = f"Itinerary {suffix}"
-    page = page_for(account, timezone_id=zone)
+    page = page_for(account, path="/workspace/prompts/create", timezone_id=zone)
 
-    page.goto("/workspace/prompts/create")
     creating = page.get_by_role("dialog").filter(has_text="Create Prompt")
     creating.get_by_role("textbox", name="Prompt Name").fill(name)
     creating.get_by_role("textbox", name="Command").fill(f"itinerary-{suffix}")

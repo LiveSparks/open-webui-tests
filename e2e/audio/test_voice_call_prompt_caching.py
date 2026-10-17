@@ -72,8 +72,7 @@ def answered_turns(upstream, count: int, timeout: float = 60.0) -> list[dict]:
 def test_a_voice_call_only_appends(
     voice_page_for, make_user, cached_setup, speech_engine, upstream
 ):
-    page = voice_page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = voice_page_for(make_user(), path=f"/?models={cached_setup.id}")
     start_call(page)
     wait_for_transcriptions(speech_engine, TURNS, timeout=60.0)
 
@@ -90,8 +89,7 @@ def test_a_voice_call_only_appends(
 def test_a_voice_call_started_in_a_typed_chat_rewrites_the_prefix(
     voice_page_for, make_user, cached_setup, speech_engine, upstream
 ):
-    page = voice_page_for(make_user())
-    page.goto(f"/?models={cached_setup.id}")
+    page = voice_page_for(make_user(), path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     ask(page, upstream, "when is high tide?", reply.text("At noon."))
     typed = chat_requests(upstream)
@@ -151,8 +149,7 @@ def speak(page: Page, caller, realtime, upstream, question: str, *replies) -> No
 
 def test_a_realtime_call_only_appends(voice_page_for, make_user, cached_setup, realtime, upstream):
     caller = make_user()
-    page = voice_page_for(caller)
-    page.goto(f"/?models={cached_setup.id}")
+    page = voice_page_for(caller, path=f"/?models={cached_setup.id}")
     start_call(page)
     expect(call_status(page, "Listening")).to_be_visible(timeout=TURN_TIMEOUT_MS)
 
@@ -187,8 +184,7 @@ def test_a_realtime_call_started_in_a_typed_chat_rewrites_the_prefix_once(
     voice_page_for, make_user, cached_setup, realtime, upstream
 ):
     caller = make_user()
-    page = voice_page_for(caller)
-    page.goto(f"/?models={cached_setup.id}")
+    page = voice_page_for(caller, path=f"/?models={cached_setup.id}")
     ask(page, upstream, "good morning", reply.text("Morning."))
     ask(page, upstream, "when is high tide?", reply.text("At noon."))
     start_call(page)

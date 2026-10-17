@@ -71,7 +71,6 @@ def paste_and_send(page: Page, upstream, html: str, words: str) -> str:
 
 def test_a_pasted_email_with_nested_tables_is_sent_once(page_for, make_user, upstream):
     page = page_for(make_user())
-    page.goto("/")
 
     sent = paste_and_send(page, upstream, NESTED_EMAIL, "Quarterly newsletter")
 
@@ -81,7 +80,6 @@ def test_a_pasted_email_with_nested_tables_is_sent_once(page_for, make_user, ups
 
 def test_a_pasted_plain_table_still_becomes_one_markdown_table(page_for, make_user, upstream):
     page = page_for(make_user())
-    page.goto("/")
 
     sent = paste_and_send(page, upstream, PLAIN_TABLE, "Plum")
 

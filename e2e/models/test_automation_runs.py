@@ -42,8 +42,7 @@ RUN_TIMEOUT_MS = 30_000
 def test_run_now_lists_a_run_whose_chat_holds_the_answer(page_for, scheduler, upstream):
     title = f"Morning digest {uuid.uuid4().hex[:6]}"
     prompt = f"Summarize the overnight tickets, batch {uuid.uuid4().hex[:6]}."
-    page = page_for(scheduler)
-    page.goto("/automations")
+    page = page_for(scheduler, path="/automations")
     page.get_by_role("main").get_by_role("button", name="Create", exact=True).click()
     creating = page.get_by_role("dialog")
     creating.get_by_role("button", name="Select model").first.click()
@@ -90,8 +89,7 @@ def test_the_run_history_lists_every_run_with_its_chat(
         reply.text("First report.", match=reply.answering(prompt)),
         reply.text("Second report.", match=reply.answering(prompt)),
     )
-    page = page_for(scheduler)
-    page.goto(f"/automations/{automation['id']}")
+    page = page_for(scheduler, path=f"/automations/{automation['id']}")
     details = page.get_by_role("main")
     expect(details).to_contain_text("No runs yet")
 
@@ -108,8 +106,7 @@ def test_the_run_history_lists_every_run_with_its_chat(
 def test_a_run_whose_model_is_gone_is_listed_as_failed(page_for, scheduler, make_automation):
     automation = make_automation(scheduler, model_id=f"retired-{uuid.uuid4().hex[:6]}")
     prompt = automation["data"]["prompt"]
-    page = page_for(scheduler)
-    page.goto(f"/automations/{automation['id']}")
+    page = page_for(scheduler, path=f"/automations/{automation['id']}")
     details = page.get_by_role("main")
     expect(details).to_contain_text("No runs yet")
 
@@ -127,8 +124,7 @@ def test_a_manual_run_shows_as_the_last_run(page_for, scheduler, make_automation
     automation = make_automation(scheduler)
     prompt = automation["data"]["prompt"]
     upstream.queue(reply.text("The report.", match=reply.answering(prompt)))
-    page = page_for(scheduler)
-    page.goto(f"/automations/{automation['id']}")
+    page = page_for(scheduler, path=f"/automations/{automation['id']}")
     details = page.get_by_role("main")
     expect(details).to_contain_text("Last run Never")
 

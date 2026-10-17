@@ -180,8 +180,7 @@ def test_a_switched_on_autocomplete_suggests_a_continuation_that_tab_accepts(
     settings = open_interface_settings(page_for(admin))
     set_switch(settings, "Autocomplete Generation", turn_on=True)
     save(settings)
-    page = page_for(make_user())
-    page.goto("/?settings=interface")
+    page = page_for(make_user(), path="/?settings=interface")
     personal = page.locator("#tab-interface").get_by_role("switch", name="Prompt Autocompletion")
     with page.expect_response(lambda response: "/user/settings/update" in response.url):
         personal.click()
@@ -394,8 +393,7 @@ def open_long_chat(page_for, account: Actor) -> Page:
         turns.append({"role": "assistant", "content": f"ferry answer {number} " + "a" * 400})
     with account.client() as client:
         chat_id, _ = seed_chat(client, turns)
-    page = page_for(account)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(account, path=f"/c/{chat_id}")
     expect(conversation(page).get_by_text("ferry answer 3", exact=False)).to_be_visible()
     return page
 

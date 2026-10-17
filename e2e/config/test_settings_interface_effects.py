@@ -334,7 +334,6 @@ def test_insert_follow_up_prompt_puts_the_question_in_the_input_instead_of_sendi
     assert sent == []
 
     other = page_for(make_user())
-    other.goto("/")
     ask_with_follow_ups(other, upstream, "Is the lamp lit yet?", ["Who lit it?", "Is it bright?"])
     upstream.queue(reply.text("Quite bright.", match=reply.answering("Is it bright?")))
     follow_up_button(other, "Is it bright?").click()
@@ -357,7 +356,6 @@ def test_keep_follow_up_prompts_leaves_an_earlier_replys_follow_ups_in_the_chat(
     expect(follow_up_button(page, "Who lit it?")).to_be_visible()
 
     other = page_for(make_user())
-    other.goto("/")
     ask_with_follow_ups(other, upstream, "Is the lamp lit yet?", ["Who lit it?"])
     ask_with_follow_ups(other, upstream, "Is the lamp lit still?", ["Who tends it?"])
     expect(follow_up_button(other, "Who tends it?")).to_be_visible()
@@ -394,7 +392,6 @@ def test_auto_copy_response_puts_a_finished_reply_on_the_clipboard(page_for, mak
     )
 
     other = page_for(make_user(), permissions=CLIPBOARD)
-    other.goto("/")
     other.evaluate("navigator.clipboard.writeText('nothing copied')")
     chat_once(other, upstream, "Is the lamp lit this night?")
     other.wait_for_timeout(1000)
@@ -424,7 +421,6 @@ def test_temporary_chat_by_default_starts_new_chats_temporary_and_unstored(
 
     other_account = make_user()
     other = page_for(other_account)
-    other.goto("/")
     expect(chat_input(other)).to_be_visible()
     expect(other.locator("#chat-pane").get_by_text("Temporary Chat", exact=True)).to_have_count(0)
     chat_once(other, upstream, "Where is the other harbour?")
@@ -504,7 +500,6 @@ def test_show_formatting_toolbar_appears_over_selected_input_text(page_for, make
 
 def test_landing_page_mode_chat_shows_the_conversation_pane_on_a_new_chat(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     expect(chat_input(page)).to_be_visible()
     expect(page.locator("#messages-container")).to_have_count(0)
 
@@ -519,7 +514,6 @@ def test_landing_page_mode_chat_shows_the_conversation_pane_on_a_new_chat(page_f
     expect(page.locator("#messages-container")).to_be_visible()
 
     other = page_for(make_user())
-    other.goto("/")
     expect(chat_input(other)).to_be_visible()
     expect(other.locator("#messages-container")).to_have_count(0)
 

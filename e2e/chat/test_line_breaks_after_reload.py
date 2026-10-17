@@ -64,17 +64,14 @@ def expect_both_messages_broken_into_lines(page: Page) -> None:
 
 def test_a_chat_opened_by_its_url_shows_each_line_on_its_own_row(page_for, seeded):
     owner, chat_id = seeded
-    page = page_for(owner)
-
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
 
     expect_both_messages_broken_into_lines(page)
 
 
 def test_a_reloaded_chat_keeps_each_line_on_its_own_row(page_for, seeded):
     owner, chat_id = seeded
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect(conversation(page).locator(".chat-assistant")).to_be_visible()
 
     page.reload()
@@ -87,8 +84,6 @@ def test_a_shared_chat_link_shows_each_line_on_its_own_row(page_for, seeded):
     with owner.client() as client:
         shared = client.post(f"/api/v1/chats/{chat_id}/share")
     shared.raise_for_status()
-    page = page_for(owner)
-
-    page.goto(f"/s/{shared.json()['share_id']}")
+    page = page_for(owner, path=f"/s/{shared.json()['share_id']}")
 
     expect_both_messages_broken_into_lines(page)

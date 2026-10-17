@@ -164,9 +164,7 @@ def test_someone_outside_a_direct_message_is_sent_home_and_never_sees_it(
     outsider = make_user()
     direct_message_id = _direct_message_id(sender, reader)
     post_message(sender, direct_message_id, "the code word is lantern")
-    page = page_for(outsider)
-
-    page.goto(f"/channels/{direct_message_id}")
+    page = page_for(outsider, path=f"/channels/{direct_message_id}")
 
     expect(chat_input(page)).to_be_visible()
     expect(page).not_to_have_url(re.compile("/channels/"))

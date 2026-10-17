@@ -241,8 +241,7 @@ def test_a_knowledge_base_shared_with_the_parent_in_the_access_dialog_reaches_a_
         )
     parent_name = _group_name(admin, family.parent)
 
-    page = page_for(curator)
-    page.goto(f"/workspace/knowledge/{knowledge_id}")
+    page = page_for(curator, path=f"/workspace/knowledge/{knowledge_id}")
     page.get_by_role("main").get_by_role("button", name="Access").click()
     dialog = page.get_by_role("dialog").filter(has_text="Access Control")
     dialog.get_by_role("button", name="Add Access").click()
@@ -328,8 +327,7 @@ def test_a_channel_shared_with_the_parent_takes_a_subgroup_members_message(
         messages = client.get(f"/api/v1/channels/{channel_id}/messages").json()
     assert [message["content"] for message in messages] == ["the tide turns at six"]
 
-    outsider_page = page_for(family.outsider)
-    outsider_page.goto(f"/channels/{channel_id}")
+    outsider_page = page_for(family.outsider, path=f"/channels/{channel_id}")
     expect(chat_input(outsider_page)).to_be_visible()
     expect(outsider_page).not_to_have_url(re.compile("/channels/"))
 
@@ -343,8 +341,7 @@ def test_a_workspace_permission_on_the_parent_lets_a_subgroup_member_create_a_pr
     group_ids.extend([parent, child])
     command = f"tide{uuid.uuid4().hex[:6]}"
 
-    page = page_for(member)
-    page.goto("/workspace/prompts")
+    page = page_for(member, path="/workspace/prompts")
     page.get_by_role("main").get_by_role("button", name="Create", exact=True).click()
     creating = page.get_by_role("dialog").filter(has_text="Create Prompt")
     creating.get_by_role("textbox", name="Prompt Name").fill("Tide check")
@@ -354,8 +351,7 @@ def test_a_workspace_permission_on_the_parent_lets_a_subgroup_member_create_a_pr
     expect(page.get_by_role("main").get_by_text(f"/{command}")).to_be_visible()
     expect(page).to_have_url(re.compile("/workspace/prompts"))
 
-    outsider_page = page_for(outsider)
-    outsider_page.goto("/workspace/prompts")
+    outsider_page = page_for(outsider, path="/workspace/prompts")
     expect(chat_input(outsider_page)).to_be_visible()
     expect(outsider_page).not_to_have_url(re.compile("/workspace"))
 
@@ -389,8 +385,7 @@ def test_a_subgroup_member_shares_a_note_with_a_members_only_parent(
             )
         )
 
-    page = page_for(author)
-    page.goto(f"/notes/{note_id}")
+    page = page_for(author, path=f"/notes/{note_id}")
     page.get_by_role("main").get_by_role("button", name="Access").click()
     panel = page.get_by_role("dialog").filter(has_text="Access Control")
     panel.get_by_role("button", name="Add Access").click()
@@ -423,8 +418,7 @@ def test_moving_a_group_under_the_parent_in_the_editor_gives_its_member_the_pare
     member_page = page_for(member)
     expect(_offered_prompt(member_page, token, f"watch-{token}")).to_have_count(0)
 
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/users/groups")
+    admin_page = page_for(make_user(role="admin"), path="/admin/users/groups")
     hierarchy = admin_page.get_by_label("Group hierarchy")
     admin_page.get_by_role("main").get_by_role("textbox", name="Search Groups").fill(loose_name)
     hierarchy.get_by_role("group", name=loose_name, exact=True).get_by_role(

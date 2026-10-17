@@ -193,8 +193,7 @@ def test_a_note_with_mixed_text_opens_and_shows_it(page_for, pair, writer, reade
         )
     assert created.status_code == 200, created.text
 
-    page = page_for(_viewer(person, pair, reader))
-    page.goto("/notes")
+    page = page_for(_viewer(person, pair, reader), path="/notes")
     page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title).click()
 
     expect(page).to_have_url(re.compile(r"/notes/[0-9a-f-]+$"))
@@ -231,8 +230,7 @@ def test_a_preset_with_a_non_ascii_name_and_tag_is_listed_and_found_by_its_tag(
             )
             assert created.status_code == 200, created.text
 
-    page = page_for(_viewer(admin, pair, reader))
-    page.goto("/workspace/models")
+    page = page_for(_viewer(admin, pair, reader), path="/workspace/models")
     listing = page.get_by_role("main")
     expect(listing.get_by_text(tagged, exact=True)).to_be_visible()
     expect(listing.get_by_text(plain, exact=True)).to_be_visible()
@@ -259,8 +257,7 @@ def test_a_prompt_with_a_mixed_text_title_shows_in_the_library(page_for, pair, w
         )
     assert created.status_code == 200, created.text
 
-    page = page_for(_viewer(admin, pair, reader))
-    page.goto("/workspace/prompts")
+    page = page_for(_viewer(admin, pair, reader), path="/workspace/prompts")
     page.get_by_role("textbox", name="Search Prompts").fill(suffix)
     expect(page.get_by_role("main").get_by_text(name)).to_be_visible()
 

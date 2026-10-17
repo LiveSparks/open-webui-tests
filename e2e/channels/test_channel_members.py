@@ -94,8 +94,7 @@ def test_the_owner_removes_a_member_who_is_then_sent_home(channels_on, make_user
     expect(_member_count(page)).to_contain_text("2")
     assert not _can_read(leaving, channel_id)
     assert _can_read(staying, channel_id)
-    leaving_page = page_for(leaving)
-    leaving_page.goto(f"/channels/{channel_id}")
+    leaving_page = page_for(leaving, path=f"/channels/{channel_id}")
     expect(chat_input(leaving_page)).to_be_visible()
     expect(leaving_page).not_to_have_url(re.compile("/channels/"))
 
@@ -121,9 +120,7 @@ def test_someone_outside_a_private_channel_is_sent_home_and_never_sees_it(
     owner, member, outsider = make_user(), make_user(), make_user()
     channel_id = group_channel(owner, member)
     post_message(owner, channel_id, "the anchor code is 4417")
-    page = page_for(outsider)
-
-    page.goto(f"/channels/{channel_id}")
+    page = page_for(outsider, path=f"/channels/{channel_id}")
 
     expect(chat_input(page)).to_be_visible()
     expect(page).not_to_have_url(re.compile("/channels/"))

@@ -145,8 +145,7 @@ def _count(number: int) -> re.Pattern:
 
 
 def _open_evaluations(admin: Actor, page_for, tab: str) -> Page:
-    page = page_for(admin)
-    page.goto(f"/admin/evaluations/{tab}")
+    page = page_for(admin, path=f"/admin/evaluations/{tab}")
     return page
 
 
@@ -269,8 +268,7 @@ def _offered_in_selector(page: Page, name: str) -> Locator:
 def test_switching_arena_models_off_hides_them_in_the_settings_and_the_selector(
     page_for, make_user, arena_model
 ):
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/settings/evaluations")
+    admin_page = page_for(make_user(role="admin"), path="/admin/settings/evaluations")
     settings = admin_page.get_by_role("dialog")
     expect(settings.get_by_text(arena_model)).to_be_visible()
     expect(_offered_in_selector(page_for(make_user()), arena_model)).to_be_visible()
@@ -407,8 +405,7 @@ def test_an_arena_model_added_in_the_settings_answers_through_its_model_and_name
     tag = uuid.uuid4().hex[:8]
     name = f"Blind Duel {tag}"
     arena_settings.append(f"blind-duel-{tag}")
-    admin_page = page_for(make_user(role="admin"))
-    admin_page.goto("/admin/settings/evaluations")
+    admin_page = page_for(make_user(role="admin"), path="/admin/settings/evaluations")
     settings = admin_page.get_by_role("dialog")
     switch = settings.get_by_role("switch", name="Arena Models")
     if switch.get_attribute("aria-checked") != "true":

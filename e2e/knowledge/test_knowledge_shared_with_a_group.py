@@ -137,8 +137,7 @@ def test_a_writer_adds_a_file_that_the_owners_next_chat_cites(
     name = _unique("Harbour")
     knowledge_id = _shared_base(curator, name, group_id, "write")
 
-    writer_page = page_for(writer)
-    writer_page.goto(f"/workspace/knowledge/{knowledge_id}")
+    writer_page = page_for(writer, path=f"/workspace/knowledge/{knowledge_id}")
     base = writer_page.get_by_role("main")
     expect(base.get_by_role("textbox", name="Knowledge Name")).to_be_enabled()
     with writer_page.expect_file_chooser() as chooser:

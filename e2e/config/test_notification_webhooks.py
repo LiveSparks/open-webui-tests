@@ -248,8 +248,7 @@ def test_an_admin_switching_user_webhooks_on_and_off_shows_and_hides_the_section
     user_webhooks(switched_on=False)
     admin = create_user(fetching_instance, role="admin")
     account = create_user(fetching_instance)
-    admin_page = page_for(admin)
-    admin_page.goto("/admin/settings/general")
+    admin_page = page_for(admin, path="/admin/settings/general")
     general = admin_page.get_by_role("dialog")
 
     general.get_by_role("switch", name="User Webhooks").click()

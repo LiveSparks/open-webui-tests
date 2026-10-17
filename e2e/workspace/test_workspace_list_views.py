@@ -120,8 +120,7 @@ def test_the_view_menu_narrows_the_list_to_own_or_shared_items(page_for, make_us
         (theirs, SECTIONS[section](theirs, other_name)),
     ]
     try:
-        page = page_for(mine)
-        page.goto(f"/workspace/{section}")
+        page = page_for(mine, path=f"/workspace/{section}")
         _search(page, section, f"Harbour {tag}")
         expect(_listed(page, own_name)).to_be_visible()
         expect(_listed(page, other_name)).to_be_visible()
@@ -172,8 +171,7 @@ def test_a_late_search_answer_leaves_the_chosen_view_alone(page_for, make_user, 
         (theirs, SECTIONS[section](theirs, other_name)),
     ]
     try:
-        page = page_for(mine)
-        page.goto(f"/workspace/{section}")
+        page = page_for(mine, path=f"/workspace/{section}")
         search = page.get_by_role("textbox", name=f"Search {section.title()}")
         expect(search).to_be_visible()
         held = _hold_unfiltered_searches(page, typed)

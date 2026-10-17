@@ -69,8 +69,7 @@ def signed_out(browser: Browser, sso) -> Iterator[Callable[[], Page]]:
 
 
 def oauth_panel(page_for, sso) -> tuple[Page, Locator]:
-    page = page_for(admin_of(sso))
-    page.goto("/admin/settings/authentication")
+    page = page_for(admin_of(sso), path="/admin/settings/authentication")
     oauth = page.get_by_role("dialog").get_by_role("group")
     expect(oauth.get_by_role("switch", name="OAuth / OIDC")).to_be_checked()
     return page, oauth

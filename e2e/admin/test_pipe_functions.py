@@ -149,8 +149,7 @@ def test_a_pipe_switched_off_leaves_the_model_selector(page_for, admin, make_use
         new_chat(page)
         expect(model_options(page, name)).to_have_count(1)
 
-        admin_page = page_for(admin)
-        admin_page.goto("/admin/functions")
+        admin_page = page_for(admin, path="/admin/functions")
         admin_page.get_by_placeholder("Search Functions").fill(pipe_id)
         card = admin_page.get_by_role("main").get_by_role(
             "button", name=re.compile(f"^pipe {name}")

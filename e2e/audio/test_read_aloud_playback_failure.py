@@ -37,8 +37,7 @@ def open_answer(page_for, make_user) -> Page:
             client,
             [{"role": "user", "content": "tides?"}, {"role": "assistant", "content": ANSWER}],
         )
-    page = page_for(owner)
-    page.goto(f"/c/{chat_id}")
+    page = page_for(owner, path=f"/c/{chat_id}")
     expect(page.get_by_text(ANSWER)).to_be_visible()
     return page
 

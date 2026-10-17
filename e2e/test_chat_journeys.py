@@ -31,7 +31,6 @@ pytestmark = [pytest.mark.requires_browser, pytest.mark.requires_source]
 @pytest.fixture
 def chat_page(page_for, make_user):
     page = page_for(make_user())
-    page.goto("/")
     return page
 
 
