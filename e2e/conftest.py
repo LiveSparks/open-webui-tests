@@ -121,8 +121,17 @@ def context(
     _close_context(browser_context, request.node, "signed-out")
 
 
-def _signed_in_page(context: BrowserContext, token: str, hold_events: bool = True) -> Page:
-    """A page whose localStorage already carries the session token.
+# The splash stays until the app has its config and account; the signed-in layout then shows a
+# spinner beside the sidebar until its data is in and #main-content replaces it.
+APP_LOADED = """() => !document.getElementById('splash-screen')
+    && (!document.getElementById('sidebar-new-chat-button')
+        || !!document.getElementById('main-content'))"""
+
+
+def _signed_in_page(
+    context: BrowserContext, token: str, load_timeout_ms: float, hold_events: bool = True
+) -> Page:
+    """A page whose localStorage already carries the session token, handed over once loaded.
 
     Written through an init script: the sign-in route clears the token as it loads, so a value
     written by visiting /auth first is gone again before the app reads it.
@@ -134,6 +143,8 @@ def _signed_in_page(context: BrowserContext, token: str, hold_events: bool = Tru
         f"try {{ localStorage.setItem('token', {json.dumps(token)}); }} catch (e) {{}}"
     )
     page.goto("/")
+    # a cold load is slow on a busy runner; the test's first default wait should not pay for it
+    page.wait_for_function(APP_LOADED, timeout=load_timeout_ms)
     return page
 
 
@@ -153,7 +164,7 @@ def page_for(
         _dismiss_first_run_modals(actor)
         browser_context = _new_context(browser, config, actor.base_url, **context_options)
         opened.append(browser_context)
-        return _signed_in_page(browser_context, actor.token, hold_events)
+        return _signed_in_page(browser_context, actor.token, config.navigation_timeout, hold_events)
 
     yield open_page
     with contextlib.ExitStack() as closing:

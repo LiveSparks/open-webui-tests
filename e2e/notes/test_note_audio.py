@@ -239,7 +239,7 @@ def test_capturing_audio_attaches_the_capture_with_its_transcript(
     browser_context = _new_context(capturing_browser, config, author.base_url)
     browser_context.add_init_script(DISPLAY_MEDIA_SPY)
     try:
-        page = _signed_in_page(browser_context, author.token)
+        page = _signed_in_page(browser_context, author.token, config.navigation_timeout)
         _open_note(page, note_id)
 
         _open_audio_menu(page)

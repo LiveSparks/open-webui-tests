@@ -80,7 +80,7 @@ def voice_page_for(
         browser_context = _new_context(speaking_browser, config, actor.base_url, **context_options)
         browser_context.grant_permissions(["microphone"])
         opened.append(browser_context)
-        return _signed_in_page(browser_context, actor.token)
+        return _signed_in_page(browser_context, actor.token, config.navigation_timeout)
 
     yield open_page
     with contextlib.ExitStack() as closing:
