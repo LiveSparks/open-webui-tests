@@ -6,10 +6,16 @@ that brings the end of the chat back into view and goes away again. A long chat 
 link opens at its end. With Response Auto-Scroll off in the account's settings the view stays
 where it was while the reply grows below it.
 
-Discriminates: passes on the dev ebc6add67 build. In its mutation build (the `rendering-front`
-copy: the scroll that follows a streaming reply removed and the button never shown) the
-following, the scroll-up and the opened-chat tests go red; the setting-off test stays green there
-as a control.
+On a slow device the chat stops following on its own partway through a reply
+(open-webui/open-webui#32728): it takes its own scroll to the bottom for the reader scrolling up
+whenever new text lands before the browser reports that scroll. Until that fix merges the
+following test fails on a throttled CPU in some runs, more often on a busy machine.
+
+Discriminates: on a throttled CPU under load the following test fails on the dev 079fb19e7 build
+and passes five runs in a row on that build with the #32728 fix. It passes on the dev ebc6add67
+build. In its mutation build (the `rendering-front` copy: the scroll that follows a streaming reply
+removed and the button never shown) the following, the scroll-up and the opened-chat tests go red;
+the setting-off test stays green there as a control.
 """
 
 from __future__ import annotations
