@@ -16,16 +16,24 @@ and with `can_read_shared_chat` granting any signed-in account the stranger test
 `2178777340` reverted (the 015dbc861 mutation build) the signed-out test fails (sent home). On
 dev ebc6add67 a frontend copy whose share dialog hands back the old link without sharing again
 turns the update test red.
+
+A chat opened under `/s/`, by its link or by an admin viewing another account's chat, is fetched
+once and stays where the reader scrolls it. From 0.12.3 the page fetched it again and again and
+scrolled to the bottom after each fetch, so scrolling up was impossible
+(open-webui/open-webui#32725, issue #32657, fix c4153a6ee). Both cases fail in the pre-fix build of
+the 0.12.4 changes, which has that commit reverted.
 """
 
 from __future__ import annotations
 
 import re
+import uuid
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
+from harness.chat_history import seed_chat
 from utils.chat_ui import conversation, expect_reply, send
 from utils.member_picker import pick_member
 
@@ -162,3 +170,60 @@ def test_updating_the_link_shares_the_messages_sent_since(
     viewer_page.reload()
     expect(conversation(viewer_page).get_by_text(LATER_ANSWER)).to_be_visible()
     expect(conversation(viewer_page).get_by_text(ANSWER)).to_be_visible()
+
+
+AT_THE_BOTTOM = "box => box.scrollHeight - box.scrollTop - box.clientHeight < 5"
+# drags the chat to its top each frame, as older messages load in above, until the first shows
+TO_THE_FIRST_MESSAGE = """([box, first]) => {
+    box.scrollTop = 0;
+    return box.innerText.includes(first) && box.scrollTop === 0;
+}"""
+
+
+def _long_chat(owner) -> tuple[str, str, str]:
+    """A chat long enough to scroll, shared by link; returns its id, share id and first line."""
+    filler = "The heron waits by the reeds for a long while. " * 30
+    opening = f"Opening line {uuid.uuid4().hex[:6]}"
+    messages = [{"role": "user", "content": opening}]
+    for turn in range(10):
+        messages.append({"role": "assistant", "content": f"{filler} Entry {turn}"})
+        messages.append({"role": "user", "content": f"Question {turn}"})
+    with owner.client() as client:
+        chat_id, _ = seed_chat(client, messages)
+        shared = client.post(f"/api/v1/chats/{chat_id}/share")
+    assert shared.status_code == 200, shared.text
+    return chat_id, shared.json()["share_id"], opening
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("opened_by", ["share link", "admin viewing the chat"])
+def test_a_shared_chat_loads_once_and_stays_where_it_was_scrolled(page_for, make_user, opened_by):
+    # open-webui/open-webui#32725 (issue #32657), fix c4153a6ee
+    owner = make_user()
+    chat_id, share_id, opening = _long_chat(owner)
+    if opened_by == "share link":
+        viewer, page_id = owner, share_id
+    else:
+        viewer, page_id = make_user(role="admin"), chat_id
+    page = page_for(viewer, path=f"/s/{page_id}")
+    last = conversation(page).get_by_text("Question 9", exact=True)
+    expect(last).to_be_in_viewport()
+    messages = page.locator("#messages-container")
+    page.wait_for_function(AT_THE_BOTTOM, arg=messages.element_handle())
+    fetches: list[str] = []
+    page.on(
+        "request",
+        lambda request: (
+            fetches.append(request.url) if f"/api/v1/chats/share/{page_id}" in request.url else None
+        ),
+    )
+
+    page.wait_for_function(TO_THE_FIRST_MESSAGE, arg=[messages.element_handle(), opening])
+    page.wait_for_timeout(2000)  # a reloading page fetches the chat again within this
+
+    assert fetches == [], f"the open chat was fetched {len(fetches)} more times (#32657)"
+    # checked once, as it stands after the wait
+    expect(
+        conversation(page).get_by_text(opening, exact=True),
+        "the page jumped back to the bottom (#32657)",
+    ).to_be_in_viewport(timeout=1)
