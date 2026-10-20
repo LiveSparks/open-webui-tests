@@ -1,8 +1,9 @@
 """Automatic context compaction cut the conversation in the wrong place or fired at the wrong time.
 
-Six 0.11.0 fixes in `utils/context_compaction.py` and `utils/response.py`. When a saved chat
-grows past the token threshold, the next turn asks a model for a summary of the older turns and
-sends the provider the system prompt (with the summary appended) plus the recent turns.
+Six 0.11.0 fixes and a later seventh in `utils/context_compaction.py` and `utils/response.py`.
+When a saved chat grows past the token threshold, the next turn asks a model for a summary of the
+older turns and sends the provider the system prompt (with the summary appended) plus the recent
+turns.
 
 1. Turn boundaries (#27035, commits 959558f, 17e6496): the split was walked forward and then
    clamped back, so the kept part could start with an assistant reply. It now starts at the last
@@ -21,17 +22,24 @@ sends the provider the system prompt (with the summary appended) plus the recent
    copy of the database and booting on it.
 6. Context usage (commit 7a9928ef1, #27362): `GET /api/v1/chats/{id}` reports the tokens the next
    turn will be judged by.
+7. One long exchange (#32781, PR #32794): a chat over the threshold with a single earlier user turn
+   was never compacted (three messages or fewer were skipped, and no later user message sat far
+   enough back to keep the retention share), so the follow-up went out whole and failed against
+   the model's context window. It is now cut at the follow-up. The summary prompt renders only
+   each message's visible text, so tool output stored on the earlier reply reaches neither request.
 
 Twin of unit/chat/test_context_compaction.py.
 
 Discriminates, each fix reverted in its own copy: the old boundary walk fails the user-boundary,
-checkpoint, next-turn, no-boundary, retention and summary-text tests; ignoring the compaction
+checkpoint, next-turn, one-exchange, retention and summary-text tests; ignoring the compaction
 model fails the configured-model case; folding the system message in fails the system-prompt
 test and the empty-summary fallback; the checkpoint on the current message fails the checkpoint,
 next-turn and summary-text tests; summing `prompt_tokens` fails the tool-loop test; dropping the
 cap fails the capped case; ignoring the retention setting fails the keep-half case; reading only
 `input_tokens` (dev ef67cc3fa) fails the upgraded-chat test for all three dialects. The usage
-dialect, under-threshold, compaction-off, clamp and normalization tests pass on all.
+dialect, under-threshold, compaction-off, clamp and normalization tests pass on all. Both
+one-exchange cases pass with the #32781 fix (0adecf863) and fail on dev 2d9852c60 before it (no
+summary is made and the whole chat is sent, the tool output included).
 """
 
 from __future__ import annotations
@@ -58,6 +66,9 @@ CHAT_CONFIG = ("/api/v1/chats/config", "/api/v1/chats/config")
 SYSTEM_PROMPT = "You are a careful travel agent."
 SUMMARY = "SUMMARY OF THE EARLIER TURNS"
 COMPACTION_MODEL = "compaction-model"
+FOLLOW_UP = "question 2"
+TOOL_RESULT_ROW = "tide table row "
+TOOL_ANSWER = "The harbour log is clean."
 
 
 def is_summary_request(body: dict) -> bool:
@@ -262,24 +273,67 @@ def test_nothing_is_compacted_or_reported_while_compaction_is_off(user, upstream
     assert len(main_call(upstream)) == 8
 
 
-def test_a_conversation_without_a_later_user_turn_is_sent_whole(user, upstream, compaction):
-    compaction()
+def one_question_in_three_long_parts() -> list[dict]:
     replies = [
         {"role": "assistant", "content": f"part {number} " + "a" * 400} for number in (1, 2, 3)
     ]
-    with user.client() as client:
-        chat_id, last_id = seed_chat(client, [turns(1)[0], *replies])
-        next_turn(client, chat_id, last_id, "question 2")
+    return [turns(1)[0], *replies]
 
-    assert summary_requests(upstream) == []
-    assert [message["role"] for message in main_call(upstream)] == [
-        "system",
-        "user",
-        "assistant",
-        "assistant",
-        "assistant",
-        "user",
+
+def one_question_and_a_large_tool_result() -> list[dict]:
+    """A short reply whose stored output holds the 150 KB a tool returned."""
+    output = [
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "read_log",
+            "arguments": "{}",
+            "status": "completed",
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": [{"type": "input_text", "text": TOOL_RESULT_ROW * 10_000}],
+            "status": "completed",
+        },
+        {"type": "message", "content": [{"type": "output_text", "text": TOOL_ANSWER}]},
     ]
+    return [
+        {"role": "user", "content": "read me the harbour log"},
+        {"role": "assistant", "content": TOOL_ANSWER, "output": output},
+    ]
+
+
+@pytest.mark.parametrize(
+    "first_exchange",
+    [
+        pytest.param(one_question_in_three_long_parts, id="long-replies"),
+        pytest.param(one_question_and_a_large_tool_result, id="large-tool-result"),
+    ],
+)
+def test_one_long_exchange_is_summarized_before_the_follow_up(
+    user, upstream, compaction, first_exchange
+):
+    compaction()
+    upstream.queue(reply.text(SUMMARY, match=is_summary_request), reply.text("answer 2"))
+    history = first_exchange()
+    with user.client() as client:
+        chat_id, last_id = seed_chat(client, history)
+        next_turn(client, chat_id, last_id, FOLLOW_UP)
+
+    summaries = summary_requests(upstream)
+    sent = main_call(upstream)
+    roles = [message["role"] for message in sent]
+    assert len(summaries) == 1, f"no summary was made and the whole chat was sent: {roles}"
+    assert roles == ["system", "user"], f"more than the follow-up was kept: {roles}"
+    assert f"[CONVERSATION SUMMARY]\n{SUMMARY}" in sent[0]["content"]
+    assert sent[1]["content"] == FOLLOW_UP
+    summary_request = json.dumps(summaries[0])
+    assert history[-1]["content"] in summary_request, "the summary left out the earlier reply"
+    assert TOOL_RESULT_ROW not in summary_request, (
+        f"the summary request carries the tool output ({len(summary_request)} characters)"
+    )
+    assert TOOL_RESULT_ROW not in json.dumps(sent), "the follow-up was sent with the tool output"
 
 
 @pytest.mark.parametrize(
