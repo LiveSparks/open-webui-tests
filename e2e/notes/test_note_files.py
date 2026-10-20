@@ -21,6 +21,11 @@ to a reader and never saves a writer's removal, whose note upload skips the size
 note paste skips image compression, every test but the owner's chat fails; in a backend copy
 whose note chat leaves out the note's files the owner's chat test fails.
 
+A picture picked with Upload files in the note's menu shows in the note and is stored with it.
+Before 0.12.4 it was uploaded and left out of the note (open-webui/open-webui#32793, fix
+4604f2a3b). That test fails in the pre-fix build of the 0.12.4 changes, which has the commit
+reverted.
+
 One test pins a fixed bug (PR open-webui/open-webui#32328, fix 998ad4c9f): when the note saved
 while a file was still uploading, the server's echo of that save replaced the page's file list,
 and the finished upload then updated an entry no longer in it. The note kept the file as
@@ -356,3 +361,28 @@ def test_a_picture_pasted_into_a_note_is_shrunk_by_the_persons_image_compression
 
     expect(editor.locator("img")).to_have_count(1)
     eventually(lambda: stored_image_size(owner, note_id), (24, 16))
+
+
+def stored_html(owner: Actor, note_id: str) -> str:
+    with owner.client() as client:
+        note = client.get(f"/api/v1/notes/{note_id}").json()
+    return str(((note.get("data") or {}).get("content") or {}).get("html"))
+
+
+@pytest.mark.regression
+def test_a_picture_picked_with_upload_files_shows_in_the_note(page_for, make_user):
+    # open-webui/open-webui#32793, fix 4604f2a3b
+    owner = make_user()
+    note_id = create_note(owner)
+    page = page_for(owner)
+    editor = open_note(page, note_id)
+    expect(editor.locator("img")).to_have_count(0)
+
+    upload_to_note(page, "buoy.png", base64.b64decode(buoy_png()), "image/png")
+
+    expect(
+        editor.locator("img"), "the picture picked with Upload files is not in the note"
+    ).to_have_count(1)
+    eventually(lambda: 'src="data://' in stored_html(owner, note_id), True)
+    page.reload()
+    expect(editor.locator("img")).to_have_count(1)

@@ -15,6 +15,11 @@ dropped, the grid card showing no text, the grid title and the list row opening 
 the list asked for with no view option or access level, the Title column not sorting, the Shift
 delete button asking for a confirmation and the search action dropping the typed text (the last
 checked again on dev 22102e4a2).
+
+A note unpinned with the X on its entry in the sidebar's Notes section still offered Unpin in its
+menu on the Notes page, in either layout, until a reload: the list kept the pinned state it was
+loaded with (open-webui/open-webui#32707, issue #32706, fix 6a7205e96). The pinning test fails in
+the pre-fix build of the 0.12.4 changes, which has that commit reverted.
 """
 
 from __future__ import annotations
@@ -292,6 +297,66 @@ def test_holding_shift_deletes_a_note_at_once(page_for, make_user, layout):
     expect(main.get_by_text(doomed)).to_have_count(0)
     expect(main.get_by_label("Note Menu")).to_have_count(1)
     assert list(_stored_notes(author)) == [kept]
+
+
+# ---------------------------------------------------------------- pinning
+
+
+def _pinned_note_entry(page: Page, title: str) -> Locator:
+    """The note's entry in the sidebar's pinned Notes section, opening the sidebar if needed."""
+    open_sidebar = page.get_by_role("button", name="Open Sidebar", exact=True)
+    if open_sidebar.is_visible():
+        open_sidebar.click()
+    sidebar = page.get_by_role("navigation", name="Chat history")
+    section = sidebar.get_by_role("button", name="Notes", exact=True)
+    expect(section).to_be_visible()
+    if section.get_attribute("aria-expanded") != "true":
+        section.click()
+    return sidebar.locator("#pinned-notes-list > div").filter(has_text=title)
+
+
+def _only_notes_menu(page: Page) -> Locator:
+    """Open the menu of the one note the account has, in either layout."""
+    button = page.get_by_role("main").get_by_label("Note Menu")
+    expect(button).to_have_count(1)
+    button.click()
+    menu = page.get_by_role("menu")
+    expect(menu.get_by_role("button", name="Delete")).to_be_visible()
+    return menu
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("layout", ["List", "Grid"])
+def test_a_note_unpinned_from_the_sidebar_offers_pin_again_in_the_list(page_for, make_user, layout):
+    # open-webui/open-webui#32707 (issue #32706), fix 6a7205e96
+    author = make_user()
+    title = _unique("Moorings")
+    note_id = _create_note(author, title, "berth four")
+    with author.client() as client:
+        pinned = client.post(f"/api/v1/notes/{note_id}/pin")
+    assert pinned.status_code == 200, pinned.text
+    page = page_for(author)
+    _open_notes_page(page, title)
+    if layout == "Grid":
+        _choose(page, "List", "Grid")
+    menu = _only_notes_menu(page)
+    expect(menu.get_by_role("button", name="Unpin")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(menu).to_have_count(0)
+
+    entry = _pinned_note_entry(page, title)
+    entry.hover()
+    entry.get_by_role("button", name="Unpin").click()
+    expect(entry).to_have_count(0)
+    with author.client() as client:
+        assert client.get("/api/v1/notes/pinned").json() == []
+
+    menu = _only_notes_menu(page)
+    expect(
+        menu.get_by_role("button", name="Pin to Sidebar"),
+        "the list's menu still offers Unpin for a note unpinned from the sidebar (#32706)",
+    ).to_be_visible()
+    expect(menu.get_by_role("button", name="Unpin")).to_have_count(0)
 
 
 # ---------------------------------------------------------------- global search

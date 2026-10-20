@@ -15,6 +15,10 @@ editor's live updates concurrently, so an update that arrives early can cancel t
 one and store its older text last, and the note keeps missing the last characters typed
 (open-webui/open-webui#31585, fix PR #31596 open).
 
+The reader also sees the note's word and character counts; they read zero for a reader, since
+they were only counted on a local edit (open-webui/open-webui#32711, fix 252338964). The reader
+test fails in the pre-fix build of the 0.12.4 changes, which has that commit reverted.
+
 Discriminates: passes on dev 176d31d1d; in a frontend copy, each test fails when its behaviour
 is cut: the note editor ignoring the model's edit event, the editor staying editable for a reader,
 the editor not leaving a note it cannot load, the downloads writing the HTML, the Notes page
@@ -134,8 +138,14 @@ def test_a_reader_sees_the_note_read_only(page_for, make_user):
 
     editor = _open_note(page, note_id, text)
 
-    expect(page.get_by_role("main").get_by_text("Read-Only Access")).to_be_visible()
+    main = page.get_by_role("main")
+    expect(main.get_by_text("Read-Only Access")).to_be_visible()
     expect(editor).to_have_attribute("contenteditable", "false")
+    # open-webui/open-webui#32711: a reader saw 0 words and 0 characters
+    expect(main.get_by_text("5 words"), "the reader's word count is wrong (#32711)").to_be_visible()
+    expect(
+        main.get_by_text("24 characters"), "the reader's character count is wrong"
+    ).to_be_visible()
     editor.click()
     page.keyboard.type(" and nothing more")
     expect(editor).to_have_text(text)
