@@ -37,6 +37,13 @@ temporary chat's confirmation for a dispatched call fails the temporary chat tes
 pending call approved on one approval fails the mixed round and allow-once tests; letting a
 Continue run pending calls fails the pending Continue test; and resuming with full access after
 an approval fails the mixed round, second round and allow-once tests.
+
+Since 93ba628f3 (#32680, issue #32678) a picture the model draws after the user answered its
+`ask_user` question or approved or rejected a tool call is stored on the reply. Resolving the
+paused call saved the reply with empty fields that broke adding a file to it later in the turn,
+so the image was drawn but never shown and the model was told the drawing failed. On dev
+f36490bf2 with 93ba628f3 reverted in a backend copy every case of the paused-turn image test
+fails (no image on the reply, the model told the operand error of the issue).
 """
 
 from __future__ import annotations
@@ -182,10 +189,16 @@ def wait_for_status(client: httpx.Client, turn: ChatTurn, call_id: str, status: 
     raise AssertionError(f"{call_id} never reached {status}; the calls stood at {calls}")
 
 
-def resolve(client: httpx.Client, turn: ChatTurn, call_id: str, action: str) -> None:
+def resolve(
+    client: httpx.Client, turn: ChatTurn, call_id: str, action: str, answers: dict | None = None
+) -> None:
+    """Approve or reject a pending call, or answer an `ask_user` question with `answers`."""
+    decision = {"call_id": call_id, "action": action}
+    if answers is not None:
+        decision["answers"] = answers
     resolved = client.post(
         f"/api/v1/chats/{turn.chat_id}/messages/{turn.assistant_message_id}/resolve",
-        json={"call_id": call_id, "action": action},
+        json=decision,
     )
     assert resolved.status_code == 200, f"{action} {call_id}: {resolved.text}"
 
@@ -1327,6 +1340,51 @@ def test_an_image_drawn_through_call_tool_is_stored_on_the_reply(
             drawn[via] = (told["status"], told["message"])
 
     assert drawn["call_tool"] == drawn["direct"]
+
+
+def drawing(call_id: str) -> Reply:
+    return reply.tool_call("generate_image", {"prompt": "a lighthouse"}, call_id)
+
+
+def paused_turn(resolution: str) -> tuple[dict, list[Reply], str, str, bool]:
+    """Mode, the model's tool rounds, the user's action on call_1, the drawing's call id and
+    whether the drawing waits for approval as well."""
+    if resolution == "approved":
+        return ASK, [drawing("call_1")], "approve", "call_1", False
+    if resolution == "rejected":
+        return ASK, [reply.tool_call(TIME_TOOL, {}), drawing("call_2")], "reject", "call_2", True
+    question = reply.tool_call("ask_user", {"questions": [ask_user_question()]})
+    return {"tool_approval_mode": "full"}, [question, drawing("call_2")], "answer", "call_2", False
+
+
+@pytest.mark.parametrize("resolution", ["approved", "rejected", "answered"])
+def test_an_image_drawn_after_the_user_resolved_a_paused_call_is_stored_on_the_reply(
+    chat_settings, make_user, upstream, image_engine, resolution
+):
+    """#32680: the image was drawn but never reached the reply."""
+    mode, rounds, action, drawing_id, drawing_asks = paused_turn(resolution)
+    chat_settings(ENABLE_TOOL_SEARCH=False, ENABLE_TOOL_PERMISSIONS=True)
+    upstream.queue(*rounds, reply.text("Drawn."))
+    drawn_before = len(image_engine.requests_to("/images/generations"))
+    with make_user().client() as client:
+        turn = send_message(client, "draw it", params=mode, features={"image_generation": True})
+        wait_for_status(client, turn, "call_1", "pending")
+        resolve(
+            client, turn, "call_1", action, answers={"q1": ["A"]} if action == "answer" else None
+        )
+        if drawing_asks:
+            wait_for_status(client, turn, drawing_id, "pending")
+            resolve(client, turn, drawing_id, "approve")
+        message = wait_for_reply(client, turn)
+        assert len(image_engine.requests_to("/images/generations")) == drawn_before + 1
+        told = tool_messages(upstream.chat_requests()[-1])[drawing_id]
+        images = [file for file in message.get("files") or [] if file.get("type") == "image"]
+        assert images, f"the drawn image never reached the reply; the model was told {told}"
+        [image] = images
+        assert client.get(image["url"]).content == base64.b64decode(PNG_BASE64)
+
+    assert [entry["url"] for entry in json.loads(told)["images"]] == [image["url"]], told
+    assert message["content"].endswith("Drawn.")
 
 
 @pytest.fixture
