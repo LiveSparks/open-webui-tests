@@ -39,6 +39,13 @@ refusal red, one that skips the provider check turns the unknown provider case r
 takes a failed Entra ID token for an empty bearer turns the Entra ID token case red, one whose
 settings form takes any provider and sign-in turns their invalid setting cases red and one that
 reports every refused connection alike turns the unauthorized and not found cases red.
+
+Since c7e159bdd (#32733) a call sends the provider the user info headers when
+ENABLE_FORWARD_USER_INFO_HEADERS is on, as chat requests do, so a gateway in front of the
+provider knows who is calling; with it off a call sends none.
+
+Discriminates: on dev f36490bf2, a backend copy with c7e159bdd reverted turns the forwarded user
+info case red (the call carries no user headers).
 """
 
 from __future__ import annotations
@@ -49,7 +56,7 @@ import uuid
 import pytest
 
 from harness import upstream as reply
-from harness.actors import admin_of
+from harness.actors import admin_of, create_user
 from harness.audio_engine import AUDIO_CONFIG, CONFIG_IMPORT
 from harness.chat import send_message, wait_for_reply
 from harness.chat_history import seed_chat
@@ -76,12 +83,20 @@ from harness.voice_avatars import animation, avatar, upload
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 
 EVERYONE_READS = {"principal_type": "user", "principal_id": "*", "permission": "read"}
-# only the environment credential, unset here, so no token is fetched and nothing leaves the host
+# only the environment credential, unset here, so no token is fetched and nothing leaves the host;
+# one boot also serves the user info forwarding test
 ENTRA_ID_ON_AZURE_ENV = {
     "AUDIO_REALTIME_PROVIDER": "azure",
     "AUDIO_REALTIME_AUTH_TYPE": "microsoft_entra_id",
     "AZURE_TOKEN_CREDENTIALS": "EnvironmentCredential",
+    "ENABLE_FORWARD_USER_INFO_HEADERS": "true",
 }
+USER_INFO_HEADERS = (
+    "x-openwebui-user-id",
+    "x-openwebui-user-email",
+    "x-openwebui-user-name",
+    "x-openwebui-user-role",
+)
 DEFAULT_PROMPT_START = "You are the assistant in this chat, speaking with the user."
 
 
@@ -287,6 +302,8 @@ def test_a_call_opens_the_provider_session_the_admin_configured(
     assert call.path == f"/v1/realtime?model={VOICE_MODEL}"
     sent = {name: call.headers.get(name) for name in ("authorization", "api-key")}
     assert sent == {"authorization": None, "api-key": None, **sign_in}
+    forwarded = {name: call.headers[name] for name in USER_INFO_HEADERS if name in call.headers}
+    assert forwarded == {}, f"user info went out with forwarding off: {forwarded}"
     session = call.session
     assert session["instructions"].startswith(DEFAULT_PROMPT_START)
     assert session["audio"]["input"]["transcription"] == {"model": TRANSCRIPTION_MODEL}
@@ -582,6 +599,29 @@ def test_the_env_sets_entra_id_on_azure_and_a_missing_token_ends_the_call(instan
     assert (stored["PROVIDER"], stored["AUTH_TYPE"]) == ("azure", "microsoft_entra_id")
     assert message == "Unable to obtain a Microsoft Entra ID token for Realtime calls"
     assert provider.calls == []
+
+
+@pytest.mark.slow
+def test_with_forwarding_on_a_call_sends_the_user_info_headers(instance_with, provider):
+    """#32733: calls reached the provider without the user info headers chat requests carry."""
+    forwarding = instance_with(ENTRA_ID_ON_AZURE_ENV)
+    caller = create_user(forwarding, name="Harbour Pilot")
+    with (
+        admin_of(forwarding).client() as client,
+        using_realtime(client, provider, PROVIDER="openai", AUTH_TYPE="api_key"),
+        realtime_call(caller.base_url, caller.token, MOCK_MODEL_ID) as session,
+    ):
+        next_event(session, "bridge.ready")
+
+    [call] = provider.calls
+    sent = {name: call.headers.get(name) for name in USER_INFO_HEADERS}
+    assert sent == {
+        "x-openwebui-user-id": caller.id,
+        "x-openwebui-user-email": caller.email,
+        "x-openwebui-user-name": "Harbour Pilot",
+        "x-openwebui-user-role": "user",
+    }, f"the call carried {sent}"
+    assert call.headers.get("authorization") == f"Bearer {API_KEY}"
 
 
 def test_each_chat_snapshot_replaces_the_one_before(realtime, make_user):
