@@ -19,6 +19,10 @@ With 6e40c1714 (open-webui#32354) reverted in a frontend build both provider mod
 second change tries to create the model again). On dev 5032e834e the switch test passes and the
 show again test is red: Show Model sends the row without `params` and gets a 422, so the model
 stays hidden.
+Make Public on a provider model with no settings saved yet stored the model, but the page went
+on treating it as unsaved, so the next Hide or enable switch tried to create it again and was
+refused, Hide still showing "is now hidden" (open-webui/open-webui#32655, issue #32654, fix
+d8bef1ef9). That test fails in the pre-fix build of the 0.12.4 changes, which has it reverted.
 """
 
 from __future__ import annotations
@@ -160,6 +164,43 @@ def test_a_hidden_provider_model_can_be_shown_again(page_for, admin, provider_mo
     for wanted, entry in ((True, "Hide Model"), (False, "Show Model")):
         choose_from_menu(page, row, entry)
         assert stored_model(admin, provider_model)["meta"].get("hidden", False) is wanted
+
+
+def is_public(stored: dict) -> bool:
+    return any(
+        (entry["principal_type"], entry["principal_id"], entry["permission"])
+        == ("user", "*", "read")
+        for entry in stored.get("access_grants") or []
+    )
+
+
+@pytest.mark.regression
+def test_a_provider_model_made_public_is_then_hidden_and_switched_off(
+    page_for, admin, provider_model
+):
+    # open-webui/open-webui#32655 (issue #32654), fix d8bef1ef9
+    page = page_for(admin)
+    row = model_row(page, provider_model)
+    choose_from_menu(page, row, "Make Public")
+    expect(page.get_by_text("Model is now public")).to_be_visible()
+    assert is_public(stored_model(admin, provider_model))
+
+    tooltip_button(row, "More").click()
+    with page.expect_response(is_model_save):
+        page.get_by_role("menu").get_by_role("button", name="Hide Model").click()
+    switch = row.get_by_role("switch")
+    with page.expect_response(is_model_save):
+        switch.click()
+    expect(switch).to_have_attribute("aria-checked", "false")
+
+    stored = stored_model(admin, provider_model)
+    assert stored["meta"].get("hidden", False) is True, (
+        "hiding a model right after Make Public was not saved (#32654)"
+    )
+    assert stored["is_active"] is False, (
+        "switching a model off right after Make Public was not saved (#32654)"
+    )
+    assert is_public(stored), "the model lost its public access"
 
 
 def test_a_model_made_private_leaves_the_users_selector(page_for, admin, make_user, preset):
