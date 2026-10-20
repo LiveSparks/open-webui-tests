@@ -5,15 +5,19 @@ gets: the Controls panel, sharing, downloading and deleting a chat, editing, rea
 rating, continuing, regenerating, forking and deleting a reply, dictation, Voice mode, comparing
 models and uploading files. Each switch is on by default and the control is there; switched off
 in the dialog and saved, the control is gone from the next account's open chat. An admin keeps
-every control whatever the defaults say.
+every control whatever the defaults say. Allow Chat Export also decides whether a folder's menu in
+the sidebar and the Actions menu of Archived Chats offer Export.
 
 Discriminates: passes on dev 30f3f6a8f; in a frontend build whose Default permissions dialog
 saves the permissions it opened with, every "withdrawn" test and the file upload refusal fail
-while the "offered" and admin ones still pass.
+while the "offered" and admin ones still pass. In the pre-fix build of 0.12.4 (a21335bdd and
+c9936e81e reverted) the export test fails with the permission withheld: the folder menu offers
+Export, and with the folder check skipped, so does Archived Chats.
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import Callable
 
 import pytest
@@ -23,6 +27,7 @@ from harness import upstream as reply
 from harness.chat import ask
 from utils.chat_ui import last_reply
 from utils.model_selector import SELECTOR_BUTTON
+from utils.sidebar_folders import folder_link, folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -144,6 +149,61 @@ def test_an_admin_keeps_the_control_when_it_is_switched_off(
     page = open_answered_chat(page_for, admin, upstream)
 
     expect(CONTROLS[switch](page)).to_be_visible()
+
+
+def create_folder(account) -> str:
+    name = f"Harbour {uuid.uuid4().hex[:6]}"
+    with account.client() as client:
+        created = client.post("/api/v1/folders/", json={"name": name})
+    assert created.status_code == 200, created.text
+    return name
+
+
+def folder_menu_entries(page: Page, name: str) -> Locator:
+    """The entries of the "More" menu on the folder's sidebar row, once they show."""
+    page.get_by_role("button", name="Open Sidebar", exact=True).click()
+    sidebar = page.get_by_role("navigation", name="Chat history")
+    folders = sidebar.get_by_role("button", name="Folders", exact=True)
+    expect(folders).to_be_visible()
+    if folders.get_attribute("aria-expanded") != "true":
+        folders.click()
+    folder_link(sidebar, name).focus()
+    folder_row(sidebar, name).get_by_role("button").last.click()
+    menu = page.get_by_role("menu")
+    expect(menu.get_by_role("button", name="Delete")).to_be_visible()
+    return menu
+
+
+def archive_menu_entries(page: Page) -> Locator:
+    """The entries of the Actions menu in Settings > Archived Chats, once they show."""
+    page.get_by_role("button", name="User menu").first.click()
+    page.get_by_role("menu").get_by_role("button", name="Settings").click()
+    settings = page.get_by_role("dialog")
+    settings.get_by_role("tab", name="Archived Chats").click()
+    settings.locator("#tab-archived-chats").get_by_role("button", name="Actions").first.click()
+    menu = page.get_by_role("menu")
+    expect(menu.get_by_role("button", name="Unarchive All")).to_be_visible()
+    return menu
+
+
+# #32703 (fix a21335bdd) and #32684 (fix c9936e81e): a folder's Export and the archive's Export
+# were offered whatever Allow Chat Export said.
+@pytest.mark.parametrize("allowed", [True, False], ids=["allowed", "withheld"])
+def test_folder_and_archive_export_follow_allow_chat_export(
+    allowed, page_for, admin, make_user, preserve
+):
+    preserve("permissions")
+    save_default_permission(page_for(admin), "Allow Chat Export", turn_on=allowed)
+    account = make_user()
+    folder = create_folder(account)
+    page = page_for(account)
+    expected = 1 if allowed else 0
+
+    folder_export = folder_menu_entries(page, folder).get_by_role("button", name="Export")
+    expect(folder_export, "a folder's Export entry").to_have_count(expected)
+    page.keyboard.press("Escape")
+    archive_export = archive_menu_entries(page).get_by_role("button", name="Export")
+    expect(archive_export, "the Archived Chats Export entry").to_have_count(expected)
 
 
 def test_with_file_upload_off_upload_files_opens_no_file_picker(
