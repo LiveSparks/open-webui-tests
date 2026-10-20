@@ -6,12 +6,17 @@ now an empty segment is passed over in silence, and a failed one shows the error
 segment could not be transcribed. Please try again." with no reply. The call goes on, so the
 next question is answered as usual. And a transcript of an earlier segment that arrives while
 the caller is already speaking again no longer counts as the end of that newer speech: the voice
-waits for the caller to finish before it answers anything.
+waits for the caller to finish before it answers anything. Once they do, it answers once: the
+answer asked for after the last segment hears the whole sentence, so the earlier segment gets no
+answer of its own (open-webui/open-webui#32773, fix 25b115662; before it the caller heard the
+same answer twice).
 
 Discriminates: passes on the dev 87a937459 build. With 87a937459 reverted (a frontend copy built
 without its change to the call, on a backend copy without its change) all three go red: the
 voice speaks the old "could not transcribe" status before the answer, no error shows for the
 failed segment, and the earlier question's answer is asked for while the caller still speaks.
+The run-on test goes red on the 0.12.4 pre-fix build (25b115662 reverted among other fixes): the
+voice speaks the earlier segment's answer before the whole sentence's.
 """
 
 from __future__ import annotations
@@ -82,7 +87,7 @@ def test_a_segment_that_cannot_be_transcribed_shows_an_error_and_gets_no_reply(
     expect(call_status(page, "Listening")).to_be_visible(timeout=TURN_TIMEOUT_MS)
 
 
-def test_the_voice_waits_for_speech_that_runs_on_past_an_earlier_transcript(
+def test_the_voice_waits_for_speech_that_runs_on_past_an_earlier_transcript_and_answers_once(
     voice_page_for, make_user, realtime
 ):
     first, second = f"is the harbour open {words()}", f"and the lighthouse {words()}"
@@ -100,7 +105,8 @@ def test_the_voice_waits_for_speech_that_runs_on_past_an_earlier_transcript(
         time.sleep(0.1)
     still_speaking.set()
     expect(conversation(page).get_by_text(second)).to_be_visible(timeout=TURN_TIMEOUT_MS)
-    realtime.wait_for(
-        lambda: first_answer in realtime.spoken and second_answer in realtime.spoken,
-        "both answers spoken",
+    realtime.wait_for(lambda: second_answer in realtime.spoken, "the whole sentence answered")
+    assert realtime.spoken == [second_answer], (
+        f"the voice answered the sentence more than once: {realtime.spoken}"
     )
+    assert len(answers_asked_for(call)) == 1, "the voice was asked for more than one answer"
