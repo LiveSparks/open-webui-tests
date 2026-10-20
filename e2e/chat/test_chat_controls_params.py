@@ -3,11 +3,12 @@
 Under Controls, Advanced Params switches a parameter from Default to a value of the chat's own:
 a temperature and a seed set there are sent to the provider with the next message and with the
 messages after a reload, and so are top_p, max_tokens, min_p, the two penalties, the stop
-sequences (comma separated, `\\n` read as a line break), the reasoning effort and the logit bias
-(`token:bias` pairs sent as a map). A custom parameter an admin adds there is sent under its name,
-its value read as JSON when it is JSON and kept as text when it is not. The chat's own system
-prompt is sent in place of none, again after a reload. A new chat starts from the defaults again,
-and going back and forth between two chats in the sidebar keeps each chat's values to itself.
+sequences (comma separated, `\\n` read as a line break, a `%` kept as typed), the reasoning
+effort and the logit bias (`token:bias` pairs sent as a map). A custom parameter an admin adds
+there is sent under its name, its value read as JSON when it is JSON and kept as text when it is
+not. The chat's own system prompt is sent in place of none, again after a reload. A new chat
+starts from the defaults again, and going back and forth between two chats in the sidebar keeps
+each chat's values to itself.
 
 The parameters an account saves under Settings > General > Advanced Parameters are sent with
 every chat that sets none of its own; a value set in the chat's Controls wins over them, and a
@@ -21,7 +22,9 @@ null replaces the account's value in the request, so no temperature is sent at a
 Discriminates: every other test passes on dev ebc6add67. On a build that sends only the account's
 parameters every chat-value test fails (and the switched-back test passes); on one that ignores a
 loaded chat's stored parameters the reload, sidebar and system prompt tests fail; on one that
-sends the stop field as one word the sampling test fails. In a backend copy that keeps custom
+sends the stop field as one word the sampling test fails. In the pre-fix build of 0.12.4
+(fdb304be2 reverted) a stop sequence holding `%` keeps the message from sending, so the percent
+sign test gets no reply. In a backend copy that keeps custom
 values as text both custom parameter tests fail, and one that drops the parameters from a saved
 account setting fails the three account tests.
 """
@@ -134,6 +137,16 @@ EXPECTED_SAMPLING = {
     "reasoning_effort": "high",
     "logit_bias": {"5432": 100, "413": -100},
 }
+
+
+def test_a_stop_sequence_with_a_percent_sign_is_sent_as_typed(page_for, make_user, upstream):
+    """#32649 (fix fdb304be2): a `%` in a stop sequence kept every message from sending."""
+    page = page_for(make_user())
+    _set_text(_advanced_params(page), "Stop Sequence", "100%,END")
+
+    request = _ask(page, upstream)
+
+    assert request.get("stop") == ["100%", "END"]
 
 
 def test_an_admins_custom_parameter_is_sent_under_its_name(page_for, make_user, upstream):
