@@ -57,7 +57,7 @@ def test_a_knowledge_tool_citation_shows_its_relevance(page_for, shared_notes, u
 
     chat = conversation(page)
     chat.get_by_role("button", name="Toggle 1 source").click()
-    chat.get_by_role("button", name=f"View source: {filename}").click()
+    chat.get_by_role("button", name=f"View source: 1 {filename}").click()
     citation = page.get_by_role("dialog")
     expect(citation).to_contain_text(NOTES)
     expect(citation.get_by_text(PERCENTAGE)).to_be_visible()

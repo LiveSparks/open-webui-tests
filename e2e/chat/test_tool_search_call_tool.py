@@ -392,7 +392,7 @@ def test_a_citation_a_dispatched_tool_emits_is_listed(
 
     assert tool_results(upstream, prompt) == ["report for Pula"]
     conversation(page).get_by_role("button", name="Toggle 1 source").click()
-    conversation(page).get_by_role("button", name="View source: Harbour log").click()
+    conversation(page).get_by_role("button", name="View source: 1 Harbour log").click()
     expect(page.get_by_role("dialog")).to_contain_text("The lights of Pula were lit at dusk.")
 
 
