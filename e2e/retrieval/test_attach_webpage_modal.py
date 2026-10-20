@@ -6,14 +6,16 @@ as an attachment named by its link. The text of the page reaches the model with 
 and a page the server cannot read is refused with a toast and leaves no attachment. A link in the
 `load-url` parameter of a chat link is attached the same way once the person confirms it in the
 Open link dialog, and nothing is fetched before that (since 0ffd86967). Without the web upload
-permission the menu entry does nothing for a user and still opens for an admin. The pages are a
+permission the menu entry does nothing for a user and still opens for an admin; without the file
+upload permission an attached page stays and reaches the model. The pages are a
 local service, on an instance that may fetch loopback addresses.
 
 Discriminates: passes on the 176d31d1d build; with the link validation removed the refused-text
 test goes red, with the de-duplication removed the several-links test does, with the handoff to
 the chat or the modal's close button removed the attachment, refusal and close tests do, and with
 the permission check removed from the menu entry the no-permission test does; in a build of dev
-22102e4a2 that ignores the `load-url` parameter its test goes red.
+22102e4a2 that ignores the `load-url` parameter its test goes red. In the pre-fix build of 0.12.4
+(bb8d49ff3 reverted) the attached page vanishes from the composer without file upload.
 """
 
 from __future__ import annotations
@@ -184,6 +186,29 @@ def test_the_modal_closes_without_attaching_anything(page_for, fetching_instance
 
     expect(page.get_by_role("textbox", name="Webpage URLs")).to_have_count(0)
     expect(page.get_by_text(link(pages, "/tides"))).to_have_count(0)
+
+
+def test_an_attached_page_stays_without_the_file_upload_permission(
+    page_for, fetching_instance, pages, preserve
+):
+    """#32701 (fix bb8d49ff3): without file upload the composer dropped an attached page."""
+    preserve("permissions", on=fetching_instance)
+    with admin_of(fetching_instance).client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["chat"]["file_upload"] = False
+        saved = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert saved.status_code == 200, saved.text
+    page = open_chat(page_for, fetching_instance)
+    prompt = "when is high tide, going by the page?"
+    fetching_instance.upstream.queue(reply.text("at noon", match=reply.answering(prompt)))
+
+    attach(page, link(pages, "/tides"))
+
+    expect(page.get_by_text(link(pages, "/tides"))).to_be_visible(timeout=30_000)
+    send(page, prompt)
+    expect_reply(page, "at noon")
+    request = next(filter(reply.answering(prompt), fetching_instance.upstream.chat_requests()))
+    assert "High tide at the harbour is at noon" in str(request["messages"])
 
 
 def test_a_user_without_the_web_upload_permission_cannot_open_the_modal(

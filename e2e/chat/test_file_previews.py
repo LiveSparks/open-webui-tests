@@ -7,12 +7,14 @@ Markdown with its formatting. A PDF shows its extracted text; the Preview tab's 
 "Failed to load PDF." in the suite's Chromium 131 for any PDF, so it is not driven here. An
 attached picture opens full size from the sent message and downloads as the bytes that were
 uploaded. Switching a long document to Using Entire Document in its dialog sends the model the
-whole text where focused retrieval sends a few pieces of it.
+whole text where focused retrieval sends a few pieces of it, and a file's switch shows its own
+mode after another attachment is removed.
 
 Discriminates: passes on the dev ebc6add67 build. In a frontend build whose file dialog shows
 "No content" for the text, no longer takes a CSV for a spreadsheet, hides the sheet tabs, never
 loads a Word document, shows Markdown as plain text and ignores the Using Entire Document switch,
-and whose picture preview never opens, every test fails.
+and whose picture preview never opens, every test fails. In the pre-fix build of 0.12.4
+(a944564c2 reverted) the remaining file shows the removed file's Using Entire Document.
 """
 
 from __future__ import annotations
@@ -193,6 +195,30 @@ def landmarks_sent(upstream, question: str, landmarks: list[str]) -> list[str]:
     [request] = [body for body in upstream.chat_requests() if reply.answering(question)(body)]
     sent = json.dumps(request["messages"])
     return [name for name in landmarks if name in sent]
+
+
+def test_a_files_mode_switch_shows_its_own_mode_after_another_file_is_removed(page_for, make_user):
+    """#32699 (fix a944564c2): the remaining file's switch showed the removed file's mode."""
+    page = page_for(make_user())
+    report, _ = long_report()
+    dialog = attach_and_open(page, "castles.txt", report, "text/plain")
+    dialog.get_by_role("switch").click()
+    expect(dialog.get_by_text("Using Entire Document")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    dialog = attach_and_open(page, "rivers.txt", "The Drau flows east.", "text/plain")
+    expect(dialog.get_by_text("Using Focused Retrieval")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+
+    removed = file_chip(page.locator("form"), "castles.txt")
+    removed.hover()
+    removed.get_by_role("button", name="Remove File").click()
+    expect(page.locator("form").get_by_text("castles.txt")).to_have_count(0)
+
+    dialog = open_file(page, file_chip(page.locator("form"), "rivers.txt"), "rivers.txt")
+    expect(dialog.get_by_text("Using Focused Retrieval")).to_be_visible()
+    expect(dialog.get_by_role("switch")).to_have_attribute("aria-checked", "false")
 
 
 def test_using_the_entire_document_sends_the_model_all_of_it(page_for, make_user, upstream):
