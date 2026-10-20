@@ -14,7 +14,9 @@ Discriminates: passes on the dev ebc6add67 build. In its mutation build (the `re
 copy: links without `target`, every link address kept as written and quotes drawn as plain
 blocks) the structure test, its reload twin, the new tab test and both unsafe link cases go red;
 the in-app link and HTML text tests stay green there as controls. With diagrams no longer drawn
-(the `rendering-front2` copy) the table, code and diagram reload test goes red.
+(the `rendering-front2` copy) the table, code and diagram reload test goes red. On the 0.12.4
+pre-fix build (2bebbb44e reverted among other fixes) the structure test, its reload twin and the
+new tab test go red on the spaces added before formatted and linked words.
 """
 
 from __future__ import annotations
@@ -59,6 +61,7 @@ Some **bold**, *italic*, ~~struck~~ and `inline code` words.
 Done planning."""
 
 MARKDOWN_SIGNS = ["**", "~~", "# ", "> ", "[!WARNING]", "- [x]", "---"]
+FORMATTED_LINE = "Some bold, italic, struck and inline code words."
 
 
 def ask(page: Page, upstream, answer: str, prompt: str, last_words: str) -> Locator:
@@ -75,6 +78,12 @@ def new_tabs_of(page: Page) -> list[Page]:
     return opened
 
 
+def expect_written_text(paragraph: Locator, text: str) -> None:
+    """The paragraph's text exactly as written, with no space added around its formatted words."""
+    shown = paragraph.text_content()
+    assert shown == text, f"the paragraph reads {shown!r} instead of {text!r}"
+
+
 def left_edge(element: Locator) -> float:
     return element.evaluate("element => element.getBoundingClientRect().left")
 
@@ -86,6 +95,7 @@ def expect_the_plan_drawn(box: Locator) -> None:
     expect(box.get_by_role("emphasis")).to_have_text("italic")
     expect(box.get_by_role("deletion")).to_have_text("struck")
     expect(box.get_by_role("code").filter(has_text="inline code")).to_be_visible()
+    expect_written_text(box.get_by_role("paragraph").filter(has_text="inline code"), FORMATTED_LINE)
 
     steps = box.get_by_role("list").filter(has_text="Pack the bags")
     first_step = steps.get_by_role("listitem").filter(has_text="Pack the bags")
@@ -177,6 +187,10 @@ def test_a_web_link_opens_in_a_new_tab_and_a_mail_link_keeps_its_address(
 
     link = box.get_by_role("link", name="the guide")
     expect(link).to_have_attribute("href", guide)
+    expect_written_text(
+        box.get_by_role("paragraph").filter(has_text="End of links."),
+        "Read the guide or mail us. End of links.",
+    )
     with page.context.expect_page() as opened:
         link.click()
 
