@@ -5,10 +5,16 @@ questions in one turn, Open WebUI refused them but stopped the turn there: the m
 told and the page showed no answer. The refusal now goes back to the model, whose next reply
 reaches the page. A single well-formed question still opens the question card.
 
+The card follows the Chat Direction setting (open-webui/open-webui#32784, fix aee4cbf46): with the
+default Auto a question in Hebrew reads right to left and an English one left to right, and the
+Other box reads right to left once Hebrew is typed into it.
+
 Twin of unit/chat/test_ask_user_refusal.py, next to integration/chat/test_ask_user_refusal.py.
 
 Discriminates: with be958d7b0 reverted the refused turn never shows a reply; the question card
-shows on both.
+shows on both. On the 0.12.4 pre-fix build (aee4cbf46 reverted among other fixes) the Hebrew
+card test goes red (its question reads left to right); the English card stays left to right on
+both.
 """
 
 from __future__ import annotations
@@ -35,8 +41,21 @@ PLAN_QUESTION = {
 }
 
 
-def ask_user_call(call_id: str) -> dict:
-    arguments = json.dumps({"questions": [PLAN_QUESTION]})
+HEBREW_QUESTION = {
+    "id": "plan",
+    "header": "תוכנית",
+    "question": "איזו תוכנית מתאימה לך ביותר?",
+    "options": [
+        {"label": "בסיסית", "description": "הזולה ביותר"},
+        {"label": "מקצועית", "description": "המהירה ביותר"},
+    ],
+    "allow_other": True,
+}
+HEBREW_ANSWER = "אחרת לגמרי"
+
+
+def ask_user_call(call_id: str, question: dict = PLAN_QUESTION) -> dict:
+    arguments = json.dumps({"questions": [question]})
     return {
         "id": call_id,
         "type": "function",
@@ -64,6 +83,21 @@ def test_a_single_question_opens_the_question_card(chat_page, upstream):
 
     send(chat_page, "help me choose a plan")
 
-    expect(chat_page.get_by_text("Which plan fits you best?")).to_be_visible(timeout=30_000)
+    question = chat_page.get_by_text("Which plan fits you best?")
+    expect(question).to_be_visible(timeout=30_000)
     expect(chat_page.get_by_text("The cheapest one")).to_be_visible()
     expect(chat_page.get_by_text("The fastest one")).to_be_visible()
+    expect(question).to_have_css("direction", "ltr")
+
+
+def test_a_hebrew_question_card_reads_right_to_left(chat_page, upstream):
+    upstream.queue(Reply(tool_calls=[ask_user_call("call_plan", HEBREW_QUESTION)]))
+
+    send(chat_page, "help me choose a plan in hebrew")
+
+    question = chat_page.get_by_text(HEBREW_QUESTION["question"])
+    expect(question).to_be_visible(timeout=30_000)
+    expect(question, "the Hebrew question reads left to right").to_have_css("direction", "rtl")
+    other = chat_page.get_by_placeholder("Type your answer")
+    other.fill(HEBREW_ANSWER)
+    expect(other, "Hebrew typed as Other reads left to right").to_have_css("direction", "rtl")
