@@ -1,6 +1,7 @@
 """Journey: the chat list's bulk actions and folder views, each confined to the caller's chats.
 
-Archive all moves every chat of the account out of the sidebar into the archive, and unarchive
+Archive all moves every chat of the account out of the sidebar and out of its folder into the
+archive, so deleting the folder afterwards leaves those chats in the archive, and unarchive
 all brings them back with their tags, which archiving keeps under their own names. Export all
 streams every chat of the account, archived ones included, one JSON object per line. A folder
 lists its chats and those of its subfolders, and its paged list holds ten chats a page. Marking
@@ -11,7 +12,8 @@ account's chats keep the state they had.
 Discriminates: in a backend copy, dropping the owner filter from archive all turns the archive
 test red (the stranger's chat is archived too), dropping archived chats from the tag count
 (78550396d reverted) turns the tag test red, and marking chats read without the owner filter
-turns the read test red.
+turns the read test red. The folder delete test passes on dev f36490bf2 and fails with 97f5c4e97
+reverted (the archived chat is deleted with the folder).
 """
 
 from __future__ import annotations
@@ -93,6 +95,29 @@ def test_archive_all_moves_every_chat_of_the_account_to_the_archive(owner, stran
         assert all(chat["archived"] for chat in in_archive)
     assert read_chat(stranger, stranger_chat_id)["archived"] is False
     assert stranger_chat_id in sidebar_ids(stranger)
+
+
+def test_deleting_a_folder_after_archive_all_keeps_the_archived_chats(owner):
+    """#32647, fix 97f5c4e97: archived chats stayed in their folder and went with it."""
+    with owner.client() as client:
+        folder_id = create_folder(client)
+        archived_id = create_chat(client, "Archived", folder_id)
+        assert client.post("/api/v1/chats/archive/all").is_success
+        filed_later_id = create_chat(client, "Filed after archiving", folder_id)
+
+        deleted = client.delete(f"/api/v1/folders/{folder_id}", params={"delete_contents": True})
+
+        assert deleted.status_code == 200, deleted.text
+        kept = client.get(f"/api/v1/chats/{archived_id}")
+        assert kept.status_code == 200, f"deleting the folder deleted an archived chat: {kept.text}"
+        assert (kept.json()["archived"], kept.json()["folder_id"]) == (True, None)
+        in_archive = {chat["id"] for chat in client.get("/api/v1/chats/all/archived").json()}
+        assert archived_id in in_archive
+        # a missing chat answers 401, the same as someone else's
+        gone = client.get(f"/api/v1/chats/{filed_later_id}")
+        assert gone.status_code != 200, (
+            "a chat still in the folder survived deleting the folder with its contents"
+        )
 
 
 def test_unarchive_all_brings_the_chats_and_their_tags_back(owner, stranger_chat):
