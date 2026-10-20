@@ -11,6 +11,7 @@
   (`48f78ca58`, #26850). The test clears the owner in the database, as a legacy row has it.
 * A connection's `prefix_id` was removed anywhere in the model name, not only in front
   (`ed663f16e`), and Ollama refused a model pulled after its model list was cached (#27353).
+  The embeddings API did not remove it at all (`c901bc39d`, #32724, fixed in 0.12.4).
 * Saving a connection left the previous model list live until a restart; both config updates
   now clear the cached lists.
 * Only the model listing honoured a disabled OpenAI API; a direct chat request still went out.
@@ -24,7 +25,8 @@ the pipe's payload copy, the nullable `user_id`, `strip_provider_model_prefix` b
 `str.replace`, Ollama's refetch, either config update's cache clear, the 503 guard): the key
 reaches the provider, the continuation carries the pipe's seed, the listings answer 500, the
 provider gets `llama3.tuned`, the pulled model is a 400, the new model is missing and the
-disabled request is not refused.
+disabled request is not refused. The embeddings prefix test passes on dev f36490bf2 and fails
+with c901bc39d reverted (the provider gets `acme.embedder`).
 """
 
 from __future__ import annotations
@@ -181,6 +183,27 @@ def test_an_openai_prefix_is_stripped_only_in_front(admin, preserve, listener):
     sent = listener.requests_to("/v1/chat/completions")[-1].json()
     assert sent["model"] == PREFIXED_NAME, (
         f"the provider was sent {sent['model']!r}: the prefix was removed inside the name too"
+    )
+
+
+def test_an_openai_prefix_is_stripped_from_an_embeddings_request(admin, preserve, listener):
+    # #32724, fix c901bc39d: the embeddings API sent the prefixed name on to the provider
+    preserve(OPENAI_CONFIG)
+    listener.route("GET", "/v1/models", json_answer({"data": [{"id": "embedder"}]}))
+    vectors = {"object": "list", "data": [{"index": 0, "embedding": [0.5, 0.25]}]}
+    listener.route("POST", "/v1/embeddings", json_answer(vectors))
+    with admin.client() as client:
+        _add_openai_connection(client, f"{listener.base_url}/v1", prefix_id="acme")
+        assert "acme.embedder" in _listed_ids(client)
+        answered = client.post(
+            "/api/embeddings", json={"model": "acme.embedder", "input": ["a heron"]}
+        )
+
+    assert answered.status_code == 200, answered.text
+    assert [row["embedding"] for row in answered.json()["data"]] == [[0.5, 0.25]]
+    sent = listener.requests_to("/v1/embeddings")[-1].json()
+    assert sent["model"] == "embedder", (
+        f"the provider was sent {sent['model']!r}, the name with the connection's Prefix ID"
     )
 
 
