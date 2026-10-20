@@ -3,11 +3,16 @@
 A picture pasted with Control+V into a channel's input is attached and posts with the message,
 and the other member sees it on that message. Image Compression in Settings > Interface shrinks
 it only when Compress Images in Channels is on as well; with that switch off the channel gets the
-picture at its own size. The size is read from the picture the other member is shown.
+picture at its own size. Compress Images in Channels is on by default, so a person who never
+touched it gets the picture compressed as well; that case got it at its own size until
+open-webui/open-webui#32693 (fix 70fb5462e). The size is read from the picture the other member is
+shown.
 
 Discriminates: passes on the dev ebc6add67 build. In a frontend build whose channel input ignores
 the person's compression settings the compressed case fails, and in one that compresses whenever
-Image Compression is on, Compress Images in Channels or not, the other case fails.
+Image Compression is on, Compress Images in Channels or not, the other case fails. In the
+pre-fix build of the 0.12.4 changes (70fb5462e reverted) the left-at-default case posts the
+picture at 96x64.
 """
 
 from __future__ import annotations
@@ -59,8 +64,8 @@ def message(page: Page, text: str) -> Locator:
 
 @pytest.mark.parametrize(
     ("in_channels", "expected_size"),
-    [(False, [96, 64]), (True, [24, 16])],
-    ids=["compression-outside-channels", "compression-in-channels"],
+    [(False, [96, 64]), (True, [24, 16]), (None, [24, 16])],
+    ids=["compression-outside-channels", "compression-in-channels", "in-channels-left-at-default"],
 )
 def test_a_pasted_picture_posts_at_the_size_the_persons_compression_asks_for(
     channels_on, make_user, page_for, in_channels, expected_size
@@ -69,8 +74,9 @@ def test_a_pasted_picture_posts_at_the_size_the_persons_compression_asks_for(
     compression = {
         "imageCompression": True,
         "imageCompressionSize": {"width": 24, "height": 16},
-        "imageCompressionInChannels": in_channels,
     }
+    if in_channels is not None:
+        compression["imageCompressionInChannels"] = in_channels
     with sender.client() as client:
         saved = client.post("/api/v1/users/user/settings/update", json={"ui": compression})
     assert saved.status_code == 200, saved.text

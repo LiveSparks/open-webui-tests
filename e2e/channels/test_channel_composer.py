@@ -16,11 +16,17 @@ could open until dev 8a4547104 (open-webui/open-webui#31587). The mention toast 
 mention markup until PR #31601 (open-webui/open-webui#31586). After a pick the input takes focus
 back one animation frame later, so the tests wait for that before typing on.
 
+A prompt picked from the "/" menu puts the prompt's text into the input, and that text is what
+posts; it put a command chip there that posted as mention markup until
+open-webui/open-webui#32713 (fix 1d0b78271).
+
 Discriminates: passes on dev 176d31d1d; in a frontend copy, a picker that drops the mention type
 turns the person and thread model tests red, a toast that goes nowhere on click turns the person
 test red, sending the message without its files turns the file test red and a channel link
 that opens nothing turns the channel link test red (checked on dev ebc6add67); in a backend copy,
 answering in a thread whatever the reply mode turns the channel reply mode test red.
+In the pre-fix build of the 0.12.4 changes (1d0b78271 reverted) the prompt test is red: the
+input holds a chip in place of the prompt's text.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
+from harness.access import grant
 from harness.channel_chat import enable_channels as enable_channels_with_reply_mode
 from harness.channel_quotes import enable_channels, group_channel
 from harness.upstream import MOCK_MODEL_ID
@@ -271,3 +278,37 @@ def test_a_linked_channel_opens_for_the_member_who_clicks_it(people, page_for):
     assert stored["content"].startswith(f"<#C:{linked_id}|{linked_name}>")
     link.click()
     expect(member_page).to_have_url(re.compile(f"/channels/{linked_id}"))
+
+
+@pytest.mark.regression
+def test_a_prompt_picked_from_the_slash_menu_posts_its_text(people, page_for, admin):
+    # open-webui/open-webui#32713, fix 1d0b78271
+    sender, _, channel_id = people
+    suffix = uuid.uuid4().hex[:6]
+    command = f"tides-{suffix}"
+    text = f"When is high water at the harbour mouth? {suffix}"
+    form = {
+        "command": command,
+        "name": f"Tides {suffix}",
+        "content": text,
+        "access_grants": [grant("user", sender.id, "read")],
+    }
+    with admin.client() as client:
+        created = client.post("/api/v1/prompts/create", json=form)
+    assert created.status_code == 200, created.text
+    prompt_id = created.json()["id"]
+    try:
+        page = _open_channel(page_for, sender, channel_id)
+        chat_input(page).click()
+        page.keyboard.type(f"/{command}")
+        page.locator("#suggestions-container").get_by_role("button", name=command).click()
+
+        expect(
+            chat_input(page), "the picked prompt did not put its text in the input"
+        ).to_have_text(text)
+        page.keyboard.press("Enter")
+        expect(_message(page, text)).to_be_visible()
+        assert [message["content"] for message in _stored(sender, channel_id)] == [text]
+    finally:
+        with admin.client() as client:
+            client.delete(f"/api/v1/prompts/id/{prompt_id}/delete")
