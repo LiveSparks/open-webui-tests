@@ -3,12 +3,14 @@
 Each action is taken from the menu on the chat's sidebar row, and each is read back after a
 reload, so what shows is what the server stored: the new title, the chat under Pinned, the chat
 among Archived Chats in the settings, the chat gone, the chat inside its folder, a copy holding the
-conversation beside the original, and the unread dot until the chat is opened again.
+conversation beside the original, and the unread dot until the chat is opened again. A rename to
+only spaces is refused with an error and the stored title stays.
 
 Discriminates: passes on dev 30f3f6a8f; in a backend copy each test fails when its route answers
 without storing the change: the chat update dropping `title`, the pin and archive toggles not
 flipping, the delete route not deleting, the folder route not moving the chat, the clone route
-storing an empty conversation and the unread route leaving the read time alone.
+storing an empty conversation and the unread route leaving the read time alone. In the pre-fix
+build of 0.12.4 (9cbd27011 reverted) the rename to spaces shows no error and saves the blank title.
 """
 
 from __future__ import annotations
@@ -94,6 +96,21 @@ def test_a_renamed_chat_keeps_its_new_title(sidebar):
     _reloaded(sidebar)
     expect(_chat_row(sidebar, "Trip to the mountains")).to_be_visible()
     expect(_chat_row(sidebar, TITLE)).to_have_count(0)
+
+
+def test_a_chat_renamed_to_only_spaces_keeps_its_title(sidebar, owner):
+    """#32770 (fix 9cbd27011): a title of only spaces was saved and the chat showed blank."""
+    _chat_menu(sidebar, TITLE).get_by_role("button", name="Rename").click()
+    sidebar.page.keyboard.press("Control+A")
+    sidebar.page.keyboard.type("   ")
+    sidebar.page.keyboard.press("Enter")
+
+    expect(sidebar.page.get_by_text("Title cannot be an empty string.")).to_be_visible()
+    expect(_chat_row(sidebar, TITLE)).to_be_visible()
+    with owner.client() as client:
+        listed = client.get("/api/v1/chats/")
+    assert listed.status_code == 200, listed.text
+    assert [chat["title"] for chat in listed.json()] == [TITLE]
 
 
 def test_a_pinned_chat_stays_pinned(sidebar):
