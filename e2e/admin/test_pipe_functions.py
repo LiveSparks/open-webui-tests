@@ -6,11 +6,13 @@ answered by the pipe's code, which is handed the person's message. A manifold pi
 model per entry of its `pipes`, each named with the class's `name` before the entry's name, and
 each answers as itself. A pipe switched off in Admin Panel > Functions leaves the selector. A
 pipe with user valves shows a Valves knob beside the message input, and the value a person saves
-there shapes the pipe's next answer.
+there shapes the pipe's next answer. Without Allow Chat Valves a user is not offered that knob,
+while an admin still is.
 
 Discriminates: passes on dev ebc6add67. One backend copy listing a single pipe under its id,
 every manifold as one plain pipe and switched-off pipes as well, and handing every pipe the
-default user valves, turned each test red on its own edit.
+default user valves, turned each test red on its own edit. The Allow Chat Valves test fails in
+the pre-fix build of 0.12.4 (46cdd70d7 reverted): the user is offered the knob.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
 from harness.python_tools import EVERYONE_READS
@@ -186,3 +188,35 @@ def test_a_pipes_user_valves_set_beside_the_message_input_shape_its_answer(
 
             send(page, "hello again?")
             expect_reply(page, "Welcome aboard, Ada.")
+
+
+def valves_knob(page: Page) -> Locator:
+    composer = page.locator("form").filter(has=chat_input(page))
+    return composer.get_by_role("button", name="Valves", exact=True)
+
+
+def _withhold_chat_valves(admin: Actor) -> None:
+    with admin.client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["chat"]["valves"] = False
+        saved = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert saved.status_code == 200, saved.text
+
+
+def test_without_allow_chat_valves_a_pipe_offers_no_valves_beside_the_message_input(
+    page_for, admin, make_user, preserve
+):
+    """#32772 (fix 46cdd70d7): a pipe's Valves knob showed whatever Allow Chat Valves said."""
+    preserve("permissions")
+    _withhold_chat_valves(admin)
+    name = f"Pier welcome {uuid.uuid4().hex[:6]}"
+    with named_function(admin, name, WELCOME_PIPE) as pipe_id:
+        with shared_with_everyone(admin, {pipe_id: name}):
+            pages = {"admin": page_for(make_user(role="admin")), "user": page_for(make_user())}
+            for page in pages.values():
+                new_chat(page)
+                select_model(page, name)
+                expect(page.get_by_role("button", name=f"Selected model: {name}")).to_be_visible()
+
+            expect(valves_knob(pages["admin"]), "an admin keeps the knob").to_be_visible()
+            expect(valves_knob(pages["user"]), "the user is offered the knob").to_have_count(0)
