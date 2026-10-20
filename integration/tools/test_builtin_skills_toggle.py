@@ -1,13 +1,21 @@
-"""Pins the per-model Skills builtin tool toggle (upstream 55e1c44c9).
+"""Pins the per-model Skills builtin tool toggle (upstream 55e1c44c9) and lazy skill loading.
 
 The model editor stores the Skills switch as `meta.builtinTools.skills`. A web chat on a native
 function calling model gets the `<available_skills>` manifest and the `view_skill` tool unless
 that key is false; with it false the skills attached to the model reach the system prompt whole,
 as in non-native mode, and the other builtin tools are still offered.
 
+Since 079fb19e7 (0.12.4) the admin's "Load selected skills on demand" (`ENABLE_SKILL_LAZY_LOADING`,
+off by default) keeps the skills selected in a chat out of the system prompt: they are only
+listed for `view_skill`, while a skill mentioned in the message still arrives whole. The setting
+is saved through the admin config and kept by a save that leaves it out.
+
 Discriminates: in a backend copy whose chat middleware and `get_builtin_tools` ignore
 `builtinTools.skills`, the skills-off tests fail (manifest and `view_skill` still present, the
-attached skill not injected whole).
+attached skill not injected whole). On dev f36490bf2, a backend copy whose chat middleware
+ignores the lazy loading setting fails the lazy selected-skill test (the instructions arrive
+whole), and one whose admin config resets the setting on a save that leaves it out fails the
+round-trip test.
 """
 
 from __future__ import annotations
@@ -24,6 +32,25 @@ from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 
 pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_source]
+
+ADMIN_CONFIG = "/api/v1/auths/admin/config"
+LAZY_LOADING = "ENABLE_SKILL_LAZY_LOADING"
+
+
+@pytest.fixture
+def lazy_loading(admin, preserve):
+    """`lazy_loading(on)` saves "Load selected skills on demand" for the rest of the test."""
+    preserve("admin_config")
+
+    def save(on: bool) -> dict:
+        with admin.client() as client:
+            current = client.get(ADMIN_CONFIG)
+            assert current.status_code == 200, current.text
+            saved = client.post(ADMIN_CONFIG, json={**current.json(), LAZY_LOADING: on})
+        assert saved.status_code == 200, saved.text
+        return saved.json()
+
+    return save
 
 
 @contextlib.contextmanager
@@ -70,11 +97,13 @@ def skilled_model(admin, builtin_tools: dict | None, attach: bool = False) -> It
             client.delete(f"/api/v1/skills/id/{skill['id']}/delete")
 
 
-def provider_request(admin, upstream, model: str) -> tuple[str, set[str]]:
+def provider_request(
+    admin, upstream, model: str, content: str = "what is at the dock?", **extra
+) -> tuple[str, set[str]]:
     """The system prompt and tool names the provider got for one web chat on `model`."""
     upstream.queue(reply.text("done"))
     with admin.client() as client:
-        ask(client, "what is at the dock?", model=model)
+        ask(client, content, model=model, **extra)
     request = upstream.chat_requests()[-1]
     system = "\n".join(
         str(entry["content"]) for entry in request["messages"] if entry["role"] == "system"
@@ -109,3 +138,52 @@ def test_with_skills_off_an_attached_skill_arrives_whole(admin, upstream):
     assert setup["text"] in system, system
     assert "<available_skills>" not in system, system
     assert "view_skill" not in offered, sorted(offered)
+
+
+# 079fb19e7: "Load selected skills on demand"
+
+
+def test_a_selected_skill_arrives_whole_with_lazy_loading_off(admin, upstream, lazy_loading):
+    lazy_loading(False)
+    with skilled_model(admin, None) as setup:
+        selected = [setup["skill"]["id"]]
+        system, _ = provider_request(admin, upstream, setup["model"], skill_ids=selected)
+
+    assert f'<skill id="{setup["skill"]["id"]}"' in system, system
+    assert setup["text"] in system, system
+
+
+def test_with_lazy_loading_on_a_selected_skill_is_only_listed(admin, upstream, lazy_loading):
+    lazy_loading(True)
+    with skilled_model(admin, None) as setup:
+        selected = [setup["skill"]["id"]]
+        system, offered = provider_request(admin, upstream, setup["model"], skill_ids=selected)
+
+    assert setup["text"] not in system, f"the selected skill was loaded whole: {system}"
+    assert "<available_skills>" in system and setup["skill"]["name"] in system, system
+    assert "view_skill" in offered, sorted(offered)
+
+
+def test_with_lazy_loading_on_a_mentioned_skill_still_arrives_whole(admin, upstream, lazy_loading):
+    lazy_loading(True)
+    with skilled_model(admin, None) as setup:
+        skill = setup["skill"]
+        mention = f"<${skill['id']}|{skill['name']}> what is at the dock?"
+        system, _ = provider_request(admin, upstream, setup["model"], mention)
+
+    assert f'<skill id="{skill["id"]}"' in system, system
+    assert setup["text"] in system, f"the mentioned skill was not loaded: {system}"
+
+
+def test_the_lazy_loading_setting_is_saved_and_kept_by_saves_without_it(admin, lazy_loading):
+    assert lazy_loading(True).get(LAZY_LOADING) is True
+    with admin.client() as client:
+        current = client.get(ADMIN_CONFIG).json()
+        assert current.get(LAZY_LOADING) is True, f"the setting was not saved: {current}"
+        without = {key: value for key, value in current.items() if key != LAZY_LOADING}
+        resaved = client.post(ADMIN_CONFIG, json=without)
+        assert resaved.status_code == 200, resaved.text
+        kept = client.get(ADMIN_CONFIG).json().get(LAZY_LOADING)
+
+    assert kept is True, "a save without the setting switched lazy skill loading off"
+    assert lazy_loading(False).get(LAZY_LOADING) is False
