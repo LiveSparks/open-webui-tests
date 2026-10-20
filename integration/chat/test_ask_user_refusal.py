@@ -8,10 +8,16 @@ model was never called again and the user was left with a dead turn. Every refus
 gets its own error result, the other tool calls still run, and the model is called again with
 all the results.
 
+Since 794e57cf7 (#32727, issue #32662) questions sent as something other than a list, such as a
+JSON-encoded string, get their own error saying they must be an array of question objects, where
+the model used to be told "ask_user requires 1-3 questions" about the right number of questions.
+
 Twin of unit/chat/test_ask_user_refusal.py.
 
 Discriminates: with be958d7b0 reverted every refusal test fails (no second provider call, and
-a second refused call gets no result); the accepted call stays pending on both.
+a second refused call gets no result); the accepted call stays pending on both. On dev f36490bf2
+with 794e57cf7 reverted in a backend copy the string-questions case fails (the model gets the
+count error); a wrong count gets the count error on both.
 """
 
 from __future__ import annotations
@@ -189,3 +195,34 @@ def test_an_accepted_ask_user_call_waits_for_the_user(make_user, upstream):
     assert arguments["questions"][0]["header"] == "Scope"
     assert arguments["questions"][0]["options"][0] == {"label": "A", "description": "first"}
     assert len(sent) == 1, f"the model was called again while the question was open: {sent}"
+
+
+QUESTIONS_AS_TEXT = {"questions": json.dumps([question()])}
+
+
+@pytest.mark.parametrize(
+    ("arguments", "told", "not_told"),
+    [
+        pytest.param(QUESTIONS_AS_TEXT, "array of question objects", "1-3 questions", id="string"),
+        pytest.param(
+            {"questions": [question(f"q{index}") for index in range(4)]},
+            "1-3 questions",
+            "array of question objects",
+            id="four",
+        ),
+    ],
+)
+def test_the_refusal_names_what_is_wrong_with_the_questions(
+    make_user, upstream, arguments, told, not_told
+):
+    """#32727: questions sent as a JSON string were refused as the wrong count."""
+    prompt = "ask me which harbour"
+    upstream.queue(
+        Reply(tool_calls=[ask_user_call("call_a", arguments)], match=reply.answering(prompt)),
+        reply.text("retrying", match=reply.answering(prompt)),
+    )
+    with make_user().client() as client:
+        ask(client, prompt)
+
+    result = replayed_tool_messages(upstream, prompt)["call_a"]
+    assert told in result and not_told not in result, f"the model was told: {result}"
