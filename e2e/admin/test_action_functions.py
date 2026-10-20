@@ -3,10 +3,11 @@
 A global action shows its button under a reply on any model; pressing it rewrites the reply, as
 the action docs promise for an action that returns `{"messages": [...]}`. An action that asks the
 person something opens a dialog with its title and message: Cancel tells the action nobody
-answered, and a typed answer reaches it. An action with sub-actions shows one button per
-sub-action, each running its own branch, and the buttons are ordered by each action's `priority`
-valve, so raising one in its Valves dialog moves its buttons to the end. An action switched off
-in Admin Panel > Functions leaves the reply.
+answered, and a typed answer reaches it, also when the action ran a script in the page while the
+dialog was open (open-webui/open-webui#32744, fix 2d9852c60). An action with sub-actions shows
+one button per sub-action, each running its own branch, and the buttons are ordered by each
+action's `priority` valve, so raising one in its Valves dialog moves its buttons to the end. An
+action switched off in Admin Panel > Functions leaves the reply.
 
 The rewrite test is red on dev: the action's new content is stored on the reply, but the page
 renders a reply from its `output` items, which the rewrite leaves alone, so the old text stays on
@@ -16,7 +17,9 @@ Discriminates: on dev ebc6add67 all pass but the rewrite test (the bug above), w
 frontend build that writes the action's content into the reply's output as well. One backend copy
 whose action route hands the action no event caller, whose model list orders actions by id alone
 and whose active function lookup ignores the switch turned the dialog, priority and switch tests
-red, each on its own edit.
+red, each on its own edit. The script test goes red on the 0.12.4 pre-fix build (2d9852c60
+reverted among other fixes): the typed answer goes to the script's call and never reaches the
+action.
 """
 
 from __future__ import annotations
@@ -51,6 +54,43 @@ BOARDING_ACTION = """class Action:
                 },
             }
         )
+        note = f"Boarding pass printed for {answer}" if answer else "Boarding cancelled"
+        await __event_emitter__({"type": "notification", "data": {"type": "info", "content": note}})
+"""
+
+# The dialog opens from a task; the first script returns once the page shows it, so the second
+# script reaches the page while the dialog is open.
+SCRIPTED_BOARDING_ACTION = """import asyncio
+
+DIALOG_SHOWN = '''
+await new Promise((resolve) => {
+    const check = () =>
+        document.querySelector('[role=dialog]')?.textContent.includes('Who is boarding?')
+            ? resolve()
+            : setTimeout(check, 50);
+    check();
+});
+return true;
+'''
+
+
+class Action:
+    async def action(self, body: dict, __event_call__=None, __event_emitter__=None):
+        asking = asyncio.create_task(
+            __event_call__(
+                {
+                    "type": "input",
+                    "data": {
+                        "title": "Who is boarding?",
+                        "message": "Name the passenger for the pass.",
+                        "placeholder": "Passenger name",
+                    },
+                }
+            )
+        )
+        await __event_call__({"type": "execute", "data": {"code": DIALOG_SHOWN}})
+        await __event_call__({"type": "execute", "data": {"code": "return document.title;"}})
+        answer = await asking
         note = f"Boarding pass printed for {answer}" if answer else "Boarding cancelled"
         await __event_emitter__({"type": "notification", "data": {"type": "info", "content": note}})
 """
@@ -151,6 +191,25 @@ def test_an_action_asks_the_person_and_gets_their_answer_or_their_cancel(
         dialog.get_by_placeholder("Passenger name").fill("Ada Lovelace")
         dialog.get_by_role("button", name="Confirm").click()
         expect(page.get_by_text("Boarding pass printed for Ada Lovelace")).to_be_visible()
+
+
+def test_an_answer_reaches_the_action_after_it_ran_a_script_in_the_page(
+    page_for, admin, make_user, upstream
+):
+    """open-webui/open-webui#32744, fix 2d9852c60: the answer went to the script's call instead."""
+    with installed_function(admin, SCRIPTED_BOARDING_ACTION, is_global=True) as action_id:
+        page = page_for(make_user())
+        answered_page(page, upstream, "may I board after a script?", "Boarding opens now.")
+
+        action_button(page, action_id).click()
+        dialog = page.get_by_role("dialog", name="Who is boarding?")
+        dialog.get_by_placeholder("Passenger name").fill("Grace Hopper")
+        dialog.get_by_role("button", name="Confirm").click()
+        expect(page.get_by_text("Boarding pass printed for Grace Hopper")).to_be_visible()
+
+        action_button(page, action_id).click()
+        dialog.get_by_role("button", name="Cancel").click()
+        expect(page.get_by_text("Boarding cancelled")).to_be_visible()
 
 
 def action_order(page: Page, names: list[str]) -> list[str]:
