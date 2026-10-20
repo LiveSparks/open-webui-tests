@@ -3,14 +3,15 @@
 An admin adds a tool server by the URL of its OpenAPI spec; each operation becomes a tool whose
 parameters come from its path, query and path-level parameters and its JSON request body
 (`$ref` schemas resolved). When the model calls one, Open WebUI fills the path, encodes the
-query, sends only the body's own fields as JSON and hands the model back what the server
-answered: JSON, plain text, an error with its status, an image the model can see, or an inline
-HTML card shown to the user in place of the raw page.
+query (an array as repeated values), sends only the body's own fields as JSON and hands the
+model back what the server answered: JSON, plain text, an error with its status, an image the
+model can see, or an inline HTML card shown to the user in place of the raw page.
 
 Discriminates: in a backend copy, dropping path-level parameters fails the spec test, skipping
 the path escaping fails the path test, sending declared parameters in the body fails the body
 test, dropping the status from a failed call fails the error test, and treating an inline HTML
-answer as plain text fails the card test.
+answer as plain text fails the card test. The array query test passes on dev f36490bf2 and fails
+with fd1e59b25 reverted (the server gets one `tag` holding the list's text).
 """
 
 from __future__ import annotations
@@ -181,6 +182,15 @@ def test_query_parameters_are_encoded_and_empty_ones_left_out(owner, upstream, p
     assert json.loads(result) == {"results": [{"id": "1", "name": "Rex"}]}
     [sent] = pets_server.requests_to(f"{PREFIX}/pets")
     assert parse_qs(urlsplit(sent.path).query) == {"limit": ["5"], "tag": ["good boy"]}
+
+
+def test_an_array_query_parameter_is_sent_as_repeated_values(owner, upstream, pets_server):
+    # #32677, fix fd1e59b25: the list reached the server as one text value "['a', 'b']"
+    result = _call(owner, upstream, "list_pets", {"tag": ["good boy", "small"]})
+
+    assert json.loads(result) == {"results": [{"id": "1", "name": "Rex"}]}
+    [sent] = pets_server.requests_to(f"{PREFIX}/pets")
+    assert parse_qs(urlsplit(sent.path).query) == {"tag": ["good boy", "small"]}, sent.path
 
 
 def test_a_body_carries_only_its_own_fields(owner, upstream, pets_server):
