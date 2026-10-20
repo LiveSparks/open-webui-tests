@@ -4,14 +4,16 @@ With channels switched on, a chat is offered four channel tools: `search_channel
 channel's name or description, `search_channel_messages` finds messages and thread replies,
 `view_channel_message` reads one message and `view_channel_thread` a whole thread in the order
 it was written. Each sees only the channels the account is a member of; another channel's
-message is refused by id. With channels off, none of the four is offered.
+message is refused by id. A deleted message takes its thread replies out of the search and
+out of reach by id. With channels off, none of the four is offered.
 
 The scripted model calls each tool and the test reads the result it was sent back.
 
 Discriminates: in a backend copy, `view_channel_message` skipping its membership check turned
 the stranger test red; `view_channel_thread` listing replies newest first turned the thread order
 test red; `search_channels` ignoring descriptions turned the description test red; and the
-channel tools offered without the channels switch turned the switched-off test red.
+channel tools offered without the channels switch turned the switched-off test red. The deleted
+thread test passes on dev f36490bf2 and fails with 54fc21d68 reverted (the reply is still found).
 """
 
 from __future__ import annotations
@@ -114,6 +116,22 @@ def test_messages_and_thread_replies_are_found(birdwatch, upstream):
     reply = by_id[birdwatch["reply_ids"][0]]
     assert (reply["is_thread_reply"], reply["parent_id"]) == (True, birdwatch["parent_id"])
     assert reply["channel_name"] == f"birdwatch-{birdwatch['tag']}"
+
+
+def test_the_replies_of_a_deleted_message_are_no_longer_found(birdwatch, upstream):
+    """#32666, fix 54fc21d68: the thread replies of a deleted message were still found."""
+    member, tag = birdwatch["member"], birdwatch["tag"]
+    with member.client() as client:
+        deleted = client.delete(
+            f"/api/v1/channels/{birdwatch['channel_id']}/messages/{birdwatch['parent_id']}/delete"
+        )
+    assert deleted.status_code == 200, deleted.text
+
+    found = call(member, upstream, "search_channel_messages", query=tag)
+    viewed = call(member, upstream, "view_channel_message", message_id=birdwatch["reply_ids"][0])
+
+    assert found == [], f"the deleted message's thread is still found: {found}"
+    assert viewed == {"error": "Message not found"}, f"a deleted thread reply was read: {viewed}"
 
 
 def test_a_message_is_read_by_a_member_and_refused_to_a_stranger(birdwatch, upstream):

@@ -1,18 +1,19 @@
 """Journey: talking in a channel over the API, and who may read and write in it.
 
 Two members of a group channel post, edit and delete their messages, react to each other's
-and reply in a thread; each change shows in what the other member reads back. Someone outside
-the channel is refused every read and write on it and changes nothing. In a standard channel a
-read grant opens the messages but not posting or reacting, and no grant opens nothing. That
-another member cannot edit or delete a message is pinned by
-integration/security/test_channel_message_authorship.py.
+and reply in a thread; each change shows in what the other member reads back. Deleting a message
+deletes its thread replies with it. Someone outside the channel is refused every read and write
+on it and changes nothing. In a standard channel a read grant opens the messages but not posting
+or reacting, and no grant opens nothing. That another member cannot edit or delete a message is
+pinned by integration/security/test_channel_message_authorship.py.
 
 Discriminates: in a backend copy, dropping the membership check from the group branch of
 `get_channel_messages` turns the listing row of the outsider test red (HTTP 200),
 `remove_reaction_by_id_and_user_id_and_name` removing the reaction by name only turns the
 reaction test red (one member's removal takes the other's too), `get_messages_by_parent_id`
 leaving out the parent turns the thread test red, and asking for `read` instead of `write` in
-`new_message_handler` turns the read-grant test red (the reader posts).
+`new_message_handler` turns the read-grant test red (the reader posts). The thread delete test
+passes on dev f36490bf2 and fails with 54fc21d68 reverted (each reply still reads back with 200).
 """
 
 from __future__ import annotations
@@ -121,6 +122,33 @@ def test_thread_replies_list_under_their_parent(room):
         "me",
         "who is in on friday?",
     ]
+
+
+def test_deleting_a_message_deletes_its_thread_replies(room):
+    """#32666, fix 54fc21d68: the replies of a deleted message stayed and could still be read."""
+    channel_id, author, member, _ = room
+    parent_id = post_message(author, channel_id, "who is in on saturday?")
+    reply_ids = [
+        post_message(member, channel_id, "me", parent_id=parent_id),
+        post_message(author, channel_id, "me too", parent_id=parent_id),
+    ]
+    kept_id = post_message(member, channel_id, "a message of its own")
+    for reply_id in reply_ids:
+        assert _get(member, f"/api/v1/channels/{channel_id}/messages/{reply_id}").status_code == 200
+
+    with author.client() as client:
+        deleted = client.delete(f"/api/v1/channels/{channel_id}/messages/{parent_id}/delete")
+
+    assert deleted.status_code == 200 and deleted.json() is True, deleted.text
+    still_readable = [
+        reply_id
+        for reply_id in reply_ids
+        if _get(member, f"/api/v1/channels/{channel_id}/messages/{reply_id}").status_code != 404
+    ]
+    assert still_readable == [], (
+        f"replies of the deleted message can still be read: {still_readable}"
+    )
+    assert [entry["id"] for entry in _listing(member, channel_id)] == [kept_id]
 
 
 # method, path with {channel} and {message}, body
