@@ -4,14 +4,16 @@ An SVG block opens the pane on the drawing itself, sanitised in the page rather 
 offers no full screen. HTML, CSS and JavaScript blocks of one reply make one page: the CSS styles
 the HTML and the script runs inside the page's own frame, which cannot reach the chat around it.
 Two HTML blocks in one reply are two versions, and a block's Preview button moves the pane to
-that block's version. The pane's Copy puts the whole page on the clipboard and Download saves it
-as an HTML file. Versions and full screen of HTML artifacts are covered in
-test_artifacts_versions.py.
+that block's version, also when the pane was closed first. The pane's Copy puts the whole page
+on the clipboard and Download saves it as an HTML file. Versions and full screen of HTML
+artifacts are covered in test_artifacts_versions.py.
 
 Discriminates: passes on the dev ebc6add67 build. In its mutation build (the `rendering-front`
 copy: SVG blocks no longer collected as artifacts, CSS and JavaScript blocks left out of the
 page and Preview no longer selecting the block's version) the SVG, page and Preview tests go red;
-the Copy and Download test stays green there as a control.
+the Copy and Download test stays green there as a control. The closed pane test goes red on the
+0.12.4 pre-fix build (9862a5bd6 reverted among other fixes): the reopened pane shows the newest
+version.
 """
 
 from __future__ import annotations
@@ -108,6 +110,24 @@ def test_preview_moves_the_pane_to_that_blocks_version(page_for, make_user, upst
     box.get_by_role("button", name="Preview", exact=True).first.click()
     expect(pane).to_contain_text("Version 1 of 2")
     expect(artifact_page(page).locator("h1")).to_have_text("first draft")
+
+
+def test_preview_on_an_earlier_block_reopens_the_closed_pane_on_that_blocks_version(
+    page_for, make_user, upstream
+):
+    """open-webui/open-webui#32688, fix 9862a5bd6: the reopened pane showed the newest version."""
+    page = page_for(make_user())
+    answer = fenced("html", "<h1>first plan</h1>") + "\n\n" + fenced("html", "<h1>second plan</h1>")
+    box = ask(page, upstream, answer, "give me two plans")
+    pane = artifacts_pane(page)
+    expect(pane).to_contain_text("Version 2 of 2")
+
+    pane.get_by_role("button", name="Close", exact=True).click()
+    expect(pane).to_have_count(0)
+    box.get_by_role("button", name="Preview", exact=True).first.click()
+
+    expect(pane).to_contain_text("Version 1 of 2")
+    expect(artifact_page(page).locator("h1")).to_have_text("first plan")
 
 
 def test_copy_and_download_give_the_whole_page(page_for, make_user, upstream):
