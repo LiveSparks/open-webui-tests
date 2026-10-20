@@ -25,6 +25,13 @@ it whose folder dialog saves without its files.
 The in-place rename test also pins open-webui/open-webui#31582, fixed by PR #31584: pressing Enter
 saved the folder twice, so two update requests and two "Folder updated successfully" toasts
 followed one rename. It fails on dev 176d31d1d.
+
+New Chat in a folder's sidebar menu (0512f1b37) opens the folder's page, and the chat sent from
+there is stored in the folder. With a folder's page open, deleting a different folder from the
+sidebar left the address on the open folder but showed the plain new chat screen, and a chat sent
+there was filed nowhere (open-webui/open-webui#32697, issue #32696, fix db9aa8c9c). In the
+pre-fix build of the 0.12.4 changes (both commits reverted) the New Chat test finds no such entry
+and the delete test sees the folder page gone; both pass on dev with the fixes.
 """
 
 from __future__ import annotations
@@ -448,6 +455,62 @@ def test_the_folder_page_lists_its_chats_and_files_a_new_chat_there(page_for, ma
     page.goto(f"/folders/{folder_id}")
     expect(page.get_by_role("link", name=re.compile("how long to knead?"))).to_have_attribute(
         "href", f"/c/{new_chat_id}"
+    )
+
+
+def test_new_chat_in_a_folders_menu_starts_a_chat_filed_in_that_folder(
+    page_for, make_user, upstream
+):
+    # the folder menu's New Chat entry, added in 0512f1b37
+    owner = make_user()
+    folder_id = create_folder(owner, "Voyages")
+    page = page_for(owner)
+    sidebar = open_sidebar(page)
+
+    new_chat = folder_menu(sidebar, "Voyages").get_by_role("button", name="New Chat")
+    expect(new_chat, "the folder's menu has no New Chat entry").to_be_visible()
+    new_chat.click()
+
+    expect(page).to_have_url(re.compile(f"/folders/{folder_id}$"))
+    question = f"where do we sail next? {uuid.uuid4().hex[:6]}"
+    upstream.queue(reply.text("Due north", match=reply.answering(question)))
+    send(page, question)
+    expect_reply(page, "Due north")
+    expect(page).to_have_url(re.compile("/c/"))
+    chat_id = page.url.rsplit("/", 1)[-1]
+    assert stored_chat(owner, chat_id)["folder_id"] == folder_id, (
+        "the chat started from the folder menu's New Chat was not filed in the folder"
+    )
+
+
+@pytest.mark.regression
+def test_deleting_another_folder_keeps_the_open_folders_page(page_for, make_user, upstream):
+    # open-webui/open-webui#32697 (issue #32696), fix db9aa8c9c
+    owner = make_user()
+    folder_id = create_folder(owner, "Recipes")
+    create_chat(owner, "Bread starter", folder_id)
+    create_folder(owner, "Old drafts")
+    page = page_for(owner, path=f"/folders/{folder_id}")
+    folder_icon = page.get_by_label("Change folder icon")
+    expect(folder_icon).to_be_visible()
+    sidebar = open_sidebar(page)
+
+    delete_from_the_sidebar(sidebar, "Old drafts", delete_contents=True)
+
+    expect(folder_row(sidebar, "Old drafts")).to_have_count(0)
+    expect(page).to_have_url(re.compile(f"/folders/{folder_id}$"))
+    expect(
+        folder_icon, "deleting another folder closed the open folder's page (#32696)"
+    ).to_be_visible()
+    expect(page.get_by_role("link", name=re.compile("Bread starter"))).to_be_visible()
+    question = f"how long to prove? {uuid.uuid4().hex[:6]}"
+    upstream.queue(reply.text("Two hours", match=reply.answering(question)))
+    send(page, question)
+    expect_reply(page, "Two hours")
+    expect(page).to_have_url(re.compile("/c/"))
+    chat_id = page.url.rsplit("/", 1)[-1]
+    assert stored_chat(owner, chat_id)["folder_id"] == folder_id, (
+        "a chat started on the open folder's page after deleting another folder was not filed in it"
     )
 
 
