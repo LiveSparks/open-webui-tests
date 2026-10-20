@@ -310,11 +310,14 @@ def test_the_week_view_puts_an_event_in_the_column_of_the_day_it_starts(page_for
     today = dt.date.today()
     sunday = today - dt.timedelta(days=(today.weekday() + 1) % 7)
     tuesday = sunday + dt.timedelta(days=2)
-    _event(owner, late, dt.datetime.combine(tuesday, dt.time(23, 30)).astimezone())
+    # no reminders: a run near these times would get a toast over the view buttons
+    quiet = {"meta": {"alert_minutes": -1}}
+    _event(owner, late, dt.datetime.combine(tuesday, dt.time(23, 30)).astimezone(), **quiet)
     _event(
         owner,
         early,
         dt.datetime.combine(tuesday + dt.timedelta(days=1), dt.time(0, 30)).astimezone(),
+        **quiet,
     )
     page = page_for(owner, path="/calendar")
     expect(page.get_by_role("button", name="Month", exact=True)).to_be_visible()
