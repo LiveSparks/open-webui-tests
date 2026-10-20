@@ -1,7 +1,8 @@
 """Journey: a prompt's version history, the way the prompt editor keeps and restores versions.
 
 Every save that changes a prompt adds a history entry holding a snapshot of it and makes that
-entry the active version. Restoring an earlier entry copies its snapshot back into the prompt.
+entry the active version; a save that changes nothing adds none, and changing who the prompt is
+shared with adds one. Restoring an earlier entry copies its snapshot back into the prompt.
 Deleting an entry takes write access to the prompt: an account the prompt is shared with for
 reading is refused and the entry stays, the owner, a writer and the admin may delete it. The
 active version cannot be deleted. Two versions are compared line by line for anyone who may read
@@ -16,7 +17,9 @@ asking for `read` instead of `write` turns
 entry is gone). The comparison tests pass on dev b130fec73; the line-by-line and read access
 tests go red in a backend copy with the routes in the order before 37138282f, where the
 single-version route is declared first and answers every comparison with 404, and the other-prompt
-test goes red where the comparison looks versions up without binding them to the prompt.
+test goes red where the comparison looks versions up without binding them to the prompt. The
+unchanged-save test passes on dev f36490bf2 and fails with 312d113fd reverted (the unchanged save
+adds a second entry).
 """
 
 from __future__ import annotations
@@ -111,6 +114,29 @@ def test_a_save_adds_a_history_entry_and_makes_it_active(author):
     assert latest["snapshot"]["name"] == "Prompt second draft"
     assert latest["user_id"] == author.id
     assert saved["version_id"] == latest["id"]
+
+
+def test_an_unchanged_save_adds_no_version_and_a_new_share_does(author, make_user):
+    """#32709, fix 312d113fd: every save from the editor, which sends the grants, added one."""
+    reader = make_user()
+    share = [{"principal_type": "user", "principal_id": reader.id, "permission": "read"}]
+    with author.client() as client:
+        prompt = _create_prompt(client, "first draft")
+        unchanged = _save(client, prompt, "first draft", access_grants=[])
+        after_unchanged = _history(client, prompt["id"])
+        _save(client, prompt, "first draft", access_grants=share)
+        after_share = _history(client, prompt["id"])
+        _save(client, prompt, "first draft", access_grants=share)
+        after_same_share = _history(client, prompt["id"])
+
+    assert len(after_unchanged) == 1, (
+        f"saving the prompt unchanged added a version: {len(after_unchanged)} entries"
+    )
+    assert unchanged["version_id"] == prompt["version_id"]
+    assert len(after_share) == 2, f"sharing the prompt added no version: {after_share}"
+    assert len(after_same_share) == 2, (
+        f"saving the same share again added a version: {len(after_same_share)} entries"
+    )
 
 
 def test_restoring_an_earlier_version_brings_its_content_back(author):
