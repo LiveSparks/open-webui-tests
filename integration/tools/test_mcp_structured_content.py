@@ -11,9 +11,15 @@ the structured copy is added as well, so the model gets the text twice
 (open-webui/open-webui#32126, fixed by ab15284a4).
 `test_a_plain_string_from_an_sdk_tool_reaches_the_model_once`.
 
+Since 217766ed0 (#32726, issue #32719) a list from a tool on a server built with the standalone
+`fastmcp` package reaches the model once: that package sends the whole list as one JSON text block
+next to the structured `{"result": [...]}`, and the structured copy used to be added as well.
+
 Discriminates: passes on dev 1c010b438 apart from the #32126 test; with 22102e4a2 reverted in a
 backend copy the forecast test fails (the follow-up request carries the summary but not the
-forecast) and the #32126 test passes (the text arrives once).
+forecast) and the #32126 test passes (the text arrives once). On dev f36490bf2 with 217766ed0
+reverted in a backend copy the standalone list test fails (the list arrives twice); the SDK list
+test, one text block per item, passes on both.
 """
 
 from __future__ import annotations
@@ -26,9 +32,11 @@ import pytest
 from harness import upstream as reply
 from harness.chat import ask
 from harness.mcp_server import (
+    BERTHS,
     CONDITIONS,
     FORECAST,
     FORECAST_SUMMARY,
+    HARBOURS,
     HEADLINE,
     TOOL_SERVERS,
     mcp_connection,
@@ -105,6 +113,25 @@ def test_a_plain_text_result_is_sent_unchanged(weather, upstream):
     content = tool_result_sent_to_the_model(person, upstream, server_id, "headline")
 
     assert content == HEADLINE
+
+
+def test_a_list_from_a_standalone_fastmcp_tool_reaches_the_model_once(weather, upstream):
+    """#32726: the list came once as text and once more as structured data."""
+    person, server_id = weather
+
+    content = tool_result_sent_to_the_model(person, upstream, server_id, "harbours")
+
+    for harbour in HARBOURS:
+        assert content.count(harbour["name"]) == 1, f"the model got the list twice: {content}"
+
+
+def test_a_list_from_an_sdk_tool_reaches_the_model_once(weather, upstream):
+    person, server_id = weather
+
+    content = tool_result_sent_to_the_model(person, upstream, server_id, "berths")
+
+    for berth in BERTHS:
+        assert content.count(berth) == 1, f"the model got the list twice: {content}"
 
 
 def test_a_plain_string_from_an_sdk_tool_reaches_the_model_once(

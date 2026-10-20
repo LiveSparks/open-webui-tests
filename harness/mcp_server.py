@@ -8,7 +8,10 @@ with `SNAPSHOT_PNG` as an image, and `chime`, answering with `CHIME_WAV` as audi
 answers `PONDERED` after the number of seconds it is asked to wait; with `structured=True`,
 `forecast`, answering `FORECAST_SUMMARY` as text and `FORECAST` as structured content,
 `conditions`, answering `CONDITIONS` from a typed return (the same JSON as text and structured
-content), and `headline`, answering `HEADLINE` as plain text alone. `tls=True` serves it over
+content), `headline`, answering `HEADLINE` as plain text alone, `berths`, answering the list
+`BERTHS` from a typed return (one text block per item and the list as structured content), and
+`harbours`, answering the list `HARBOURS` the way the standalone `fastmcp` package does (the whole
+list as one JSON text block and as structured content under `result`). `tls=True` serves it over
 HTTPS with a self-signed certificate. With `bearer_key` every request without that key gets a
 plain 401, the way a server keyed by an API key answers (no OAuth metadata).
 `mcp_connection(...)` is the admin's connection to it without auth; save it through
@@ -25,6 +28,7 @@ import asyncio
 import base64
 import contextlib
 import io
+import json
 import tempfile
 import threading
 import time
@@ -53,6 +57,8 @@ FORECAST = {
 }
 CONDITIONS = {"city": "Graz", "temperature_c": 15.5, "humidity": 71, "raining": False}
 HEADLINE = "Fog lifting over the Mur by noon."
+BERTHS = ["Berth A by the crane", "Berth B past the ferry"]
+HARBOURS = [{"name": "Rovinj marina", "berths": 120}, {"name": "Piran marina", "berths": 80}]
 SNAPSHOT_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
@@ -144,6 +150,17 @@ def _echo_server(
         @server.tool(description="The weather headline for a city.", structured_output=False)
         def headline(city: str) -> str:
             return HEADLINE
+
+        @server.tool(description="The free berths in a city's harbour.")
+        def berths(city: str) -> list[str]:
+            return BERTHS
+
+        @server.tool(description="The harbours near a city.")
+        def harbours(city: str) -> CallToolResult:
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(HARBOURS))],
+                structuredContent={"result": HARBOURS},
+            )
 
     return server
 
