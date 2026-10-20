@@ -6,9 +6,14 @@ skills next to the commands, but picking one inserted it as an @ mention, so the
 so the skill never reached the model and its raw tag did. A skill chosen through / is now sent the
 same way as through $.
 
+Fix 14956af03 (#32690, issue #32689): a skill-only draft brought back into the input after
+leaving the chat inside the app was rebuilt without the skill's name, sent as `<$id>`, and the
+server's fallback for an empty message filled in the names of every skill.
+
 Discriminates: passes on the efe63bd34 build; on a build with c402acb40 reverted the / menu test
 fails (no skill in the system prompt, the raw tag in the user message). The $ menu test passes on
-both, and an unrelated chat journey passes on the reverted build.
+both, and an unrelated chat journey passes on the reverted build. In the pre-fix build of 0.12.4
+(14956af03 reverted) the restored draft test fails: the user message reads both skills' names.
 """
 
 from __future__ import annotations
@@ -85,4 +90,43 @@ def test_a_skill_picked_from_the_dollar_menu_reaches_the_model(page_for, skill, 
 
     request = _send_after_pick(page, upstream, "$", name)
 
+    assert SKILL_BODY in _system_text(request)
+
+
+@pytest.fixture
+def second_skill(skill):
+    """Another active skill of the same account, so "every skill" is more than the one picked."""
+    account, _ = skill
+    skill_id = f"sonnet_{uuid.uuid4().hex[:8]}"
+    with account.client() as client:
+        created = client.post(
+            "/api/v1/skills/create",
+            json={"id": skill_id, "name": f"Sonnet Smith {skill_id[-6:]}", "content": "Rhyme."},
+        )
+        assert created.status_code == 200, created.text
+        yield
+        client.delete(f"/api/v1/skills/id/{skill_id}/delete")
+
+
+def test_a_restored_skill_only_draft_sends_only_that_skill(page_for, skill, second_skill, upstream):
+    """#32690 (fix 14956af03): a skill-only draft brought back sent every skill's name."""
+    account, name = skill
+    page = page_for(account)
+    _pick_skill(page, "$", name)
+    # the new chat keeps its draft in the tab's session storage, written shortly after typing
+    page.wait_for_function("() => (sessionStorage.getItem('chat-input') || '').includes('<$')")
+
+    # leaving and coming back inside the app; a reload brings the draft back as plain text
+    page.get_by_role("link", name="Workspace", exact=True).click()
+    expect(page).to_have_url(re.compile(r"/workspace"))
+    page.get_by_role("link", name="New Chat").first.click()
+    expect(chat_input(page)).to_contain_text(name)
+    upstream.queue(reply.text("Soft grey threads fall", match=reply.answering(name)))
+    chat_input(page).press("End")
+    chat_input(page).press("Enter")
+    expect_reply(page, "Soft grey threads fall")
+
+    request = next(filter(reply.answering(name), upstream.chat_requests()))
+    sent = request["messages"][-1]["content"]
+    assert sent == name, f"the restored draft sent {sent!r} in place of the skill's name"
     assert SKILL_BODY in _system_text(request)
