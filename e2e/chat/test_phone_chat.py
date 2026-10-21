@@ -88,7 +88,8 @@ def sidebar(page: Page) -> Locator:
 
 
 def sidebar_new_chat(page: Page) -> Locator:
-    return sidebar(page).get_by_role("link", name="New Chat")
+    # the logo link is named New Chat too; this is the labelled entry under it
+    return sidebar(page).get_by_role("link", name="New Chat").filter(has_text="New Chat")
 
 
 def open_sidebar_button(page: Page) -> Locator:

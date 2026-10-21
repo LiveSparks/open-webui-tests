@@ -274,10 +274,18 @@ def search_results(upstream, prompt: str) -> str:
 
 
 def open_citation(page: Page, name: str) -> Locator:
-    conversation(page).get_by_role("button", name=f"View source: {name}").click()
+    # the sources list reads each source out with its number
+    numbered = re.compile(rf"^View source: \d+ {re.escape(name)}$")
+    conversation(page).get_by_role("button", name=numbered).click()
     citation = page.get_by_role("dialog")
     expect(citation).to_be_visible()
     return citation
+
+
+def close_citation(citation: Locator) -> None:
+    # Escape would first only hide the tooltip of the focused Open file link
+    citation.get_by_role("button", name="Close citation modal").click()
+    expect(citation).to_be_hidden()
 
 
 def test_the_folders_knowledge_and_file_are_cited_in_its_chats_only(
@@ -291,10 +299,10 @@ def test_the_folders_knowledge_and_file_are_cited_in_its_chats_only(
     sources.click()
     citation = open_citation(page, moorings_name)
     expect(citation).to_contain_text(MOORINGS)
-    page.keyboard.press("Escape")
-    expect(citation).to_be_hidden()
-    expect(open_citation(page, tides_name)).to_contain_text(TIDES)
-    page.keyboard.press("Escape")
+    close_citation(citation)
+    citation = open_citation(page, tides_name)
+    expect(citation).to_contain_text(TIDES)
+    close_citation(citation)
 
     page.goto("/")
     search_and_answer(page, upstream, "where may I moor, outside?", "No idea.")

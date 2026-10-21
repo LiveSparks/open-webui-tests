@@ -11,17 +11,17 @@ Settings open from the user menu with Enter, start with the focus on Back, keep 
 dialog however often Tab is pressed, open a tab with Enter and close on Escape. Ctrl+K puts the
 focus in the search field and Escape gives it back to the message box.
 
-Discriminates: passes on the ebc6add67 build apart from the settings focus test (red, see below). In
-frontend builds of ebc6add67: with the dialogs' focus trap dropped the Tab cycle and Ctrl+K tests go
-red; with dropdown menus leaving the focus on their trigger the two Regenerate tests and both
-settings tests; with Enter in the message box sending nothing every chat test; with Copy copying
-nothing the Copy test; with Enter in the model search picking nothing the selector test; and with
-the skip link pointing nowhere the skip link test.
+Discriminates: passes on the ba34b1c47 build. In frontend builds of ebc6add67: with the dialogs'
+focus trap dropped the Tab cycle and Ctrl+K tests go red; with Enter in the message box sending
+nothing every chat test; with Copy copying nothing the Copy test; and with Enter in the model search
+picking nothing the selector test. In a frontend build of 5f6399eb6: with dropdown menus leaving the
+focus on their trigger the two Regenerate tests and both settings tests go red, and with the skip
+link pointing nowhere the skip link test.
 
-The settings focus test is red on dev ebc6add67: Settings opened from the user menu hand the focus
-back on closing to the menu's Settings entry, which is gone by then, so the focus falls to the page
-itself and the next Tab starts over at the top of the page (open-webui/open-webui#32017, fixed by
-c7e7dbf98).
+The settings focus test was red on dev ebc6add67: Settings opened from the user menu handed the
+focus back on closing to the menu's Settings entry, which is gone by then, so the focus fell to the
+page itself and the next Tab started over at the top of the page (open-webui/open-webui#32017, fixed
+by c7e7dbf98).
 """
 
 from __future__ import annotations
@@ -78,6 +78,11 @@ def ask_by_keyboard(page: Page, upstream, question: str, answer: str) -> None:
     expect_reply(page, answer)
 
 
+def expect_focus_inside(page: Page, menu: Locator) -> None:
+    """The open menu holds the keyboard focus, on itself or on one of its items."""
+    expect(menu.and_(page.locator(":focus-within"))).to_be_visible()
+
+
 def reply_button(page: Page, name: str) -> Locator:
     whole_reply = (
         conversation(page)
@@ -107,7 +112,7 @@ def test_shift_tab_reaches_regenerate_and_try_again_adds_a_version(keyboard_page
     press_until_focused(keyboard_page, "Shift+Tab", reply_button(keyboard_page, "Regenerate"))
     keyboard_page.keyboard.press("Enter")
     menu = keyboard_page.get_by_role("menu")
-    expect(menu).to_be_focused()
+    expect_focus_inside(keyboard_page, menu)
     try_again = menu.get_by_role("button", name="Try Again")
     press_until_focused(keyboard_page, "Tab", try_again, limit=5)
     keyboard_page.keyboard.press("Enter")
@@ -121,7 +126,7 @@ def test_escape_closes_the_regenerate_menu_and_gives_the_focus_back(keyboard_pag
     regenerate = reply_button(keyboard_page, "Regenerate")
     press_until_focused(keyboard_page, "Shift+Tab", regenerate)
     keyboard_page.keyboard.press("Enter")
-    expect(keyboard_page.get_by_role("menu")).to_be_focused()
+    expect_focus_inside(keyboard_page, keyboard_page.get_by_role("menu"))
 
     keyboard_page.keyboard.press("Escape")
 
@@ -188,7 +193,7 @@ def test_skip_to_main_content_leads_to_the_main_content(page_for, make_user):
     page.keyboard.press("Enter")
 
     expect(page).to_have_url(re.compile(r"#main-content$"))
-    expect(page.get_by_role("main")).to_have_attribute("id", "main-content")
+    expect(page.get_by_role("main").locator("#main-content")).to_be_focused()
 
 
 # --------------------------------------------------------------------------- settings
@@ -201,7 +206,7 @@ def open_settings_from_the_user_menu(page: Page) -> Locator:
     press_until_focused(page, "Shift+Tab", user_menu)
     page.keyboard.press("Enter")
     menu = page.get_by_role("menu")
-    expect(menu).to_be_focused()
+    expect_focus_inside(page, menu)
     press_until_focused(page, "Tab", menu.get_by_role("button", name="Settings"), limit=10)
     page.keyboard.press("Enter")
     settings = page.get_by_role("dialog")
@@ -223,6 +228,9 @@ def test_settings_open_from_the_user_menu_and_keep_the_focus_inside(keyboard_pag
         inside = keyboard_page.evaluate("() => !!document.activeElement?.closest('[role=dialog]')")
         assert inside, f"Tab left the settings dialog for {focused(keyboard_page)!r}"
 
+    # Escape on a control showing its tooltip only hides the tooltip, so leave from Back
+    back = settings.get_by_role("button", name="Back", exact=True)
+    press_until_focused(keyboard_page, "Tab", back, limit=TAB_PRESSES)
     keyboard_page.keyboard.press("Escape")
     expect(settings).to_be_hidden()
 
