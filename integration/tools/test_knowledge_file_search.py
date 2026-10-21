@@ -145,7 +145,8 @@ def test_a_pattern_matching_every_line_numbers_every_line(kb_exec):
 def test_a_search_across_files_attributes_each_hit_to_its_file(kb_exec):
     hits = kb_exec('grep "needle"').splitlines()
 
-    assert [hit.split("  ", 1)[1] for hit in hits] == [
+    # Files come back in database order, which Postgres does not keep stable.
+    assert sorted(hit.split("  ", 1)[1] for hit in hits) == [
         "notes.md:4: the needle is on line four",
         "other.md:2: a needle hides in the second row",
     ]
