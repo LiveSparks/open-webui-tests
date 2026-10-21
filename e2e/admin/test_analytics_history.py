@@ -3,17 +3,17 @@
 A fresh user has replies on two presets of the scripted model: three on aster (two of them two
 days ago, one today), one on birch two days ago and one on aster ten days ago, each with its own
 token usage, and two of the chats carry a tag. Narrowed to that user's group, the dashboard counts
-seven days or thirty depending on the period picked, the Daily Messages chart shows each model's
-count for the day the pointer is on, the last 24 hours switch it to Hourly Messages, the tokens
-figure opens the input and output split, the model table sorts by tokens and gives each model's
-share of the messages and a model's row opens an overview with its chats' tags and a chat list
-that keeps to the period picked.
+seven days or thirty depending on the period picked, the messages chart of the last 7 days counts
+by the hour and shows each model's count and share for the hour the pointer is on, the last 24
+hours switch it to 10-minute buckets, the tokens figure opens the input and output split, the
+model table sorts by tokens and gives each model's share of the messages and a model's row opens
+an overview with its chats' tags and a chat list that keeps to the period picked.
 
-Discriminates: passes on dev ebc6add67. In a frontend build whose chart tooltip leaves out the
-counts, whose tokens tooltip shows the total as the input, whose model table ignores the Tokens
-sort and gives every model 100%, whose model details ignore the period and whose last 24 hours and
-last 30 days both ask for seven days, every test but the tag one fails; in a backend copy whose
-model overview counts no tags the tag test fails.
+Discriminates: passes on dev fbeee59e9. In a frontend build of ebc6add67 whose chart tooltip
+leaves out the counts, whose tokens tooltip shows the total as the input, whose model table
+ignores the Tokens sort and gives every model 100%, whose model details ignore the period and
+whose last 24 hours and last 30 days both ask for seven days, every test but the tag one fails; in
+a backend copy whose model overview counts no tags the tag test fails.
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime
 from typing import Iterator
 
 import pytest
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, Page, Response, expect
 
 from harness.access import make_group
 from harness.actors import Actor
@@ -74,14 +74,15 @@ def presets(admin) -> Iterator[tuple[str, str]]:
 @dataclass
 class History:
     asker: Actor
+    group_id: str
     group_name: str
     tag: str
+    two_days_ago: int
 
 
 def seed_reply(
-    client, model_id: str, prompt: str, days_ago: int, tokens: dict, chat_tag: str | None = None
+    client, model_id: str, prompt: str, stamp: int, tokens: dict, chat_tag: str | None = None
 ) -> str:
-    stamp = int(time.time()) - days_ago * DAY
     chat_id, _ = seed_chat(
         client,
         [
@@ -105,15 +106,18 @@ def history(admin, make_user, presets) -> History:
     asker = make_user(name=f"History Asker {uuid.uuid4().hex[:6]}")
     group_id = make_group(admin, [asker])
     tag = f"harbour{uuid.uuid4().hex[:6]}"
+    # one clock reading, so the replies of two days ago share the chart's hour
+    now = int(time.time())
+    two_days_ago = now - 2 * DAY
     with asker.client() as client:
-        seed_reply(client, aster, "aster earlier one", 2, usage(10, 5), chat_tag=tag)
-        seed_reply(client, aster, "aster earlier two", 2, usage(10, 5), chat_tag=tag)
-        seed_reply(client, aster, "aster today", 0, usage(10, 5))
-        seed_reply(client, aster, "aster long ago", 10, usage(10, 5))
-        seed_reply(client, birch, "birch earlier", 2, usage(300, 200))
+        seed_reply(client, aster, "aster earlier one", two_days_ago, usage(10, 5), chat_tag=tag)
+        seed_reply(client, aster, "aster earlier two", two_days_ago, usage(10, 5), chat_tag=tag)
+        seed_reply(client, aster, "aster today", now, usage(10, 5))
+        seed_reply(client, aster, "aster long ago", now - 10 * DAY, usage(10, 5))
+        seed_reply(client, birch, "birch earlier", two_days_ago, usage(300, 200))
     with admin.client() as client:
         group_name = client.get(f"/api/v1/groups/id/{group_id}").json()["name"]
-    return History(asker, group_name, tag)
+    return History(asker, group_id, group_name, tag, two_days_ago)
 
 
 def leaderboard_tab(settings: Locator, name: str, selected: bool | None = None) -> Locator:
@@ -157,10 +161,32 @@ def test_the_period_decides_whether_a_reply_from_ten_days_ago_counts(history, ad
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
-def chart_tooltip(settings: Locator, day: date) -> Locator:
-    """The chart's hover box for `day`, which dayjs labels `MMM D, YYYY`."""
-    label = f"{MONTHS[day.month - 1]} {day.day}, {day.year}"
+def chart_metric(settings: Locator) -> Locator:
+    """The option picked in the chart's metric picker, whose text names the bucket size."""
+    return settings.get_by_role("combobox", name="Chart metric").locator("option:checked")
+
+
+def hour_bucket(stamp: int) -> datetime:
+    return datetime.fromtimestamp(stamp).replace(minute=0, second=0, microsecond=0)
+
+
+def chart_tooltip(settings: Locator, hour: datetime) -> Locator:
+    """The chart's hover box for `hour`, which dayjs labels `MMM D, h A`."""
+    label = f"{MONTHS[hour.month - 1]} {hour.day}, {hour.hour % 12 or 12} {hour:%p}"
     return settings.locator("div.pointer-events-none").filter(has_text=label)
+
+
+def is_group_hourly_chart(group_id: str):
+    def matches(response: Response) -> bool:
+        url = response.url
+        return (
+            "/api/v1/analytics/daily?" in url
+            and f"group_id={group_id}" in url
+            and "granularity=hourly" in url
+            and "metric=messages" in url
+        )
+
+    return matches
 
 
 def hover_chart_point(settings: Locator, index: int, points: int) -> None:
@@ -171,17 +197,22 @@ def hover_chart_point(settings: Locator, index: int, points: int) -> None:
     chart.hover(position={"x": box["width"] * index / (points - 1), "y": box["height"] / 2})
 
 
-def test_the_daily_chart_shows_each_models_count_for_the_day_under_the_pointer(
+def test_the_hourly_chart_shows_each_models_count_for_the_hour_under_the_pointer(
     history, admin_page, presets
 ):
     aster, birch = presets
-    settings = open_dashboard(admin_page, history.group_name, "Last 7 days")
-    expect(settings.get_by_text("Daily Messages")).to_be_visible()
+    with admin_page.expect_response(is_group_hourly_chart(history.group_id)) as chart_response:
+        settings = open_dashboard(admin_page, history.group_name, "Last 7 days")
+    expect(chart_metric(settings)).to_have_text("Hourly Messages")
 
-    # the 7-day chart has a point for each of the eight days it touches, today last
-    hover_chart_point(settings, 5, 8)
+    # the chart draws one point per hour bucket the server returned, in its order
+    buckets = [entry["date"] for entry in chart_response.value.json()["data"]]
+    hour = hour_bucket(history.two_days_ago)
+    bucket = f"{hour:%Y-%m-%d %H:%M}"
+    assert bucket in buckets, f"the chart has no point for {bucket}: {buckets}"
+    hover_chart_point(settings, buckets.index(bucket), len(buckets))
 
-    tooltip = chart_tooltip(settings, date.fromtimestamp(time.time() - 2 * DAY))
+    tooltip = chart_tooltip(settings, hour)
     expect(tooltip).to_be_visible()
     expect(tooltip.locator("div").filter(has_text=aster).last).to_contain_text(
         re.compile(r"2\s*\(67%\)")
@@ -191,12 +222,11 @@ def test_the_daily_chart_shows_each_models_count_for_the_day_under_the_pointer(
     )
 
 
-def test_the_last_24_hours_chart_counts_by_the_hour(history, admin_page, presets):
+def test_the_last_24_hours_chart_counts_in_ten_minute_buckets(history, admin_page, presets):
     aster, birch = presets
     settings = open_dashboard(admin_page, history.group_name, "Last 24 hours")
 
-    expect(settings.get_by_text("Hourly Messages")).to_be_visible()
-    expect(settings.get_by_text("Daily Messages")).to_have_count(0)
+    expect(chart_metric(settings)).to_have_text("10-Minute Messages")
     expect(settings.get_by_text("1 messages")).to_be_visible()
     expect(model_row(settings, birch)).to_have_count(0)
     expect(model_row(settings, aster)).to_have_count(1)
