@@ -19,7 +19,7 @@ import pytest
 from playwright.sync_api import expect
 
 from harness import upstream as reply
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.chat_ui import chat_input, conversation, expect_reply, listed_source, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -72,7 +72,7 @@ def test_an_uploaded_file_is_retrieved_and_cited_in_a_chat(page_for, curator, up
 
     chat = conversation(page)
     chat.get_by_role("button", name="Toggle 1 source").click()
-    chat.get_by_role("button", name=f"View source: {FILE_NAME}").click()
+    listed_source(page, FILE_NAME).click()
     citation = page.get_by_role("dialog")
     expect(citation.get_by_role("link", name=FILE_NAME)).to_be_visible()
     expect(citation).to_contain_text("The lake house gate code is 4242.")

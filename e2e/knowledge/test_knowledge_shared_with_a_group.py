@@ -26,8 +26,9 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.access import grant, make_group
 from harness.actors import Actor
+from harness.backends import wait_until
 from harness.knowledge_bases import add_text_file
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.chat_ui import chat_input, conversation, expect_reply, listed_source, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -71,19 +72,24 @@ def _attach_from_hash(page: Page, name: str) -> Locator:
     return page.get_by_role("tooltip").get_by_role("button", name=name)
 
 
-def _ask_and_open_citation(page: Page, upstream, name: str, question: str, answer: str) -> Locator:
-    """Attach the base, ask, and open the reply's single source; returns the citation dialog."""
+def _ask_and_open_citation(page: Page, upstream, name: str, question: str, answer: str) -> None:
+    """Attach the base, ask, and open the reply's list of its single source."""
     upstream.queue(reply.text(answer, match=reply.answering(question)))
     _attach_from_hash(page, name).click()
     send(page, question)
     expect_reply(page, answer)
-    chat = conversation(page)
-    chat.get_by_role("button", name="Toggle 1 source").click()
-    return chat
+    conversation(page).get_by_role("button", name="Toggle 1 source").click()
 
 
 def _sent_for(upstream, question: str) -> str:
     return json.dumps(next(filter(reply.answering(question), upstream.chat_requests())))
+
+
+def _stored_file_names(owner: Actor, knowledge_id: str) -> list[str]:
+    with owner.client() as client:
+        listed = client.get(f"/api/v1/knowledge/{knowledge_id}/files")
+    assert listed.status_code == 200, listed.text
+    return sorted(item["filename"] for item in listed.json()["items"])
 
 
 def _file_row(base: Locator, filename: str) -> Locator:
@@ -104,9 +110,9 @@ def test_a_reader_cites_the_shared_base_in_chat_but_cannot_change_its_files(
 
     page = page_for(reader)
     question = "what is the harbour gate code?"
-    chat = _ask_and_open_citation(page, upstream, name, question, "It is 4242.")
+    _ask_and_open_citation(page, upstream, name, question, "It is 4242.")
     assert "harbour gate code is 4242" in _sent_for(upstream, question)
-    chat.get_by_role("button", name="View source: gate.txt").click()
+    listed_source(page, "gate.txt").click()
     citation = page.get_by_role("dialog")
     expect(citation.get_by_role("link", name="gate.txt")).to_be_visible()
     expect(citation).to_contain_text("The harbour gate code is 4242.")
@@ -148,11 +154,15 @@ def test_a_writer_adds_a_file_that_the_owners_next_chat_cites(
         {"name": "fuel.txt", "mimeType": "text/plain", "buffer": b"The fuel dock opens at 7.\n"}
     )
     expect(writer_page.get_by_text("File added successfully.")).to_be_visible()
-    expect(_file_row(base, "fuel.txt")).to_be_visible()
+    # an upload reports done a moment before the server adds the file to the base
+    stored = wait_until(lambda: _stored_file_names(curator, knowledge_id) == ["fuel.txt"], 15)
+    assert stored, f"the base holds {_stored_file_names(curator, knowledge_id)}, not fuel.txt"
+    writer_page.reload()
+    expect(_file_row(writer_page.get_by_role("main"), "fuel.txt")).to_be_visible()
 
     owner_page = page_for(curator)
     question = "when does the fuel dock open?"
-    chat = _ask_and_open_citation(owner_page, upstream, name, question, "At seven.")
+    _ask_and_open_citation(owner_page, upstream, name, question, "At seven.")
     assert "fuel dock opens at 7" in _sent_for(upstream, question)
-    chat.get_by_role("button", name="View source: fuel.txt").click()
+    listed_source(owner_page, "fuel.txt").click()
     expect(owner_page.get_by_role("dialog")).to_contain_text("The fuel dock opens at 7.")

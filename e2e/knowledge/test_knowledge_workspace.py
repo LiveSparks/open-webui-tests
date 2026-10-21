@@ -60,6 +60,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.access import make_group
 from harness.actors import Actor, admin_of
+from harness.backends import wait_until
 from harness.chat import ask
 from harness.knowledge_bases import add_text_file
 from harness.listener import listening, text_answer
@@ -158,6 +159,15 @@ def _stored_file_names(owner: Actor, knowledge_id: str) -> list[str]:
         listed = client.get(f"/api/v1/knowledge/{knowledge_id}/files")
     assert listed.status_code == 200, listed.text
     return sorted(item["filename"] for item in listed.json()["items"])
+
+
+def _reload_once_stored(page: Page, owner: Actor, knowledge_id: str, names: list[str]) -> Locator:
+    """Reload the base once the server holds exactly `names`."""
+    # an upload reports done a moment before the server adds the file to the base
+    stored = wait_until(lambda: _stored_file_names(owner, knowledge_id) == names, 15)
+    assert stored, f"the base holds {_stored_file_names(owner, knowledge_id)}, expected {names}"
+    page.reload()
+    return page.get_by_role("main")
 
 
 def _search_list(page: Page, name: str) -> None:
@@ -680,8 +690,8 @@ def test_granting_write_lets_a_group_member_edit_the_base(page_for, curator, tea
         {"name": "fuel.txt", "mimeType": "text/plain", "buffer": b"Cards only.\n"}
     )
     expect(member_page.get_by_text("File added successfully.")).to_be_visible()
+    base = _reload_once_stored(member_page, curator, knowledge_id, ["fuel.txt"])
     expect(_file_row(base, "fuel.txt")).to_be_visible()
-    assert _stored_file_names(curator, knowledge_id) == ["fuel.txt"]
 
 
 def test_resetting_the_base_empties_it(page_for, curator):
@@ -779,9 +789,9 @@ def test_a_file_over_the_max_upload_size_is_refused_with_the_limit_named(
 
     expect(page.get_by_text("File size should not exceed 1 MB.")).to_be_visible()
     expect(page.get_by_text("File added successfully.")).to_be_visible()
+    base = _reload_once_stored(page, curator, knowledge_id, ["tides.txt"])
     expect(_file_row(base, "tides.txt")).to_be_visible()
     expect(_file_row(base, "atlas.txt")).to_have_count(0)
-    assert _stored_file_names(curator, knowledge_id) == ["tides.txt"]
 
 
 def test_a_directory_upload_reports_the_files_over_the_max_upload_size(

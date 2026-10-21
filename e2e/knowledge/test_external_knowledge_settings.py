@@ -49,7 +49,7 @@ from harness.external_knowledge import (
     serve_milvus,
     serve_qdrant,
 )
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.chat_ui import chat_input, conversation, expect_reply, listed_source, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -244,7 +244,7 @@ def test_a_chat_with_the_source_attached_is_sent_the_points_qdrant_found(
     # a web address source is listed by its title and links to that page, a plain one is text
     chat = conversation(page)
     chat.get_by_role("button", name="Toggle 2 sources").click()
-    listed = chat.get_by_role("button", name="View source: Boathouse rules")
+    listed = listed_source(page, "Boathouse rules")
     expect(listed).to_be_visible()
     listed.click()
     citation = page.get_by_role("dialog")
@@ -254,7 +254,7 @@ def test_a_chat_with_the_source_attached_is_sent_the_points_qdrant_found(
     content_link = citation.get_by_role("link", name="Content")
     expect(content_link).to_have_attribute("href", re.compile(f"^{re.escape(BOATHOUSE_PAGE)}"))
     citation.get_by_role("button", name="Close citation modal").click()
-    chat.get_by_role("button", name="View source: oars.md").click()
+    listed_source(page, "oars.md").click()
     expect(citation.get_by_text("oars.md", exact=True)).to_be_visible()
     expect(citation.get_by_role("link")).to_have_count(0)
 
