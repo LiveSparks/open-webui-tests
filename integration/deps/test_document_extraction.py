@@ -54,6 +54,14 @@ With `fix_character_width=False, uncurl_quotes=False` removed from the loader's 
 call (c3fbf3638 reverted) the full-width and smart quote cases and the entity case's apostrophe fail
 on dev 015dbc861; the other mojibake case still passes.
 
+Reading the images of an uploaded PDF kept the server busy on every core of the host (issue
+#32844, fix aa7cf1902): each upload built rapidocr with onnxruntime's default thread pools, sized
+to the host's cores rather than a container's CPU limit, so a few scans uploaded together held
+the server at its limit. A two page scan now costs at most about one core while it is read. With
+the fix reverted the server burned 6.5 to 7.1 cores on a 16 thread host; on a host with a single
+physical core the old pools had nothing to spread over, so the case only discriminates on
+machines with more.
+
 Discriminates: passes on dev bbfa876af (.rst, .epub and .odt with a pandoc binary on PATH). One
 backend copy broke pypdf's `extract_text`, `docx2txt.process`, the xlsx, rst and epub partitions and
 `chardet.detect`; another broke rapidocr's `RapidOCR`, the pptx, xml and odt partitions,
@@ -94,6 +102,7 @@ import io
 import shutil
 import struct
 import subprocess
+import time
 import zipfile
 import zlib
 from pathlib import Path
@@ -221,6 +230,25 @@ def _image_pdf(word: str) -> bytes:
     """A scan: the word drawn into an image, saved by Pillow as a PDF (a JPEG, no text layer)."""
     buffer = io.BytesIO()
     _drawn(word).save(buffer, format="PDF")
+    return buffer.getvalue()
+
+
+def _scanned_pages(word: str, pages: int) -> bytes:
+    """A scan of full pages of text lines, enough work to keep OCR busy for seconds."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    font = ImageFont.load_default(size=28)
+    scans = []
+    for _ in range(pages):
+        scan = Image.new("L", (1240, 1754), 255)
+        draw = ImageDraw.Draw(scan)
+        for line in range(40):
+            draw.text(
+                (60, 60 + line * 41), f"{word} line {line} of the harbour budget", fill=0, font=font
+            )
+        scans.append(scan)
+    buffer = io.BytesIO()
+    scans[0].save(buffer, format="PDF", save_all=True, append_images=scans[1:])
     return buffer.getvalue()
 
 
@@ -868,6 +896,24 @@ def test_the_text_in_a_pdf_image_is_read_without_downloading_anything(offline_oc
         content = _upload_and_read(client, "scan.pdf", scan, "application/pdf")
 
     assert OCR_WORD in content, f"OCR read {content!r}"
+
+
+@pytest.mark.slow
+def test_reading_a_scan_keeps_to_one_core(instance_with):
+    instance = instance_with(OFFLINE_OCR_ENV)
+    scan = _scanned_pages(OCR_WORD, pages=2)
+    with admin_of(instance).client() as client:
+        cpu_before, started = instance.cpu_seconds(), time.monotonic()
+        content = _upload_and_read(client, "scan.pdf", scan, "application/pdf")
+        elapsed = time.monotonic() - started
+        cpu_used = instance.cpu_seconds() - cpu_before
+
+    assert content.count(OCR_WORD) >= 40, f"OCR read {content!r}"
+    # one core plus slack for the request itself and OpenCV's short bursts
+    assert cpu_used < 1.5 * elapsed, (
+        f"the server burned {cpu_used:.1f}s of CPU in {elapsed:.1f}s to read one scan "
+        f"({cpu_used / elapsed:.1f} cores)"
+    )
 
 
 @pytest.mark.slow
