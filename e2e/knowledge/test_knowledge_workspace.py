@@ -26,6 +26,12 @@ many of its files failed.
 Chromium's directory picker cannot be driven by Playwright, so the folder upload and sync tests
 hide it and the page takes the file input it offers browsers without one.
 
+`test_uploaded_files_and_pasted_text_are_listed_once_processed` fails now and then on dev
+131ddc32e: an upload into a base reports done a moment before the server adds the file to the
+base, and a list fetched in that moment leaves the file out until a reload
+(open-webui/open-webui#32803).
+
+
 Discriminates: passes on dev 176d31d1d. In a frontend copy, uploading only the first of the
 chosen files fails the upload test, uploading a folder's files without their subfolder fails
 the folder test, skipping the file's text fetch fails the preview test, a search input that

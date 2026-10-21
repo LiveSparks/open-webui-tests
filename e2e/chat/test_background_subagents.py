@@ -32,6 +32,12 @@ dev 62f70a844 for two reasons: the sub-agent's reply is refused with 409
 (open-webui/open-webui#32066, fixed by 641c82df1), and a reply stopped with Stop never ends on the
 page (open-webui/open-webui#32081, fixed by d12bf062b).
 
+`test_a_reload_while_the_subagent_works_keeps_the_chat_and_the_report_still_comes` is red on dev
+131ddc32e: since d5038fec4 a chat that reloads as the report arrives keeps the copy of the report
+the socket sent, which lacks what marks it as a report, so the page shows the raw report as a
+plain message until the next reload (open-webui/open-webui#32801).
+
+
 Discriminates: passes on dev a5bc78300; on dev 176d31d1d the tests that wait for the report fail on
 that bug. In backend copies the tests turn red when the dispatch waits for the sub-agent, the cap
 is ignored, a failure is reported as completed, the reports of two chats are mixed up, two finished
