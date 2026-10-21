@@ -12,7 +12,9 @@ Discriminates: passes on dev 30f3f6a8f; in a frontend build whose Default permis
 saves the permissions it opened with, every "withdrawn" test and the file upload refusal fail
 while the "offered" and admin ones still pass. In the pre-fix build of 0.12.4 (a21335bdd and
 c9936e81e reverted) the export test fails with the permission withheld: the folder menu offers
-Export, and with the folder check skipped, so does Archived Chats.
+Export, and with the folder check skipped, so does Archived Chats. On dev ca8f451cc (before the
+#32832 fix) the own-message Edit test fails with the permission withheld: the user's own
+message still offers Edit.
 """
 
 from __future__ import annotations
@@ -204,6 +206,19 @@ def test_folder_and_archive_export_follow_allow_chat_export(
     page.keyboard.press("Escape")
     archive_export = archive_menu_entries(page).get_by_role("button", name="Export")
     expect(archive_export, "the Archived Chats Export entry").to_have_count(expected)
+
+
+# #32832: with Allow Chat Edit off, a user could still edit their own messages.
+@pytest.mark.parametrize("allowed", [True, False], ids=["allowed", "withheld"])
+def test_edit_on_the_users_own_message_follows_allow_chat_edit(
+    allowed, page_for, admin, make_user, upstream, preserve
+):
+    preserve("permissions")
+    save_default_permission(page_for(admin), "Allow Chat Edit", turn_on=allowed)
+    page = open_answered_chat(page_for, make_user(), upstream)
+
+    edit = message_button("user", "Edit")(page)
+    expect(edit, "Edit on the user's own message").to_have_count(1 if allowed else 0)
 
 
 def test_with_file_upload_off_upload_files_opens_no_file_picker(
