@@ -26,6 +26,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.model_selector import model_search
 from utils.sidebar_folders import folder_link, folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -90,7 +91,7 @@ def open_edit_dialog(page: Page) -> Locator:
 
 def choose_default(page: Page, dialog: Locator, model_id: str) -> None:
     dialog.get_by_role("button", name="Use default").click()
-    page.get_by_role("textbox", name="Search In Models").fill(model_id)
+    model_search(page).fill(model_id)
     page.get_by_role("option", name=f"Select {model_id} model").click()
     expect(
         dialog.get_by_role("button", name=re.compile(f"Selected model: {model_id}"))
@@ -161,7 +162,7 @@ def test_switching_models_in_a_folder_chat_leaves_the_folders_default(
     folder_id = create_folder(owner, {"model_ids": [folder_model]})
     page = page_for(owner, path=f"/folders/{folder_id}")
     page.get_by_role("button", name=re.compile("Selected model")).click()
-    page.get_by_role("textbox", name="Search In Models").fill(MOCK_MODEL_ID)
+    model_search(page).fill(MOCK_MODEL_ID)
     page.get_by_role("option", name=f"Select {MOCK_MODEL_ID} model").click()
     upstream.queue(reply.text("fog horn", match=reply.answering("what is the weather?")))
 
@@ -180,7 +181,7 @@ def test_a_folder_without_a_default_does_not_inherit_the_last_chats_model(
     folder_id = create_folder(owner)
     page = page_for(owner)
     page.get_by_role("button", name=re.compile("Selected model")).click()
-    page.get_by_role("textbox", name="Search In Models").fill(folder_model)
+    model_search(page).fill(folder_model)
     page.get_by_role("option", name=f"Select {folder_model} model").click()
     expect(
         page.get_by_role("button", name=re.compile(f"Selected model: {folder_model}"))

@@ -29,6 +29,7 @@ from playwright.sync_api import Page, expect
 from harness import upstream as reply
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, expect_reply
+from utils.model_selector import model_search
 from utils.phone import (
     PHONE,
     SCREEN,
@@ -83,7 +84,7 @@ def expect_no_sideways_scroll(page: Page) -> None:
 
 
 def choose_model(page: Page, name: str) -> None:
-    search = page.get_by_role("textbox", name="Search In Models")
+    search = model_search(page)
     expect_on_screen(search)
     search.fill(name)
     available = page.get_by_role("listbox", name="Available models")

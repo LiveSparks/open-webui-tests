@@ -20,6 +20,7 @@ from playwright.sync_api import Page, expect
 
 from harness.actors import Actor
 from harness.upstream import MOCK_MODEL_ID
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -68,7 +69,7 @@ def _edit_in_settings_models(admin: Actor, arena_id: str, name: str) -> None:
 def _expect_offered(page: Page, name: str) -> None:
     page.goto("/")
     page.get_by_role("button", name=re.compile("^Selected model")).click()
-    page.get_by_role("textbox", name="Search In Models").fill(name)
+    model_search(page).fill(name)
     available = page.get_by_role("listbox", name="Available models")
     expect(available.get_by_role("option", name=f"Select {name} model")).to_be_visible()
 

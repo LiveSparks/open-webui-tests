@@ -46,6 +46,7 @@ from harness.chat import ask
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, stop_button
+from utils.model_selector import model_search
 from utils.phone import (
     PHONE,
     SCREEN,
@@ -272,7 +273,7 @@ def test_the_model_picked_in_the_selector_answers_the_next_message(phone, admin,
     try:
         phone.reload()
         tap_on_screen(phone.get_by_role("button", name=f"Selected model: {MOCK_MODEL_ID}"))
-        search = phone.get_by_role("textbox", name="Search In Models")
+        search = model_search(phone)
         expect_on_screen(search)
         search.fill(model_name)
         option = phone.get_by_role("listbox", name="Available models").get_by_role(

@@ -31,6 +31,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness.access import make_group
 from harness.actors import Actor
 from utils.chat_ui import chat_input
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -207,11 +208,11 @@ def test_a_prompt_named_like_a_built_in_command_is_listed_next_to_it(page_for, a
 
     prompt.click()
     expect(chat_input(page)).to_have_text("Pick a vessel.")
-    expect(page.get_by_role("textbox", name="Search In Models")).to_have_count(0)
+    expect(model_search(page)).to_have_count(0)
 
     # the chat keeps the inserted text as a draft, so clear it rather than reload
     page.keyboard.press("ControlOrMeta+A")
     page.keyboard.press("Delete")
     page.keyboard.type("/model")
     page.get_by_role("tooltip").get_by_role("button", name=re.compile(r"^Model:")).click()
-    expect(page.get_by_role("textbox", name="Search In Models")).to_be_visible()
+    expect(model_search(page)).to_be_visible()

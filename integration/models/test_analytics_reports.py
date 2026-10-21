@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Callable, Iterator
 
 import pytest
@@ -127,6 +127,13 @@ def day_of(days_ago: int) -> str:
     return date.fromtimestamp(time.time() - days_ago * DAY).isoformat()
 
 
+def days_spanned(bounds: dict[str, int]) -> list[str]:
+    """Every calendar day from the window's start to its end, which can fall on tomorrow."""
+    first = date.fromtimestamp(bounds["start_date"])
+    last = date.fromtimestamp(bounds["end_date"])
+    return [(first + timedelta(days=n)).isoformat() for n in range((last - first).days + 1)]
+
+
 # ---------------------------------------------------------------- token usage
 
 
@@ -179,16 +186,16 @@ def test_daily_series_puts_each_reply_on_its_day_and_fills_the_empty_days(
     seed_reply(owner, birch, "two days b", days_ago=2)
     seed_reply(owner, birch, "five days", days_ago=5)
 
-    series = report(admin, "daily", granularity="daily", group_id=group_id, **window(6))["data"]
+    bounds = window(6)
+    series = report(admin, "daily", granularity="daily", group_id=group_id, **bounds)["data"]
 
-    assert [entry["date"] for entry in series] == [day_of(n) for n in range(6, -1, -1)]
+    days = days_spanned(bounds)
+    assert days[:7] == [day_of(n) for n in range(6, -1, -1)]
+    assert [entry["date"] for entry in series] == days
     assert {entry["date"]: entry["models"] for entry in series} == {
-        day_of(6): {},
+        **{day: {} for day in days},
         day_of(5): {birch: 1},
-        day_of(4): {},
-        day_of(3): {},
         day_of(2): {aster: 1, birch: 1},
-        day_of(1): {},
         day_of(0): {aster: 1},
     }
 

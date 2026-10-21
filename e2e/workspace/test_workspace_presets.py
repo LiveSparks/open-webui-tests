@@ -26,6 +26,7 @@ from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -46,7 +47,7 @@ def builder(make_user):
 
 def _choose_from_models(page: Page, name: str) -> None:
     # the list renders only the rows in view, so search to bring the model into it
-    page.get_by_role("textbox", name="Search In Models").fill(name)
+    model_search(page).fill(name)
     available = page.get_by_role("listbox", name="Available models")
     available.get_by_role("option", name=f"Select {name} model").click()
 

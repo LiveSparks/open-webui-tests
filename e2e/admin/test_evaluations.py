@@ -48,7 +48,7 @@ from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.access_control import choose_visibility
 from utils.chat_ui import conversation, expect_reply, replies, send
-from utils.model_selector import select_model
+from utils.model_selector import model_search, select_model
 from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -260,7 +260,7 @@ def arena_model(admin, preserve) -> Iterator[str]:
 def _offered_in_selector(page: Page, name: str) -> Locator:
     page.goto("/")
     page.get_by_role("button", name=re.compile("^Selected model")).click()
-    page.get_by_role("textbox", name="Search In Models").fill(name)
+    model_search(page).fill(name)
     available = page.get_by_role("listbox", name="Available models")
     return available.get_by_role("option", name=f"Select {name} model")
 

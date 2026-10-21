@@ -36,6 +36,7 @@ from harness import upstream as reply
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, conversation, expect_reply
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -169,7 +170,7 @@ def test_the_model_selector_is_reached_with_tab_and_a_model_picked_with_the_keys
     selector = keyboard_page.get_by_role("button", name=f"Selected model: {MOCK_MODEL_ID}")
     press_until_focused(keyboard_page, "Tab", selector)
     keyboard_page.keyboard.press("Enter")
-    search = keyboard_page.get_by_role("textbox", name="Search In Models")
+    search = model_search(keyboard_page)
     expect(search).to_be_focused()
 
     keyboard_page.keyboard.type(preset)

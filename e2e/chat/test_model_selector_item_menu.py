@@ -29,6 +29,7 @@ from harness.actors import Actor
 from harness.ollama_provider import OLLAMA_CONFIG, connect_ollama, serve_ollama
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -112,7 +113,7 @@ def open_selector(page: Page) -> Locator:
 
 def model_row(page: Page, name: str) -> Locator:
     models = open_selector(page)
-    page.get_by_role("textbox", name="Search In Models").fill(name)
+    model_search(page).fill(name)
     row = models.get_by_role("option", name=f"Select {name} model")
     expect(row).to_be_visible()
     return row

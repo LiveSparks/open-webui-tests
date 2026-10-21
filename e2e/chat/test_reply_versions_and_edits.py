@@ -30,6 +30,7 @@ from harness import upstream as reply
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import conversation, expect_reply, last_reply, replies, send
+from utils.model_selector import model_search
 from utils.search_dialog import open_search, results, search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -207,7 +208,7 @@ def second_model(admin):
 def _add_model(page: Page, model_id: str) -> None:
     page.get_by_role("button", name=f"Selected model: {MOCK_MODEL_ID}").click()
     page.get_by_role("button", name="Compare").click()
-    page.get_by_role("textbox", name="Search In Models").fill(model_id)
+    model_search(page).fill(model_id)
     page.get_by_role("option", name=f"Select {model_id} model").click()
     page.keyboard.press("Escape")
     expect(page.get_by_role("button", name=f"Selected model: {MOCK_MODEL_ID} +1")).to_be_visible()

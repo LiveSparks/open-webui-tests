@@ -26,6 +26,7 @@ from harness import backends
 from harness.actors import create_user
 from harness.listener import json_answer, listening
 from harness.second_provider import OPENAI_CONFIG, attach
+from utils.model_selector import model_search
 
 pytestmark = [
     pytest.mark.regression,
@@ -88,7 +89,7 @@ def _change_the_connection_on(instance) -> None:
 
 def _expect_offered(page: Page, model_id: str) -> None:
     page.get_by_role("button", name=re.compile("^Selected model")).click()
-    page.get_by_role("textbox", name="Search In Models").fill(model_id)
+    model_search(page).fill(model_id)
     available = page.get_by_role("listbox", name="Available models")
     expect(available.get_by_role("option", name=f"Select {model_id} model")).to_be_visible()
 

@@ -9,9 +9,14 @@ from playwright.sync_api import Locator, Page
 SELECTOR_BUTTON = re.compile("Select a model|Selected model")
 
 
+def model_search(page: Page) -> Locator:
+    """The selector's search box, which announces the option the arrow keys are on."""
+    return page.get_by_role("combobox", name="Search In Models")
+
+
 def model_options(page: Page, name: str) -> Locator:
     """The selector's options for `name`, after searching for it; opens the selector if closed."""
-    search = page.get_by_role("textbox", name="Search In Models")
+    search = model_search(page)
     if not search.is_visible():
         page.get_by_role("button", name=SELECTOR_BUTTON).click()
     search.fill(name)

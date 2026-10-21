@@ -67,6 +67,7 @@ from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_sea
 from utils.chat_ui import chat_input, expect_reply, send
 from utils.member_picker import pick_member
 from utils.model_editor import pick, section, set_checkbox
+from utils.model_selector import model_search
 from utils.setting_rows import setting_button
 from utils.speech_audio import silent_wav
 from utils.tooltips import tooltip_button
@@ -517,7 +518,7 @@ def test_a_new_model_is_private_until_shared_with_a_group(page_for, builder, cre
     editor.get_by_placeholder("Model Name").fill(model["name"])
     editor.get_by_placeholder("Model ID").fill(model["id"])
     editor.get_by_role("button", name="Select a base model", exact=True).click()
-    page.get_by_role("textbox", name="Search In Models").fill(MOCK_MODEL_ID)
+    model_search(page).fill(MOCK_MODEL_ID)
     model_option(page, MOCK_MODEL_ID).click()
     editor.get_by_role("button", name="Save & Create").click()
     expect(page).to_have_url(re.compile(r"/workspace/models/?$"))
@@ -537,7 +538,7 @@ def test_a_new_model_is_private_until_shared_with_a_group(page_for, builder, cre
 
     member_page = page_for(member)
     member_page.get_by_role("button", name=re.compile("^Selected model")).click()
-    member_page.get_by_role("textbox", name="Search In Models").fill(model["name"])
+    model_search(member_page).fill(model["name"])
     expect(model_option(member_page, model["name"])).to_be_visible()
     assert not sees_model(stranger, model["id"]), "sharing with a group showed it to everyone"
 

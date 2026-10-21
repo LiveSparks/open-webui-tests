@@ -22,7 +22,7 @@ from playwright.sync_api import expect
 from harness.ollama_provider import OLLAMA_CONFIG, connect_ollama, serve_ollama
 from utils.chat_ui import chat_input
 from utils.manage_ollama import open_manage_ollama
-from utils.model_selector import SELECTOR_BUTTON
+from utils.model_selector import SELECTOR_BUTTON, model_search
 from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -67,7 +67,7 @@ def test_cancelling_a_pull_from_the_model_selector_keeps_the_model(page_for, ope
     page = page_for(operator)
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name=SELECTOR_BUTTON).click()
-    page.get_by_role("textbox", name="Search In Models").fill(MODEL)
+    model_search(page).fill(MODEL)
 
     page.get_by_role("option", name=f'Download "{MODEL}"').click()
     expect(page.get_by_text("50%")).to_be_visible()

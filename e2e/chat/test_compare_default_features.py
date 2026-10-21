@@ -23,6 +23,7 @@ from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
 from utils.chat_ui import chat_input
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -82,7 +83,7 @@ def pick_model(page: Page, current_id: str, model_id: str, *, compare: bool = Fa
     page.get_by_role("button", name=f"Selected model: {current_id}").click()
     if compare:
         page.get_by_role("button", name="Compare").click()
-    page.get_by_role("textbox", name="Search In Models").fill(model_id)
+    model_search(page).fill(model_id)
     page.get_by_role("option", name=f"Select {model_id} model").click()
     if compare:
         page.keyboard.press("Escape")

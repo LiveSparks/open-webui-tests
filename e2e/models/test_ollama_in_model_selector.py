@@ -26,7 +26,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness.listener import json_answer
 from harness.ollama_provider import OLLAMA_CONFIG, connect_ollama, ndjson, serve_ollama
 from utils.chat_ui import chat_input
-from utils.model_selector import SELECTOR_BUTTON, model_options
+from utils.model_selector import SELECTOR_BUTTON, model_options, model_search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -70,7 +70,7 @@ def eject_button(option: Locator) -> Locator:
 def download_from_selector(page: Page, tag: str) -> None:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name=SELECTOR_BUTTON).click()
-    page.get_by_role("textbox", name="Search In Models").fill(tag)
+    model_search(page).fill(tag)
     page.get_by_role("option", name=f'Download "{tag}"').click()
 
 

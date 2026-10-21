@@ -21,6 +21,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, expect_reply, replies, send
+from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -114,7 +115,7 @@ def test_model_in_the_menu_opens_the_model_selector(page_for, make_user):
     menu = _command_menu(page, "model")
     menu.get_by_role("button", name=re.compile(r"^Model:")).click()
 
-    expect(page.get_by_role("textbox", name="Search In Models")).to_be_visible()
+    expect(model_search(page)).to_be_visible()
 
 
 def test_settings_in_the_menu_opens_the_settings(page_for, make_user):
