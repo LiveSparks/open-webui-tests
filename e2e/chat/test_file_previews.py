@@ -3,9 +3,10 @@
 A file attached in the composer, and the same file on the sent message, opens a dialog with its
 name, its size and the text the server read out of it. Its Preview tab shows a CSV as a table of
 its rows, each sheet of a spreadsheet on a tab of its own, a Word document as its rendered page and
-Markdown with its formatting. A PDF shows its extracted text; the Preview tab's PDF viewer says
-"Failed to load PDF." in the suite's Chromium 131 for any PDF, so it is not driven here. An
-attached picture opens full size from the sent message and downloads as the bytes that were
+Markdown with its formatting. A PowerPoint slide draws its title where the file aligns it: left,
+right or, when the file leaves it open, centred. A PDF shows its extracted text; the Preview tab's
+PDF viewer says "Failed to load PDF." in the suite's Chromium 131 for any PDF, so it is not driven
+here. An attached picture opens full size from the sent message and downloads as the bytes that were
 uploaded. Switching a long document to Using Entire Document in its dialog sends the model the
 whole text where focused retrieval sends a few pieces of it, and a file's switch shows its own
 mode after another attachment is removed.
@@ -14,7 +15,9 @@ Discriminates: passes on the dev ebc6add67 build. In a frontend build whose file
 "No content" for the text, no longer takes a CSV for a spreadsheet, hides the sheet tabs, never
 loads a Word document, shows Markdown as plain text and ignores the Using Entire Document switch,
 and whose picture preview never opens, every test fails. In the pre-fix build of 0.12.4
-(a944564c2 reverted) the remaining file shows the removed file's Using Entire Document.
+(a944564c2 reverted) the remaining file shows the removed file's Using Entire Document. The
+PowerPoint title test fails on the dev 75358502c build (#32873: the left-aligned title starts 42%
+across the slide) and passes with the fix b425cc0d2, which is not merged yet.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from integration.retrieval.test_document_loaders import (
     DOCX,
+    PPTX,
     XLSX,
     docx_bytes,
     pdf_bytes,
@@ -133,6 +137,72 @@ def test_a_word_document_previews_as_its_page(page_for, make_user):
     page_view = dialog.locator("section.docx")
     expect(page_view).to_contain_text("The buoys need paint before May.")
     expect(page_view).to_contain_text("Dear harbour master,")
+
+
+def titled_deck(*alignments: str | None) -> bytes:
+    """One title slide per entry, its title set to that alignment or left to the layout."""
+    pptx = pytest.importorskip("pptx")
+    from pptx.enum.text import PP_ALIGN
+
+    deck = pptx.Presentation()
+    for alignment in alignments:
+        slide = deck.slides.add_slide(deck.slide_layouts[0])
+        slide.shapes.title.text = "Harbour"
+        if alignment:
+            slide.shapes.title.text_frame.paragraphs[0].alignment = getattr(PP_ALIGN, alignment)
+    buffer = io.BytesIO()
+    deck.save(buffer)
+    return buffer.getvalue()
+
+
+def title_ink(dialog: Locator, number: int) -> tuple[float, float]:
+    """Where the title's dark pixels start and end on a slide, as % of the slide width."""
+    dialog.get_by_role("button", name=f"Slide {number}", exact=True).click()
+    slide = dialog.get_by_role("img", name=f"Slide {number}", exact=True)
+    expect(slide).to_be_visible()
+    return tuple(
+        slide.evaluate(
+            """async image => {
+                await image.decode();
+                const canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth;
+                canvas.height = image.naturalHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(image, 0, 0);
+                const { width, height } = canvas;
+                const { data } = context.getImageData(0, 0, width, height);
+                let first = width, last = -1;
+                for (let y = Math.floor(height * 0.28); y < height * 0.48; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        if (data[i] + data[i + 1] + data[i + 2] < 300) {
+                            first = Math.min(first, x);
+                            last = Math.max(last, x);
+                        }
+                    }
+                }
+                return [first / width * 100, last / width * 100];
+            }"""
+        )
+    )
+
+
+def test_a_slide_title_previews_with_the_alignment_the_file_gives_it(page_for, make_user):
+    """#32873: a title the file aligns left was drawn centred, as if it had no alignment."""
+    page = page_for(make_user())
+    deck = titled_deck("LEFT", None, "RIGHT")
+
+    dialog = attach_and_open(page, "harbour.pptx", deck, PPTX)
+    show_preview(dialog)
+
+    left_start, _ = title_ink(dialog, 1)
+    assert left_start < 20, f"a left-aligned title starts {left_start:.0f}% across the slide"
+    unset_start, unset_end = title_ink(dialog, 2)
+    assert unset_start < unset_end and abs((unset_start + unset_end) / 2 - 50) < 5, (
+        f"a title without alignment spans {unset_start:.0f}% to {unset_end:.0f}%, not centred"
+    )
+    _, right_end = title_ink(dialog, 3)
+    assert right_end > 80, f"a right-aligned title ends {right_end:.0f}% across the slide"
 
 
 def test_markdown_previews_with_its_formatting(page_for, make_user):
