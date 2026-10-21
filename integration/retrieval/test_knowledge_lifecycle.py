@@ -358,6 +358,10 @@ def stuck_file(instance_with, stalled_embedding):
         released.set()
 
 
+# pending until processing starts, then processing until it finishes
+STILL_PROCESSING = ({"status": "pending"}, {"status": "processing"})
+
+
 def first_event(stream) -> object:
     line = next(line for line in stream.iter_lines() if line.startswith("data: "))
     return json.loads(line.removeprefix("data: "))
@@ -401,7 +405,9 @@ def test_watching_a_stuck_files_status_leaves_the_pool_free(stuck_file):
         f"only {len(streams)} of {WATCHERS} status watchers were answered: the ones before them "
         "held the connection pool (PR #28183)"
     )
-    assert events == [{"status": "pending"}] * WATCHERS
+    assert all(event in STILL_PROCESSING for event in events), (
+        f"a watcher was told the stuck file had finished: {events}"
+    )
     assert answered.status_code == 200, answered.text
 
 

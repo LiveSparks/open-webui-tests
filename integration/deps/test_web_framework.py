@@ -111,7 +111,10 @@ def test_an_upload_keeps_its_form_metadata_and_is_processed_after_the_answer(mak
         answered = uploaded.json()
         deadline = time.monotonic() + PROCESSING_WAIT
         stored = client.get(f"/api/v1/files/{answered['id']}").json()
-        while stored["data"].get("status") == "pending" and time.monotonic() < deadline:
+        while (
+            stored["data"].get("status") in ("pending", "processing")
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.2)
             stored = client.get(f"/api/v1/files/{answered['id']}").json()
 
