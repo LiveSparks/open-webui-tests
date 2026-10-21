@@ -6,8 +6,13 @@ expiry it first spends the refresh token at the provider's token endpoint and fo
 access token; the provider rotates the refresh token as it does. When the provider refuses the
 refresh, the session is dropped and nothing stale is forwarded.
 
+Regression #32820: a model connection set to `system_oauth` got no token when the same user
+called the API with a bearer token and no browser cookie, while tool servers fall back to the
+user's latest stored session.
+
 Discriminates: in a backend copy, returning the stored token without checking its expiry in the
-SSO `get_oauth_token` fails the refresh and the refused-refresh tests (no refresh is tried).
+SSO `get_oauth_token` fails the refresh and the refused-refresh tests (no refresh is tried). The
+API-call test passes with the #32820 fix and fails on dev ca8f451cc (no Authorization header).
 """
 
 from __future__ import annotations
@@ -16,11 +21,20 @@ import pytest
 
 from harness.listener import json_answer
 from harness.oidc_provider import oauth_settings, shared_provider, sign_in, sso_env
+from harness.second_provider import OPENAI_CONFIG, attach
 
 pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source, pytest.mark.slow]
 
 EXPIRING_SOON = 60  # inside the five minutes before expiry in which Open WebUI refreshes
 TOOL_SPEC = {"openapi": "3.0.0", "info": {"title": "SSO tools", "version": "1"}, "paths": {}}
+SSO_MODEL = "sso-protected-model"
+COMPLETION = {
+    "id": "sso",
+    "object": "chat.completion",
+    "choices": [
+        {"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}
+    ],
+}
 
 
 @pytest.fixture
@@ -104,3 +118,29 @@ def test_a_refused_refresh_forwards_nothing_and_drops_the_session(sso, idp, tool
     assert refresh_grants(idp), "the refresh was never tried"
     assert forwarded is None, "a token the provider would not refresh was forwarded"
     assert disconnected.status_code == 404, "the refused refresh left the SSO session behind"
+
+
+@pytest.mark.regression
+def test_an_api_call_forwards_the_token_to_a_system_oauth_model_connection(
+    sso, idp, listener, preserve
+):
+    preserve(OPENAI_CONFIG, on=sso)
+    browser = sign_in_as_admin(sso, idp)
+    access_token = idp.issued[-1]["access_token"]
+    listener.route("POST", "/v1/chat/completions", json_answer(COMPLETION))
+    attach(browser, listener, SSO_MODEL, auth_type="system_oauth")
+
+    # the same user over the API: a bearer token, no `oauth_session_id` cookie
+    with sso.client(token=browser.cookies.get("token")) as api:
+        body = {
+            "model": SSO_MODEL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": False,
+        }
+        completed = api.post("/api/chat/completions", json=body)
+
+    assert completed.status_code == 200, f"the API completion failed: {completed.text}"
+    [sent] = listener.requests_to("/v1/chat/completions")
+    assert sent.headers.get("Authorization") == f"Bearer {access_token}", (
+        f"the connection got {sent.headers.get('Authorization')!r} instead of the user's token"
+    )
