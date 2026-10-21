@@ -40,6 +40,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.actors import Actor
 from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply, send
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -57,17 +58,13 @@ def _advanced_params(page: Page) -> Locator:
     return page.locator("body")
 
 
-def _default_button(panel: Locator, label: str) -> Locator:
-    return panel.get_by_text(label, exact=True).locator("xpath=..").get_by_role("button")
-
-
 def _set(panel: Locator, label: str, value: str) -> None:
-    _default_button(panel, label).click()
+    setting_button(panel, label).click()
     panel.get_by_role("spinbutton", name=label).fill(value)
 
 
 def _set_text(panel: Locator, label: str, value: str) -> None:
-    _default_button(panel, label).click()
+    setting_button(panel, label).click()
     panel.get_by_role("textbox", name=label).fill(value)
 
 
@@ -204,13 +201,13 @@ def test_each_chat_keeps_its_own_values_when_switching_in_the_sidebar(
 
     _sidebar_chat(page, "tuned chat").click()
     expect(conversation(page).get_by_text("tuned chat")).to_be_visible(timeout=REPLY_TIMEOUT_MS)
-    expect(_default_button(panel, "Temperature")).to_have_text("Custom")
+    expect(setting_button(panel, "Temperature")).to_have_text("Custom")
     expect(panel.get_by_role("spinbutton", name="Temperature")).to_have_value("0.3")
     assert _ask(page, upstream, "tuned again").get("temperature") == 0.3
 
     _sidebar_chat(page, "plain chat").click()
     expect(conversation(page).get_by_text("plain chat")).to_be_visible(timeout=REPLY_TIMEOUT_MS)
-    expect(_default_button(panel, "Temperature")).to_have_text("Default")
+    expect(setting_button(panel, "Temperature")).to_have_text("Default")
     assert "temperature" not in _ask(page, upstream, "plain again")
 
 
@@ -239,7 +236,7 @@ def _save_account_parameters(page: Page, values: dict[str, str]) -> None:
     """Sets each spinbutton parameter under Settings > General and saves."""
     page.goto("/?settings=general")
     settings = page.get_by_role("dialog")
-    settings.get_by_role("button", name="Show", exact=True).click()
+    setting_button(settings, "Model parameters").click()
     for label, value in values.items():
         _set(settings, label, value)
     with page.expect_response(lambda response: "/user/settings/update" in response.url):
@@ -278,8 +275,8 @@ def test_a_chat_value_switched_back_to_default_leaves_the_accounts_one(
     _save_account_parameters(page, {"Temperature": "0.6"})
     panel = _advanced_params(page)
     _set(panel, "Temperature", "0.2")
-    _default_button(panel, "Temperature").click()
-    expect(_default_button(panel, "Temperature")).to_have_text("Default")
+    setting_button(panel, "Temperature").click()
+    expect(setting_button(panel, "Temperature")).to_have_text("Default")
 
     request = _ask(page, upstream)
 

@@ -29,6 +29,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -128,7 +129,7 @@ def test_an_api_key_created_in_the_account_settings_works_until_it_is_deleted(
     page = page_for(keys_allowed)
     settings = _account_settings(page)
     secrets = settings.locator("section").filter(has_text="API keys")
-    secrets.get_by_role("button", name="Show", exact=True).click()
+    setting_button(secrets, "Secrets").click()
 
     secrets.get_by_role("button", name="Create new secret key").click()
     expect(page.get_by_text("API Key created.")).to_be_visible()
@@ -148,7 +149,7 @@ def test_an_api_key_created_in_the_account_settings_works_until_it_is_deleted(
 
 
 def _created_key(page: Page, secrets: Locator) -> str:
-    secrets.get_by_role("button", name="Show", exact=True).click()
+    setting_button(secrets, "Secrets").click()
     secrets.get_by_role("button", name="Create new secret key").click()
     expect(page.get_by_text("API Key created.")).to_be_visible()
     return secrets.get_by_role("textbox").input_value()

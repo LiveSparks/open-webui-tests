@@ -40,6 +40,7 @@ from harness import upstream as reply
 from harness.model_controls import LENGTH, THINKING, pick, preset_with_controls
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, expect_reply, replies, send
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -218,9 +219,7 @@ def test_the_chats_own_controls_are_sent_with_the_pick(page_for, make_user, tune
     _choose(page, "Thinking", "Low")
     page.get_by_role("navigation").get_by_role("button", name="Controls").click()
     expect(page.get_by_text("Temperature", exact=True)).to_be_visible()
-    page.get_by_text("Temperature", exact=True).locator("xpath=..").get_by_role(
-        "button", name="Default"
-    ).click()
+    setting_button(page.locator("body"), "Temperature").click()
     page.get_by_role("spinbutton", name="Temperature").fill("0.3")
 
     sent = _ask(page, upstream)

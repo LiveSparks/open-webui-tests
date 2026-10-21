@@ -29,6 +29,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.model_editor import section
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -101,9 +102,7 @@ def test_the_json_preview_shows_unsaved_changes_of_the_editor(page_for, builder,
     editor.get_by_placeholder("Model Name").fill(new_name)
     editor.get_by_role("textbox", name="System Prompt", exact=True).fill(system_prompt)
     editor.get_by_role("button", name="Advanced Params").click()
-    editor.get_by_text("Temperature", exact=True).locator("xpath=..").get_by_role(
-        "button", name="Default"
-    ).click()
+    setting_button(editor, "Temperature").click()
     editor.get_by_role("spinbutton", name="Temperature").fill("0.3")
     section(editor, "Capabilities").get_by_role("switch", name="File Upload").click()
 

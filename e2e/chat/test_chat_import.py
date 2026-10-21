@@ -25,6 +25,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import conversation, expect_reply, send
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -66,7 +67,7 @@ def _data_controls(page: Page) -> Locator:
 def _export(page: Page) -> bytes:
     settings = _data_controls(page)
     with page.expect_download() as downloaded:
-        settings.get_by_role("button", name="Export", exact=True).click()
+        setting_button(settings, "Export Chats").click()
     with open(downloaded.value.path(), "rb") as exported:
         return exported.read()
 
@@ -74,7 +75,7 @@ def _export(page: Page) -> bytes:
 def _import(page: Page, content: bytes, imported: int) -> None:
     settings = _data_controls(page)
     with page.expect_file_chooser() as chooser:
-        settings.get_by_role("button", name="Import", exact=True).click()
+        setting_button(settings, "Import Chats").click()
     chooser.value.set_files(
         {"name": "chats.json", "mimeType": "application/json", "buffer": content}
     )

@@ -24,6 +24,8 @@ import uuid
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from utils.setting_rows import setting_button
+
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 FOLDER_SIZE = 65
@@ -94,10 +96,7 @@ def _search_to_the_end(dialog: Locator, tag: str) -> Locator:
 def _open_shared_chats(page: Page) -> Locator:
     page.goto("/?settings=data_controls")
     settings = page.get_by_role("dialog")
-    label = settings.get_by_text("Shared Chats", exact=True)
-    label.locator("xpath=ancestor::div[.//button[normalize-space()='Manage']][1]").get_by_role(
-        "button", name="Manage", exact=True
-    ).click()
+    setting_button(settings, "Shared Chats").click()
     # found by its search box: the Unshare All button leaves while a search is typed
     shared = page.get_by_role("dialog").filter(has=page.get_by_placeholder("Search Chats"))
     expect(shared.get_by_role("button", name="Unshare All Shared Chats")).to_be_visible()

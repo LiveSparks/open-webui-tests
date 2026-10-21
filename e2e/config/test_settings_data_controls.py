@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import grant
 from utils.chat_ui import conversation
+from utils.setting_rows import setting_button
 from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -33,12 +34,6 @@ def data_controls(page: Page) -> Locator:
     dialog = page.get_by_role("dialog")
     expect(dialog.get_by_text("Export Chats", exact=True)).to_be_visible()
     return dialog
-
-
-def row_button(settings: Locator, row_label: str, button: str) -> Locator:
-    label = settings.get_by_text(row_label, exact=True)
-    row = label.locator(f"xpath=ancestor::div[.//button[normalize-space()='{button}']][1]")
-    return row.get_by_role("button", name=button, exact=True)
 
 
 def new_chat(client, title: str) -> str:
@@ -65,7 +60,7 @@ def link_status(client, share_id: str) -> int:
 
 
 def open_shared_chats(page: Page) -> Locator:
-    row_button(data_controls(page), "Shared Chats", "Manage").click()
+    setting_button(data_controls(page), "Shared Chats").click()
     shared = page.get_by_role("dialog").filter(has_text="Unshare All Shared Chats")
     expect(shared).to_be_visible()
     return shared
@@ -125,18 +120,16 @@ def test_a_file_deleted_in_manage_files_is_gone(page_for, make_user):
     assert uploaded.status_code == 200, uploaded.text
     file_id = uploaded.json()["id"]
     page = page_for(account)
-    row_button(data_controls(page), "Manage Files", "Manage").click()
+    setting_button(data_controls(page), "Manage Files").click()
     files = page.get_by_role("dialog").filter(has=page.get_by_placeholder("Search Files"))
     expect(files.get_by_text("harbour-map.txt", exact=True)).to_be_visible()
-    named = page.get_by_text("harbour-map.txt", exact=True)
-    row = files.locator("div").filter(has=named).filter(has=page.get_by_role("button")).last
 
-    tooltip_button(row, "Delete File").click()
-    page.get_by_role("dialog", name="Confirm your action").get_by_role(
-        "button", name="Confirm"
-    ).click()
+    files.get_by_role("button", name="Actions for harbour-map.txt").click()
+    page.get_by_role("menu").get_by_role("button", name="Delete").click()
+    confirming = page.get_by_role("dialog").filter(has_text="Delete 1 file?")
+    confirming.get_by_role("button", name="Delete", exact=True).click()
 
-    expect(page.get_by_text("File deleted successfully.")).to_be_visible()
+    expect(page.get_by_text("1 deleted, 0 failed, 0 not processed.")).to_be_visible()
     expect(files.get_by_text("harbour-map.txt")).to_have_count(0)
     with account.client() as client:
         assert client.get(f"/api/v1/files/{file_id}").status_code == 404
@@ -154,7 +147,7 @@ def upload(account, name: str, text: str) -> str:
 
 
 def open_manage_files(page: Page) -> Locator:
-    row_button(data_controls(page), "Manage Files", "Manage").click()
+    setting_button(data_controls(page), "Manage Files").click()
     files = page.get_by_role("dialog").filter(has=page.get_by_placeholder("Search Files"))
     expect(files).to_be_visible()
     return files

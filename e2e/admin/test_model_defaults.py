@@ -22,6 +22,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply, send
 from utils.model_editor import section
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -98,10 +99,7 @@ def test_a_default_parameter_reaches_the_provider(
     admin_page = page_for(admin)
     settings = open_model_defaults(admin_page)
     open_section(settings, "Model Parameters")
-    temperature = settings.get_by_text("Temperature", exact=True)
-    temperature.locator("xpath=ancestor::div[.//button][1]").get_by_role(
-        "button", name="Default"
-    ).click()
+    setting_button(settings, "Temperature").click()
     settings.get_by_role("spinbutton", name="Temperature").fill("0.3")
     save(admin_page, settings)
 

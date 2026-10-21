@@ -78,6 +78,7 @@ from utils.cached_chat import (
     turn_on_tool,
 )
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -402,8 +403,7 @@ def test_a_temperature_and_model_description_change_mid_chat_only_append(
 
     page.get_by_role("navigation").get_by_role("button", name="Controls").click()
     expect(page.get_by_role("textbox", name="Enter system prompt")).to_be_visible()
-    temperature = page.get_by_text("Temperature", exact=True)
-    temperature.locator("xpath=following-sibling::button").click()
+    setting_button(page.locator("body"), "Temperature").click()
     page.get_by_role("spinbutton", name="Temperature").fill("0.2")
     with admin.client() as client:
         stored = client.get("/api/v1/models/model", params={"id": cached_setup.id}).json()

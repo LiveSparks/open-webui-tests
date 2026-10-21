@@ -1,10 +1,10 @@
 """Journey: the Settings dialog on a phone opens from the drawer, fits the screen and saves.
 
 On a 390 by 844 touch screen, Settings opens from the user menu at the foot of the sidebar drawer
-and fills the screen without scrolling sideways, with Back, the search field and the tab strip on
-it. The tab strip scrolls sideways, so every tab can be brought onto the screen and opens its own
-panel. A switch flipped in Interface on the phone is saved and changes the chat, and Back closes
-the dialog onto the chat again.
+and fills the screen without scrolling sideways, with Back, the search button opening the search
+field and the tab strip on it. The tab strip scrolls sideways, so every tab can be brought onto
+the screen and opens its own panel. A switch flipped in Interface on the phone is saved and
+changes the chat, and Back closes the dialog onto the chat again.
 
 Discriminates: passes on the ebc6add67 build. In frontend builds of ebc6add67: with the tab strip
 not scrolling, the every-tab test goes red at the first tab past the screen's edge; with Back doing
@@ -79,6 +79,8 @@ def test_settings_open_from_the_drawer_and_fit_the_screen(phone):
 
     expect_within_the_width(settings)
     expect_on_screen(settings.get_by_role("button", name="Back", exact=True))
+    # on a phone the search field opens from its own button
+    tap_on_screen(settings.get_by_role("button", name="Search", exact=True))
     expect_on_screen(settings.get_by_placeholder("Search"))
     expect_on_screen(settings.get_by_role("button", name="Save", exact=True))
     expect_no_sideways_scroll(phone)

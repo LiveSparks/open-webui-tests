@@ -67,6 +67,7 @@ from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_sea
 from utils.chat_ui import chat_input, expect_reply, send
 from utils.member_picker import pick_member
 from utils.model_editor import pick, section, set_checkbox
+from utils.setting_rows import setting_button
 from utils.speech_audio import silent_wav
 from utils.tooltips import tooltip_button
 
@@ -146,11 +147,6 @@ def open_editor(page: Page, model: dict) -> Locator:
 def save(editor: Locator) -> None:
     editor.get_by_role("button", name="Save & Update").click()
     expect(editor.page).to_have_url(re.compile(r"/workspace/models/?$"))
-
-
-def header_row(editor: Locator, label: str) -> Locator:
-    """The row holding the setting labelled `label` and its switch."""
-    return editor.get_by_text(label, exact=True).locator("xpath=..")
 
 
 def open_chat_on(page: Page, model: dict) -> None:
@@ -283,7 +279,7 @@ def test_advanced_params_reach_the_provider(page_for, builder, preset, upstream)
     editor = open_editor(page, preset)
     editor.get_by_role("button", name="Advanced Params").click()
     for label in ("Temperature", "Seed"):
-        header_row(editor, label).get_by_role("button", name="Default").click()
+        setting_button(editor, label).click()
     editor.get_by_role("spinbutton", name="Temperature").fill("0.3")
     editor.get_by_role("spinbutton", name="Seed").fill("4242")
     save(editor)

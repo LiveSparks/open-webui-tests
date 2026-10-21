@@ -28,6 +28,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness.access import grant
 from harness.chat_history import seed_chat
 from utils.chat_ui import conversation
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -70,7 +71,7 @@ def _open_settings_tab(page: Page, tab: str) -> Locator:
 
 def _click_bulk_action(settings: Locator, button: str) -> Locator:
     """Press the button and return the confirmation dialog it opens."""
-    settings.get_by_role("button", name=button, exact=True).click()
+    setting_button(settings, button).click()
     dialog = settings.page.get_by_role("dialog").last
     expect(dialog.get_by_role("button", name="Confirm")).to_be_visible()
     return dialog
@@ -94,7 +95,7 @@ def test_archive_all_moves_every_chat_into_the_archive(owner, make_user, page_fo
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_be_visible()
 
     settings = _open_settings_tab(page, "Data Controls")
-    _click_bulk_action(settings, "Archive All").get_by_role("button", name="Confirm").click()
+    _click_bulk_action(settings, "Archive All Chats").get_by_role("button", name="Confirm").click()
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_have_count(0)
     expect(sidebar.get_by_role("button", name="Beta plans")).to_have_count(0)
 
@@ -113,7 +114,7 @@ def test_cancelling_archive_all_keeps_the_chats_in_the_sidebar(owner, page_for):
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_be_visible()
 
     settings = _open_settings_tab(page, "Data Controls")
-    _click_bulk_action(settings, "Archive All").get_by_role("button", name="Cancel").click()
+    _click_bulk_action(settings, "Archive All Chats").get_by_role("button", name="Cancel").click()
     expect(page.get_by_role("dialog")).to_have_count(1)
 
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_be_visible()
@@ -183,7 +184,7 @@ def test_delete_all_removes_every_chat_after_confirmation(owner, make_user, page
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_be_visible()
 
     settings = _open_settings_tab(page, "Data Controls")
-    _click_bulk_action(settings, "Delete All").get_by_role("button", name="Confirm").click()
+    _click_bulk_action(settings, "Delete All Chats").get_by_role("button", name="Confirm").click()
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_have_count(0)
 
     page.reload()
@@ -202,7 +203,7 @@ def test_cancelling_delete_all_keeps_every_chat(owner, page_for):
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_be_visible()
 
     settings = _open_settings_tab(page, "Data Controls")
-    _click_bulk_action(settings, "Delete All").get_by_role("button", name="Cancel").click()
+    _click_bulk_action(settings, "Delete All Chats").get_by_role("button", name="Cancel").click()
     expect(page.get_by_role("dialog")).to_have_count(1)
 
     expect(sidebar.get_by_role("button", name="Alpha plans")).to_be_visible()
@@ -213,7 +214,7 @@ def test_cancelling_delete_all_keeps_every_chat(owner, page_for):
 def _export_chats(page: Page, tmp_path) -> tuple[str, list[dict]]:
     settings = _open_settings_tab(page, "Data Controls")
     with page.expect_download() as download_info:
-        settings.get_by_role("button", name="Export", exact=True).click()
+        setting_button(settings, "Export Chats").click()
     download = download_info.value
     path = tmp_path / download.suggested_filename
     download.save_as(path)
@@ -241,12 +242,12 @@ def test_an_exported_file_imports_back_into_an_emptied_account(owner, page_for, 
     _, exported = _export_chats(page, tmp_path)
     assert len(exported) == 2
     settings = page.get_by_role("dialog")
-    _click_bulk_action(settings, "Delete All").get_by_role("button", name="Confirm").click()
+    _click_bulk_action(settings, "Delete All Chats").get_by_role("button", name="Confirm").click()
     expect(sidebar.get_by_role("button", name=f"Alpha {marker}")).to_have_count(0)
     assert _titles(owner) == set()
 
     with page.expect_file_chooser() as chooser_info:
-        settings.get_by_role("button", name="Import", exact=True).click()
+        setting_button(settings, "Import Chats").click()
     chooser_info.value.set_files(
         {
             "name": "chats.json",
@@ -334,7 +335,7 @@ def test_delete_all_closes_the_accounts_share_links(owner, make_user, page_for):
 
     page = page_for(owner)
     settings = _open_settings_tab(page, "Data Controls")
-    confirm = _click_bulk_action(settings, "Delete All")
+    confirm = _click_bulk_action(settings, "Delete All Chats")
     with page.expect_response(lambda response: response.request.method == "DELETE"):
         confirm.get_by_role("button", name="Confirm").click()
     assert _titles(owner) == set()
@@ -342,7 +343,6 @@ def test_delete_all_closes_the_accounts_share_links(owner, make_user, page_for):
     reader_page.reload()
     expect(reader_page).to_have_url(re.compile(r"/$"))
     expect(conversation(reader_page).get_by_text("the dunes")).to_have_count(0)
-    shared_chats = settings.get_by_text("Shared Chats", exact=True)
-    shared_chats.locator("xpath=ancestor::div[.//button][1]").get_by_role("button").click()
+    setting_button(settings, "Shared Chats").click()
     shared = page.get_by_role("dialog").filter(has_text="Unshare All Shared Chats")
     expect(shared.get_by_text("No results found")).to_be_visible()

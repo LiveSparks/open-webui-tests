@@ -43,6 +43,7 @@ from harness.backends import wait_until
 from harness.chat_history import seed_chat
 from utils.cached_chat import attach
 from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -282,10 +283,7 @@ def test_task_model_parameters_reach_the_title_request_and_not_the_chat(
         set_title_generation(client, turn_on=True)
     settings = open_interface_settings(page_for(admin))
     settings.get_by_role("button", name="Task Model Parameters").click()
-    temperature = settings.get_by_text("Temperature", exact=True)
-    temperature.locator("xpath=ancestor::div[.//button][1]").get_by_role(
-        "button", name="Default"
-    ).click()
+    setting_button(settings, "Temperature").click()
     settings.get_by_role("spinbutton", name="Temperature").fill("0.15")
     save(settings)
     page = page_for(make_user())

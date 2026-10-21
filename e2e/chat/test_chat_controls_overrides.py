@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -48,8 +49,7 @@ def controls(page: Page) -> Locator:
 
 
 def stream_toggle(page: Page) -> Locator:
-    label = page.get_by_text("Stream Chat Response", exact=True)
-    return label.locator("xpath=following-sibling::button")
+    return setting_button(page.locator("body"), "Stream Chat Response")
 
 
 def ask(page: Page, upstream, question: str) -> dict:

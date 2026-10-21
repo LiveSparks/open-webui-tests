@@ -57,6 +57,7 @@ from harness.mfa import (
 )
 from harness.oidc_provider import shared_provider, sso_env
 from utils.chat_ui import chat_input
+from utils.setting_rows import setting_button
 
 pytestmark = [
     pytest.mark.journey,
@@ -248,7 +249,7 @@ def open_account_settings(page: Page) -> None:
 
 
 def manage_with_code(page: Page, account: MfaAccount, action: str) -> None:
-    page.get_by_role("button", name="Manage").click()
+    setting_button(page.get_by_role("dialog"), "Authenticator configured").click()
     page.get_by_label("Authenticator code").fill(account.authenticator.code())
     page.get_by_role("button", name=action).click()
 
@@ -276,7 +277,7 @@ def test_account_settings_show_the_authenticator_and_the_codes_left(secured, ope
 
     expect(page.get_by_text("Authenticator configured")).to_be_visible()
     expect(page.get_by_text("10 recovery codes remaining")).to_be_visible()
-    page.get_by_role("button", name="Manage").click()
+    setting_button(page.get_by_role("dialog"), "Authenticator configured").click()
     expect(page.get_by_role("button", name="Replace authenticator")).to_be_disabled()
     expect(page.get_by_role("button", name="Generate recovery codes")).to_be_disabled()
 

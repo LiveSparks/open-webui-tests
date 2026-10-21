@@ -29,6 +29,7 @@ from harness.actors import create_user, sign_in
 from harness.instance import LaunchedInstance
 from integration.stateful_redis import StatefulRedis
 from utils.chat_ui import chat_input
+from utils.setting_rows import setting_button
 
 pytestmark = [
     pytest.mark.regression,
@@ -88,7 +89,7 @@ def _change_password_in_settings(page: Page, current: str, new: str) -> None:
     page.get_by_role("button", name="Settings").click()
     page.get_by_role("tab", name="Account").click()
     form = page.locator("form").filter(has_text="Change Password")
-    form.get_by_role("button", name="Show").click()
+    setting_button(form, "Change Password").click()
     form.get_by_placeholder("Enter your current password").fill(current)
     form.get_by_placeholder("Enter your new password").fill(new)
     form.get_by_placeholder("Confirm your new password").fill(new)

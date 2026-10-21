@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -95,8 +96,8 @@ def test_the_system_prompt_and_temperature_reach_the_model(page_for, make_user, 
     page = page_for(make_user())
     tab = general_tab(page)
     tab.get_by_role("textbox").fill(SYSTEM_PROMPT)
-    tab.get_by_role("button", name="Show").click()
-    tab.get_by_text("Temperature", exact=True).locator("xpath=following-sibling::button").click()
+    setting_button(tab, "Model parameters").click()
+    setting_button(tab, "Temperature").click()
     tab.get_by_role("spinbutton", name="Temperature").fill("0.35")
     save(page, tab)
 
@@ -107,7 +108,7 @@ def test_the_system_prompt_and_temperature_reach_the_model(page_for, make_user, 
     page.reload()
     tab = general_tab(page)
     expect(tab.get_by_role("textbox")).to_have_value(SYSTEM_PROMPT)
-    tab.get_by_role("button", name="Show").click()
+    setting_button(tab, "Model parameters").click()
     expect(tab.get_by_role("spinbutton", name="Temperature")).to_have_value("0.35")
 
     other = page_for(make_user())
@@ -116,15 +117,11 @@ def test_the_system_prompt_and_temperature_reach_the_model(page_for, make_user, 
     assert "temperature" not in sent_for_other
 
 
-def parameter_button(tab: Locator, label: str) -> Locator:
-    return tab.get_by_text(label, exact=True).locator("xpath=following-sibling::button")
-
-
 def test_stream_chat_response_off_asks_for_the_whole_reply_at_once(page_for, make_user, upstream):
     page = page_for(make_user())
     tab = general_tab(page)
-    tab.get_by_role("button", name="Show").click()
-    stream = parameter_button(tab, "Stream Chat Response")
+    setting_button(tab, "Model parameters").click()
+    stream = setting_button(tab, "Stream Chat Response")
     stream.click()
     stream.click()
     expect(stream).to_have_text("Off")
@@ -138,9 +135,9 @@ def test_stream_chat_response_off_asks_for_the_whole_reply_at_once(page_for, mak
 def test_max_tokens_stop_and_reasoning_effort_reach_the_model(page_for, make_user, upstream):
     page = page_for(make_user())
     tab = general_tab(page)
-    tab.get_by_role("button", name="Show").click()
+    setting_button(tab, "Model parameters").click()
     for label in ("max_tokens", "Stop Sequence", "Reasoning Effort"):
-        parameter_button(tab, label).click()
+        setting_button(tab, label).click()
     tab.get_by_role("spinbutton", name="max_tokens").fill("64")
     tab.get_by_role("textbox", name="Stop Sequence").fill("OVER")
     tab.get_by_role("textbox", name="Reasoning Effort").fill("low")

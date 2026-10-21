@@ -16,6 +16,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from utils.setting_rows import setting_button
+
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 
@@ -152,7 +154,7 @@ def test_a_manual_install_of_a_post_only_app(page_for, apps_admin, apps_instance
         # the handle becomes the manifest id, which the app signs into its connection proof
         page.locator("#app-handle").fill(app.manifest_id)
         page.locator("#app-public-key").fill(app.public_key)
-        page.get_by_role("button", name="Review").click()
+        setting_button(page.get_by_role("dialog").last, "Scopes").click()
         region = page.get_by_role("region", name="App scopes")
         for switch in region.get_by_role("switch").all():
             switch.click()

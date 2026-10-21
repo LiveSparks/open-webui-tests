@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
 from utils.chat_ui import chat_input
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -36,7 +37,7 @@ def _password_form(page: Page) -> Locator:
     page.get_by_role("button", name="Settings").click()
     page.get_by_role("tab", name="Account").click()
     form = page.locator("form").filter(has_text="Change Password")
-    form.get_by_role("button", name="Show").click()
+    setting_button(form, "Change Password").click()
     return form
 
 

@@ -16,6 +16,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -56,7 +57,7 @@ def test_a_copy_button_does_not_save_an_edited_name(page_for, account_owner, cop
     settings = _account_settings(page)
     settings.get_by_role("textbox", name="Name").fill(f"Unsaved {uuid.uuid4().hex[:6]}")
     secrets = settings.locator("section").filter(has_text="API keys")
-    secrets.get_by_role("button", name="Show", exact=True).click()
+    setting_button(secrets, "Secrets").click()
 
     profile_saves = []
     page.on(

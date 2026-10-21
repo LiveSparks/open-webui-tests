@@ -24,6 +24,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import backends
 from utils.chat_ui import chat_input
+from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -35,12 +36,6 @@ def open_database_settings(page: Page) -> Locator:
     settings = page.get_by_role("dialog")
     expect(settings.get_by_text("Export Config", exact=True)).to_be_visible()
     return settings
-
-
-def row_button(settings: Locator, row_label: str, button: str) -> Locator:
-    label = settings.get_by_text(row_label, exact=True)
-    row = label.locator(f"xpath=ancestor::div[.//button[normalize-space()='{button}']][1]")
-    return row.get_by_role("button", name=button, exact=True)
 
 
 def download(page: Page, button: Locator) -> bytes:
@@ -72,7 +67,7 @@ def test_export_config_downloads_what_the_admin_saved(page_for, admin, preserve)
     page = page_for(admin)
     settings = open_database_settings(page)
 
-    exported = json.loads(download(page, row_button(settings, "Export Config", "Export")))
+    exported = json.loads(download(page, setting_button(settings, "Export Config")))
 
     assert exported["ui.watermark"] == watermark
     assert exported["notes.enable"] is True
@@ -87,12 +82,12 @@ def test_an_imported_config_switches_notes_off_for_users(
     expect(notes_link(user_page)).to_be_visible()
     page = page_for(admin)
     settings = open_database_settings(page)
-    exported = json.loads(download(page, row_button(settings, "Export Config", "Export")))
+    exported = json.loads(download(page, setting_button(settings, "Export Config")))
     edited = tmp_path / "config.json"
     edited.write_text(json.dumps({**exported, "notes.enable": False}))
 
     with page.expect_file_chooser() as chooser:
-        row_button(settings, "Import Config", "Import").click()
+        setting_button(settings, "Import Config").click()
     chooser.value.set_files(edited)
 
     expect(page.get_by_text("Config imported successfully")).to_be_visible()
@@ -110,7 +105,7 @@ def test_all_chats_export_holds_every_accounts_chat(page_for, admin, make_user):
     page = page_for(admin)
     settings = open_database_settings(page)
 
-    exported = json.loads(download(page, row_button(settings, "All Chats", "Export")))
+    exported = json.loads(download(page, setting_button(settings, "All Chats")))
 
     assert title in [chat["title"] for chat in exported]
 
@@ -120,7 +115,7 @@ def test_users_export_lists_every_account(page_for, admin, make_user):
     page = page_for(admin)
     settings = open_database_settings(page)
 
-    exported = download(page, row_button(settings, "Users", "Export")).decode()
+    exported = download(page, setting_button(settings, "Users")).decode()
 
     rows = list(csv.DictReader(io.StringIO(exported)))
     expected = {"id": account.id, "name": "Keeper Export", "email": account.email, "role": "user"}
@@ -132,6 +127,6 @@ def test_the_database_download_is_the_sqlite_file(page_for, admin):
     page = page_for(admin)
     settings = open_database_settings(page)
 
-    downloaded = download(page, row_button(settings, "Database", "Database"))
+    downloaded = download(page, setting_button(settings, "Database"))
 
     assert downloaded.startswith(b"SQLite format 3\x00")
