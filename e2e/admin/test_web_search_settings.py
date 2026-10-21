@@ -6,12 +6,13 @@ many results, and the hits the model is given back are only the ones from the li
 SearXNG picked as the engine, with a query URL and a language, is asked the model's query in that
 language, and its results are what the model reads.
 
-With web search off and no engine picked, the tab still saves the loader settings, while with web
-search on it keeps asking for an engine (issue #32831).
+With web search off, the tab still saves the loader settings when no engine is picked or the
+picked engine is missing its address, while with web search on it keeps asking for them (issue
+#32831).
 
 Discriminates: passes on dev 30f3f6a8f; in a frontend build whose Web Search form sends the stored
-settings back in place of the edited ones, every test fails. On dev ca8f451cc the loader test is
-red: the engine list blocks the save even with web search off.
+settings back in place of the edited ones, every test fails. On dev ca8f451cc both loader tests are
+red: the engine list or the engine's own fields block the save even with web search off.
 """
 
 from __future__ import annotations
@@ -143,9 +144,16 @@ def test_searxng_is_asked_the_query_in_the_saved_language(
     assert "Die Faehre" in json.dumps(requests[-1]["messages"])
 
 
-def no_engine_tab(page_for, admin, web_search_on: bool) -> tuple[Page, Locator]:
+NO_ENGINE = {"WEB_SEARCH_ENGINE": ""}
+SEARXNG_WITHOUT_URL = {"WEB_SEARCH_ENGINE": "searxng", "SEARXNG_QUERY_URL": ""}
+UNSET_ENGINES = pytest.mark.parametrize(
+    "engine", [NO_ENGINE, SEARXNG_WITHOUT_URL], ids=["no engine", "searxng without its url"]
+)
+
+
+def loader_tab(page_for, admin, web_search_on: bool, engine: dict) -> tuple[Page, Locator]:
     with admin.client() as client:
-        save_web_settings(client, ENABLE_WEB_SEARCH=web_search_on, WEB_SEARCH_ENGINE="")
+        save_web_settings(client, ENABLE_WEB_SEARCH=web_search_on, **engine)
     page = page_for(admin, path="/admin/settings/web")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_placeholder("Timeout", exact=True)).to_be_visible()
@@ -160,25 +168,30 @@ def saved_loader_timeout(admin) -> str | None:
 
 
 @pytest.mark.regression
-def test_the_loader_settings_save_with_web_search_off_and_no_engine(page_for, admin, preserve):
-    # open-webui/open-webui#32831: the engine list asked for an engine and nothing was sent
+@UNSET_ENGINES
+def test_the_loader_settings_save_with_web_search_off(page_for, admin, preserve, engine):
+    # open-webui/open-webui#32831: an empty engine field blocked the save and nothing was sent
     preserve(RETRIEVAL_CONFIG)
-    page, settings = no_engine_tab(page_for, admin, web_search_on=False)
+    page, settings = loader_tab(page_for, admin, web_search_on=False, engine=engine)
     settings.get_by_placeholder("Timeout", exact=True).fill("15")
     save(page, settings)
 
     assert saved_loader_timeout(admin) == "15"
 
 
-def test_web_search_on_still_asks_for_an_engine(page_for, admin, preserve):
+@UNSET_ENGINES
+def test_web_search_on_still_asks_for_the_engine(page_for, admin, preserve, engine):
     preserve(RETRIEVAL_CONFIG)
-    page, settings = no_engine_tab(page_for, admin, web_search_on=True)
+    page, settings = loader_tab(page_for, admin, web_search_on=True, engine=engine)
     timeout_before = saved_loader_timeout(admin)
     settings.get_by_placeholder("Timeout", exact=True).fill("16")
     settings.get_by_role("button", name="Save", exact=True).click()
 
-    engines = settings.get_by_role("combobox").filter(
-        has=page.get_by_role("option", name="searxng", exact=True)
-    )
-    expect(engines).to_be_focused()
+    if engine == NO_ENGINE:
+        missing = settings.get_by_role("combobox").filter(
+            has=page.get_by_role("option", name="searxng", exact=True)
+        )
+    else:
+        missing = settings.get_by_placeholder("Enter Searxng Query URL")
+    expect(missing).to_be_focused()
     assert saved_loader_timeout(admin) == timeout_before
