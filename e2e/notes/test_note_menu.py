@@ -45,6 +45,7 @@ from harness.access import make_group
 from harness.actors import Actor
 from utils.access_control import choose_visibility, visibility_choices
 from utils.chat_ui import chat_input
+from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -329,7 +330,7 @@ def _add_access(page: Page, panel: Locator, name: str) -> None:
     panel.get_by_role("button", name="Add Access").click()
     picker = page.get_by_role("dialog").filter(has=page.get_by_role("button", name="Add"))
     picker.get_by_placeholder("Search").fill(name)
-    picker.get_by_role("button", name=name).last.click()
+    pick_member(picker, name)
     picker.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text("Saved", exact=True)).to_be_visible()
 

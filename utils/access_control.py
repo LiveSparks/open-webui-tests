@@ -1,4 +1,4 @@
-"""The visibility menu at the top of an access dialog: workspace items, chat links, tool servers."""
+"""Access dialogs of workspace items, chat links and tool servers: visibility menu and list."""
 
 from __future__ import annotations
 
@@ -20,3 +20,20 @@ def visibility_choices(dialog: Locator) -> Locator:
     """The visibility menu's entries, after opening it."""
     visibility(dialog).click()
     return dialog.page.get_by_role("menuitemradio")
+
+
+def access_row(dialog: Locator, name: str) -> Locator:
+    """The row of the person or group `name` in the access list, with its Access level."""
+    page = dialog.page
+    # the innermost box holding both the name and a level picker is that principal's row
+    return (
+        dialog.locator("div")
+        .filter(has=page.get_by_text(name))
+        .filter(has=page.get_by_role("combobox", name="Access level"))
+        .last
+    )
+
+
+def remove_access(dialog: Locator, name: str) -> None:
+    # the row's remove button has no label; it is the row's last button
+    access_row(dialog, name).get_by_role("button").last.click()

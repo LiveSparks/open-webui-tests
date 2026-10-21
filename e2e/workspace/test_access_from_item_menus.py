@@ -29,6 +29,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import make_group
 from harness.actors import Actor
+from utils.access_control import access_row, remove_access
 from utils.member_picker import pick_member
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -174,19 +175,13 @@ def _add_access(page: Page, dialog: Locator, name: str) -> None:
     expect(dialog.get_by_text(name)).to_be_visible()
 
 
-def _principal_row(dialog: Locator, name: str) -> Locator:
-    return dialog.get_by_role("combobox", name="Access level").locator(
-        f"xpath=ancestor::div[contains(@class, 'justify-between')][.//*[contains(., '{name}')]][1]"
-    )
-
-
 def _set_level(page: Page, dialog: Locator, name: str, level: str) -> None:
-    _principal_row(dialog, name).get_by_role("combobox").select_option(level)
+    access_row(dialog, name).get_by_role("combobox").select_option(level)
     expect(page.get_by_text("Saved").last).to_be_visible()
 
 
 def _remove_row(page: Page, dialog: Locator, name: str) -> None:
-    _principal_row(dialog, name).get_by_role("button").last.click()
+    remove_access(dialog, name)
     expect(page.get_by_text("Saved").last).to_be_visible()
     expect(dialog.get_by_text("No access grants. Private to you.")).to_be_visible()
 

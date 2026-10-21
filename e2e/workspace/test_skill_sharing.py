@@ -26,6 +26,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.access import make_group
 from harness.actors import Actor
+from utils.access_control import access_row, remove_access
 from utils.chat_ui import chat_input, expect_reply
 from utils.member_picker import pick_member
 from utils.skill_editor import code_editor, replace_text
@@ -101,12 +102,6 @@ def _add_access(page: Page, dialog: Locator, name: str) -> None:
     expect(dialog.get_by_text(name)).to_be_visible()
 
 
-def _principal_row(dialog: Locator, name: str) -> Locator:
-    return dialog.get_by_role("combobox", name="Access level").locator(
-        f"xpath=ancestor::div[contains(@class, 'justify-between')][.//*[contains(., '{name}')]][1]"
-    )
-
-
 def _dollar_menu(page: Page, typed: str) -> Locator:
     page.goto("/")
     expect(chat_input(page)).to_be_visible()
@@ -161,7 +156,7 @@ def test_taking_the_group_off_the_access_list_withdraws_the_skill(
     member_page = page_for(member)
     expect(_dollar_menu(member_page, _suffix(skill)).filter(has_text=skill["name"])).to_be_visible()
 
-    _principal_row(dialog, group_name).get_by_role("button").last.click()
+    remove_access(dialog, group_name)
     expect(page.get_by_text("Saved").last).to_be_visible()
     expect(dialog.get_by_text("No access grants. Private to you.")).to_be_visible()
 
@@ -179,7 +174,7 @@ def test_a_writer_changes_the_instructions_and_a_reader_meets_a_read_only_editor
     page = page_for(owner)
     dialog = _access_dialog(page, skill)
     _add_access(page, dialog, writer.name)
-    _principal_row(dialog, writer.name).get_by_role("combobox").select_option("write")
+    access_row(dialog, writer.name).get_by_role("combobox").select_option("write")
     expect(page.get_by_text("Saved").last).to_be_visible()
     _add_access(page, dialog, reader.name)
 

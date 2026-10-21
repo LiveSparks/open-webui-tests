@@ -44,7 +44,7 @@ from harness.actors import Actor
 from harness.knowledge_bases import add_text_file
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
-from utils.access_control import choose_visibility, visibility, visibility_choices
+from utils.access_control import choose_visibility, remove_access, visibility, visibility_choices
 from utils.chat_ui import chat_input, expect_reply, send
 from utils.model_selector import model_options, select_model
 
@@ -210,11 +210,7 @@ def test_an_item_made_public_in_its_access_dialog_reaches_any_user(
 
 def _revoke_in_dialog(dialog: Locator, account: Actor) -> None:
     """Remove `account`'s row from the Access dialog."""
-    page = dialog.page
-    # the innermost box holding the name and a button is the account's row
-    row = dialog.locator("div").filter(has_text=account.name).filter(has=page.get_by_role("button"))
-    # the row's remove button has no label; it is the row's last button
-    row.last.get_by_role("button").last.click()
+    remove_access(dialog, account.name)
     expect(dialog.get_by_text(account.name)).to_have_count(0)
 
 
