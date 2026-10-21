@@ -153,12 +153,8 @@ def open_manage_files(page: Page) -> Locator:
     return files
 
 
-def file_row(page: Page, files: Locator, name: str) -> Locator:
-    named = page.get_by_text(name, exact=True)
-    return files.locator("div").filter(has=named).filter(has=page.get_by_role("button")).last
-
-
 def test_manage_files_lists_the_accounts_files_and_searches_them_by_name(page_for, make_user):
+    """While searching, the count shows the matching files, open-webui/open-webui#32815."""
     account, other = make_user(), make_user()
     upload(account, "tide-table.txt", "high at noon")
     upload(account, "ferry-plan.txt", "north pier at seven")
@@ -195,16 +191,18 @@ def test_a_file_opened_in_manage_files_shows_its_text(page_for, make_user):
 
 
 def test_a_file_deleted_with_shift_held_goes_without_asking(page_for, make_user):
+    """Shift on a file's Delete skips the confirmation, open-webui/open-webui#32814."""
     account = make_user()
     file_id = upload(account, "old-chart.txt", "an old chart")
     page = page_for(account)
     files = open_manage_files(page)
     expect(files.get_by_text("old-chart.txt", exact=True)).to_be_visible()
 
-    tooltip_button(file_row(page, files, "old-chart.txt"), "Delete File").click(modifiers=["Shift"])
+    files.get_by_role("button", name="Actions for old-chart.txt").click()
+    page.get_by_role("menu").get_by_role("button", name="Delete").click(modifiers=["Shift"])
 
-    expect(page.get_by_text("File deleted successfully.")).to_be_visible()
-    expect(page.get_by_role("dialog", name="Confirm your action")).to_have_count(0)
+    expect(page.get_by_text("1 deleted, 0 failed, 0 not processed.")).to_be_visible()
+    expect(page.get_by_role("dialog").filter(has_text="Delete 1 file?")).to_have_count(0)
     expect(files.get_by_text("old-chart.txt")).to_have_count(0)
     with account.client() as client:
         assert client.get(f"/api/v1/files/{file_id}").status_code == 404
