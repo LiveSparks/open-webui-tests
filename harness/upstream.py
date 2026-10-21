@@ -42,6 +42,7 @@ class Reply:
     chunk_delay: float = 0.0
     delay: float = 0.0  # seconds before the reply starts, headers included
     hold: threading.Event | None = None  # the reply starts once the test sets it
+    hold_after: int = 0  # pieces streamed before the reply waits for `hold`
     hang_up_after: int | None = None  # pieces streamed before the connection drops unfinished
     match: Callable[[dict], bool] | None = None
     finish_reason: str | None = None  # why the reply ended; stop or tool_calls when unset
@@ -206,7 +207,7 @@ def _handler(upstream: MockUpstream):
 
         def _answer(self, reply: Reply, stream: bool) -> None:
             time.sleep(reply.delay)
-            if reply.hold is not None:
+            if reply.hold is not None and not reply.hold_after:
                 reply.hold.wait(HOLD_LIMIT)
             if reply.status != 200:
                 self._send_json(reply.status, {"error": {"message": reply.error_message}})
@@ -216,6 +217,8 @@ def _handler(upstream: MockUpstream):
                     if reply.hang_up_after is not None and sent > reply.hang_up_after:
                         self.close_connection = True  # no closing chunk: a provider gone down
                         return
+                    if reply.hold is not None and reply.hold_after and sent == reply.hold_after:
+                        reply.hold.wait(HOLD_LIMIT)
                     closing_usage = None if reply.usage_last else reply.usage
                     chunk = _chunk(delta, finish_reason, closing_usage if finish_reason else None)
                     if finish_reason and reply.timings:

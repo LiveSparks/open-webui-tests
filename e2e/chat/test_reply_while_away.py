@@ -22,6 +22,7 @@ the other-chat test on one that never saves a finished reply.
 from __future__ import annotations
 
 import re
+import threading
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -44,9 +45,11 @@ WHOLE_REPLY = "".join(SLOW_PIECES).strip()
 STORY = "tell me a long story"
 
 
-def _start_story(page: Page, upstream) -> str:
+def _start_story(page: Page, upstream, **options) -> str:
     """Send the story prompt and return the chat's address once the reply is streaming."""
-    upstream.queue(reply.text(SLOW_PIECES, chunk_delay=0.3, match=reply.answering(STORY)))
+    upstream.queue(
+        reply.text(SLOW_PIECES, chunk_delay=0.3, match=reply.answering(STORY), **options)
+    )
     send(page, STORY)
     expect(last_reply(page)).to_contain_text("part-1")
     expect(page).to_have_url(re.compile(r"/c/[\w-]+$"))
@@ -103,15 +106,20 @@ def test_a_second_tab_follows_a_streaming_reply_to_its_end(page_for, make_user, 
 
 def test_stop_in_a_second_tab_stops_the_reply_in_both(page_for, make_user, upstream):
     page = page_for(make_user())
-    chat_url = _start_story(page, upstream)
-    second_tab = page.context.new_page()
-    second_tab.goto(chat_url)
-    expect(stop_button(second_tab)).to_be_visible()
+    # the reply pauses partway, so it cannot run out before a slow second tab sends Stop
+    rest_of_reply = threading.Event()
+    try:
+        chat_url = _start_story(page, upstream, hold=rest_of_reply, hold_after=3)
+        second_tab = page.context.new_page()
+        second_tab.goto(chat_url)
+        expect(stop_button(second_tab)).to_be_visible()
 
-    stop_button(second_tab).click()
+        stop_button(second_tab).click()
 
-    expect(stop_button(second_tab)).to_be_hidden()
-    expect(stop_button(page)).to_be_hidden()
+        expect(stop_button(second_tab)).to_be_hidden()
+        expect(stop_button(page)).to_be_hidden()
+    finally:
+        rest_of_reply.set()
     second_tab.wait_for_timeout(1500)  # five more piece intervals
     stopped_text = last_reply(second_tab).inner_text().strip()
     next_piece = SLOW_PIECES[stopped_text.count("part-")].strip()
