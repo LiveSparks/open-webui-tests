@@ -2,17 +2,18 @@
 
 Two fresh users chat with two presets of the scripted model, each reply carrying a token count.
 The dashboard's model table then shows each preset's messages, users, chats and tokens, the user
-table (narrowed to the two users' group) shows each user's messages and tokens with the summary
-line above it, a custom date range from before the chats empties the dashboard and the last day
+table (narrowed to the two users' group) shows each user's messages and tokens with the totals
+above it, a custom date range from before the chats empties the dashboard and the last day
 brings it back, a model row opens the model's chats with the user who had each, and a plain
 user is sent back to the chat by the analytics page and refused its API.
 
-Discriminates: passes on dev 176d31d1d; in a backend copy, with `/api/v1/analytics/models`
-reporting `unique_users=0` the model table test fails, with `/api/v1/analytics/users` reporting
-`total_tokens=0` the user table test fails, with `/api/v1/analytics/models` ignoring the dates
-the date range test fails (the row survives a range before the chats), with the model chats route
-dropping `user_name` the drill-down test fails, and with `/api/v1/analytics/summary` open to
-verified users the access test fails (HTTP 200).
+Discriminates: passes on dev 21f770fb7 (the user table and date range mutations proven there, the
+rest on 176d31d1d); in a backend copy, with `/api/v1/analytics/models` reporting `unique_users=0`
+the model table test fails, with `/api/v1/analytics/users` reporting `total_tokens=0` the user
+table test fails, with `/api/v1/analytics/models` ignoring the dates the date range test fails
+(the row survives a range before the chats), with the model chats route dropping `user_name` the
+drill-down test fails, and with `/api/v1/analytics/summary` open to verified users the access test
+fails (HTTP 200).
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from harness.access import make_group
 from harness.actors import Actor
 from harness.chat import ask
 from harness.upstream import MOCK_MODEL_ID
+from utils.analytics import group_picker, leaderboard_tab, period_picker, summary_figure
 from utils.chat_ui import chat_input
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -133,19 +135,6 @@ def dashboard(page_for, make_user) -> tuple[Page, Locator]:
     return page, settings
 
 
-def leaderboard_tab(settings: Locator, name: str, selected: bool | None = None) -> Locator:
-    """The Models / Users switch above the leaderboard, shown once the dashboard has loaded."""
-    return settings.get_by_role("button", name=name, exact=True, pressed=selected)
-
-
-def _period(settings: Locator) -> Locator:
-    return settings.get_by_role("combobox").filter(has_text="All time")
-
-
-def _group_filter(settings: Locator) -> Locator:
-    return settings.get_by_role("combobox").filter(has_text="All Users")
-
-
 def _row(settings: Locator, name: str) -> Locator:
     return settings.get_by_role("row").filter(has_text=name)
 
@@ -171,7 +160,7 @@ def test_the_model_table_counts_each_presets_messages_users_chats_and_tokens(
 
 def test_the_user_table_and_summary_count_the_groups_messages_and_tokens(activity, dashboard):
     _, settings = dashboard
-    _group_filter(settings).select_option(label=activity.group_name)
+    group_picker(settings).select_option(label=activity.group_name)
     leaderboard_tab(settings, "Users").click()
     expect(_row(settings, activity.first.name)).to_have_count(1)
     # messages, then input, output and total tokens
@@ -179,33 +168,33 @@ def test_the_user_table_and_summary_count_the_groups_messages_and_tokens(activit
     _cells(_row(settings, activity.second.name), "1")
     expect(_row(settings, activity.first.name).get_by_role("cell").nth(5)).to_have_text("360")
     expect(_row(settings, activity.second.name).get_by_role("cell").nth(5)).to_have_text("140")
-    expect(settings.get_by_text("4 messages")).to_be_visible()
-    expect(settings.get_by_text("500 tokens")).to_be_visible()
-    expect(settings.get_by_text("3 chats")).to_be_visible()
-    expect(settings.get_by_text("2 users")).to_be_visible()
+    expect(summary_figure(settings, "Messages")).to_have_text("4")
+    expect(summary_figure(settings, "Tokens")).to_have_text("500")
+    expect(summary_figure(settings, "Chats")).to_have_text("3")
+    expect(summary_figure(settings, "Users")).to_have_text("2")
 
 
 def test_a_date_range_before_the_chats_empties_the_dashboard(activity, dashboard, presets):
     _, settings = dashboard
     aster, _ = presets
-    _group_filter(settings).select_option(label=activity.group_name)
+    group_picker(settings).select_option(label=activity.group_name)
     expect(_row(settings, aster)).to_have_count(1)
 
-    _period(settings).select_option(label="Custom range")
-    start, end = settings.locator("input[type=date]").all()
+    period_picker(settings).select_option(label="Custom range")
+    start, end = settings.get_by_label("Start date"), settings.get_by_label("End date")
     # a whole day of margin either side, so no time zone puts the chats inside the range
     start.fill((date.today() - timedelta(days=9)).isoformat())
     end.fill((date.today() - timedelta(days=3)).isoformat())
-    expect(settings.get_by_text("0 messages")).to_be_visible()
+    expect(summary_figure(settings, "Messages")).to_have_text("0")
     expect(_row(settings, aster)).to_have_count(0)
     expect(settings.get_by_text("No data")).to_have_count(1)
     leaderboard_tab(settings, "Users").click()
     expect(settings.get_by_text("No data")).to_have_count(1)
     leaderboard_tab(settings, "Models").click()
 
-    _period(settings).select_option(label="Last 24 hours")
+    period_picker(settings).select_option(label="Last 24 hours")
     expect(_row(settings, aster)).to_have_count(1)
-    expect(settings.get_by_text("4 messages")).to_be_visible()
+    expect(summary_figure(settings, "Messages")).to_have_text("4")
 
 
 def test_a_model_row_opens_the_models_chats_with_who_had_them(activity, dashboard, presets):

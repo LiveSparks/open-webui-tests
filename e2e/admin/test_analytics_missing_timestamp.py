@@ -5,17 +5,18 @@ Messages request for All time with a 500, so the dashboard showed its other figu
 Such a row now counts on today.
 
 One fresh user has a reply from ten days ago and one whose time is gone; the dashboard narrowed
-to that user's group shows neither for the last 7 days and both for All time, with the chart's
-metric picker on Daily Messages and its axis starting ten days ago.
+to that user's group shows neither for the last 7 days and both for All time, with the chart
+in daily buckets and a bar of one message ten days ago.
 
 Twin of integration/models/test_analytics_missing_timestamp.py.
 
-Discriminates: passes on dev fbeee59e9, fails with f25708484 reverted (All time shows "2 messages"
-and no Daily Messages chart).
+Discriminates: passes on dev 21f770fb7, fails with f25708484 reverted (the dashboard cannot load
+All time and shows no figures).
 """
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import date
 
@@ -25,6 +26,15 @@ from playwright.sync_api import expect
 from harness.access import make_group
 from harness.backends import write_rows
 from harness.chat_history import seed_chat
+from utils.analytics import (
+    chart_interval,
+    chart_point,
+    count_by,
+    dashboard,
+    day_label,
+    period_picker,
+    summary_figure,
+)
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -40,11 +50,6 @@ def seed_reply(client, timestamp: int) -> str:
         ],
     )
     return chat_id
-
-
-def chart_label(day: date) -> str:
-    """How the chart's axis writes a day for All time (dayjs `M/D/YY`)."""
-    return f"{day.month}/{day.day}/{day.year % 100:02d}"
 
 
 def test_all_time_loads_with_a_message_stored_without_a_time(instance, admin, make_user, page_for):
@@ -63,16 +68,15 @@ def test_all_time_loads_with_a_message_stored_without_a_time(instance, admin, ma
         group_name = client.get(f"/api/v1/groups/id/{group_id}").json()["name"]
 
     page = page_for(make_user(role="admin"), path="/admin/analytics")
-    settings = page.get_by_role("dialog")
-    expect(settings.get_by_role("button", name="Models", exact=True, pressed=True)).to_be_visible()
-    settings.get_by_role("combobox").filter(has_text="All Users").select_option(label=group_name)
-    expect(settings.get_by_text("0 messages")).to_be_visible()
+    settings = dashboard(page, group_name, "Last 7 days")
+    expect(summary_figure(settings, "Messages")).to_have_text("0")
 
-    settings.get_by_role("combobox").filter(has_text="All time").select_option(label="All time")
+    period_picker(settings).select_option(label="All time")
 
-    expect(settings.get_by_text("2 messages")).to_be_visible()
-    chart_metric = settings.get_by_role("combobox", name="Chart metric")
-    expect(chart_metric).to_be_visible()
-    expect(chart_metric.locator("option:checked")).to_have_text("Daily Messages")
+    expect(summary_figure(settings, "Messages")).to_have_text("2")
+    expect(chart_interval(settings)).to_have_text("Daily")
+    count_by(settings, "Messages")
     first_day = date.fromtimestamp(ten_days_ago)
-    expect(settings.get_by_text(chart_label(first_day), exact=True)).to_be_visible()
+    expect(chart_point(settings, day_label(first_day))).to_have_attribute(
+        "aria-label", re.compile(r": 1 Messages\.")
+    )
