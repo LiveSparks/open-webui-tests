@@ -8,9 +8,9 @@ as JSON. A pick is sent for its parameters even over the chat's or the model's o
 for one model never reach another, and a pick of an option that is gone is refused; the chat
 input still offers that control, so the user can pick again. A pick of a removed control is
 pinned in the browser suite, where it leaves the user stuck.
-Without the Chat Controls or Advanced Params permission a pick is skipped and the defaults are
-sent, so a pick saved before the permission was taken away no longer refuses every message
-(open-webui/open-webui#31995, fixed by 9b3d599c7).
+Anyone who can use the model picks its controls: without the Chat Controls or Advanced Params
+permission the pick is still saved to the account and sent, while a user without access to the
+model is refused and the provider gets nothing.
 On the model routes, people see the labels of the controls and options but never what an option
 sends. Anyone with write access to the model reads and changes its controls, a reader gets no
 parameters and cannot save, a user with the Models permission creates a model with controls, a
@@ -28,6 +28,10 @@ Retargeted for 3e0e760ce, which lets anyone with write access read and change th
 on dev b40891e0a (3 of 3). In a backend copy of it with the admin-only rules back and the
 parameters no longer withheld from readers, the writer, reader and Models permission tests fail; in
 one whose update skips the write check, the test of the reader's save fails.
+Retargeted for db5b87494 (#32860), which lets everyone who can use a model pick its controls:
+passes on dev a915df8ce. In a backend copy with its permission checks back, the permissions test
+fails on the skipped pick or on the dropped saved pick (one copy each); in one whose model access
+check lets everyone through, it fails on the user without access reaching the model.
 """
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ import uuid
 import pytest
 
 from harness.chat import wait_for_reply
-from harness.model_controls import LENGTH, THINKING, ask_with_picks, preset_with_controls
+from harness.model_controls import LENGTH, THINKING, ask_with_picks, pick, preset_with_controls
 from harness.plugins import installed_function
 from harness.upstream import MOCK_MODEL_ID
 
@@ -192,19 +196,31 @@ def test_picks_not_keyed_by_model_are_refused(make_user, upstream):
 
 
 @pytest.mark.parametrize("withheld", ["controls", "params"])
-def test_without_the_chat_parameter_permissions_a_pick_is_skipped(
+def test_without_the_chat_parameter_permissions_a_pick_is_kept_and_sent_for_a_usable_model(
     admin, make_user, upstream, preserve, withheld
 ):
     preserve("permissions")
     _set_chat_permissions(admin, **{withheld: False})
-    with preset_with_controls(admin, {"thinking": THINKING}) as model:
-        with make_user().client() as client:
-            skipped = _sent(client, upstream, model["id"], {model["id"]: {"thinking": "high"}})
-        with admin.client() as client:
-            as_admin = _sent(client, upstream, model["id"], {model["id"]: {"thinking": "high"}})
+    picker, stranger = make_user(), make_user()
+    with preset_with_controls(
+        admin, {"thinking": THINKING}, access_grants=[_reader_grant(picker)]
+    ) as model:
+        picks = {model["id"]: {"thinking": "high"}}
+        with stranger.client() as client:
+            refused = _refused(client, model["id"], picks)
+        assert upstream.chat_requests() == [], "a user without access to the model reached it"
+        pick(picker, picks)
+        with picker.client() as client:
+            permissions = client.get("/api/v1/auths/").json()["permissions"]
+            stored = client.get("/api/v1/users/user/settings").json()
+            sent = _sent(client, upstream, model["id"], picks)
 
-    assert skipped.get("reasoning_effort") == "medium", "a pick without the permission was sent"
-    assert as_admin.get("reasoning_effort") == "high"
+    assert permissions["chat"][withheld] is False, permissions["chat"]
+    assert (refused.status_code, refused.json()) == (400, {"detail": "Model not found"})
+    assert stored["ui"]["params"]["model_controls"] == picks, "the saved pick was dropped"
+    assert sent.get("reasoning_effort") == "high", (
+        "the pick of a user who can use the model was skipped"
+    )
 
 
 # --------------------------------------------------------------------------- model routes

@@ -9,7 +9,8 @@ menu groups the controls by model and each model is sent its own pick, and a mod
 controls shows no button. On a phone a control's options open in place of the list, with a way
 back, and the Chat Variables button beside it still opens its own form. The picked option's
 parameters go out alongside what the chat's own Controls set. A user without the Chat Controls
-or Advanced Params permission gets no button and the defaults still apply.
+or Advanced Params permission still picks, keeps and sends the controls, while the permission
+still hides the Controls panel or its Advanced Params.
 
 Four red tests pin picks the user can no longer see or clear. Saving Settings > General throws
 every pick away (open-webui/open-webui#31997, fixed by 1be0d3412). A pick of a control the admin
@@ -26,6 +27,10 @@ submenu drops the description, every test fails but the default, other account a
 tests; in a backend copy that never merges the picks, every test that reads the request fails;
 in a frontend build without the Chat Variables button and whose pick is never saved to the
 account, the Chat Variables, reload and new chat, and model switching tests fail.
+Retargeted for db5b87494 (#32860), which shows the controls to everyone who can use the model:
+passes on dev a915df8ce. The permissions test fails on a build with its button check back (no
+button), in a backend copy with its chat route check back (the default is sent) and in one with
+its settings check back (the pick is gone after the reload).
 """
 
 from __future__ import annotations
@@ -320,18 +325,32 @@ def _set_chat_permissions(admin, **flags: bool) -> None:
 WITHDRAWN = pytest.mark.parametrize("withheld", ["controls", "params"])
 
 
+def _withheld_panel(page: Page, withheld: str) -> Locator:
+    """What the withheld permission still hides: the Controls panel, or its Advanced Params."""
+    controls = page.get_by_role("navigation").get_by_role("button", name="Controls")
+    if withheld == "controls":
+        return controls
+    controls.click()
+    expect(page.get_by_role("button", name="System Prompt", exact=True)).to_be_visible()
+    return page.get_by_role("button", name="Advanced Params", exact=True)
+
+
 @WITHDRAWN
-def test_without_the_permissions_the_defaults_apply_unseen(
+def test_without_the_permissions_the_controls_are_still_picked_and_sent(
     page_for, make_user, admin, tuned, preserve, upstream, withheld
 ):
     preserve("permissions")
     _set_chat_permissions(admin, **{withheld: False})
     page = page_for(make_user())
     _open_chat(page, tuned["id"])
-    expect(page.get_by_role("button", name="Voice mode")).to_be_visible()
+    _choose(page, "Thinking", "High")
 
-    expect(_controls_button(page)).to_have_count(0)
-    assert _ask(page, upstream).get("reasoning_effort") == "medium"
+    page.reload()
+    _open_menu(page)
+    expect(_control_row(page, "Thinking")).to_contain_text("High")
+    page.keyboard.press("Escape")
+    assert _ask(page, upstream).get("reasoning_effort") == "high"
+    expect(_withheld_panel(page, withheld)).to_have_count(0)
 
 
 # --------------------------------------------------------------------------- picks left behind
