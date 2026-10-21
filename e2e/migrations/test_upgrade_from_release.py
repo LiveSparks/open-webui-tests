@@ -39,6 +39,7 @@ from harness.instance import resolve_backend, resolve_frontend_build
 from harness.upgraded_release import Upgraded, data_set_params, upgraded_release
 from utils.cached_chat import attach_from_menu, calling, turn_on_tool
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, replies, send
+from utils.sidebar_chats import chat_menu, chat_row
 from utils.sidebar_folders import folder_row
 
 pytestmark = [
@@ -106,16 +107,6 @@ def _folder_with_its_chats(sidebar: Locator, folder_id: str) -> Locator:
     """The folder's row and what is listed under it, which share no accessible name."""
     row = sidebar.locator(f"#folder-{folder_id}-button")
     return row.locator("xpath=ancestor::div[@draggable][1]")
-
-
-def _chat_menu(sidebar: Locator, title: str) -> Locator:
-    """The menu on the row of `title`, whose trigger shows while the row has focus."""
-    row = sidebar.locator("#sidebar-chat-group").filter(has_text=title)
-    row.hover()
-    row.get_by_role("button", name=re.compile(re.escape(title))).first.focus()
-    expect(row.get_by_role("button", name=title, exact=True)).to_be_visible()
-    row.get_by_role("button", name="Chat Menu").first.click()
-    return sidebar.page.get_by_role("menu")
 
 
 def _open_settings_tab(page: Page, tab: str) -> Locator:
@@ -191,7 +182,7 @@ def test_the_pinned_chat_sits_in_its_nested_folder_once_unpinned(open_as, upgrad
     folders, branched = upgraded.manifest["folders"], upgraded.manifest["chats"]["branched"]
     sidebar = _sidebar(open_as("alice"))
     expect(sidebar.get_by_role("button", name="Pinned", exact=True)).to_be_visible()
-    expect(sidebar.get_by_role("button", name=re.compile(branched["title"]))).to_be_visible()
+    expect(chat_row(sidebar, branched["title"])).to_be_visible()
     _expand(sidebar, "Folders")
     child_folder = folder_row(sidebar, folders["child"]["name"])
     expect(folder_row(sidebar, folders["parent"]["name"])).to_be_visible()
@@ -199,14 +190,12 @@ def test_the_pinned_chat_sits_in_its_nested_folder_once_unpinned(open_as, upgrad
     _open_folder(sidebar, folders["parent"]["name"])
     expect(child_folder).to_be_visible()
 
-    _chat_menu(sidebar, branched["title"]).get_by_role("button", name="Unpin").click()
+    chat_menu(sidebar, branched["title"]).get_by_role("button", name="Unpin").click()
 
     expect(sidebar.get_by_role("button", name="Pinned", exact=True)).to_have_count(0)
     _open_folder(sidebar, folders["child"]["name"])
     in_child_folder = _folder_with_its_chats(sidebar, folders["child"]["id"])
-    expect(
-        in_child_folder.get_by_role("button", name=re.compile(branched["title"]))
-    ).to_be_visible()
+    expect(chat_row(in_child_folder, branched["title"])).to_be_visible()
 
 
 def test_the_archived_chat_is_in_the_archive_and_not_the_sidebar(open_as, upgraded):
@@ -214,8 +203,8 @@ def test_the_archived_chat_is_in_the_archive_and_not_the_sidebar(open_as, upgrad
     page = open_as("alice")
     sidebar = _sidebar(page)
     live_title = upgraded.manifest["chats"]["live"]["title"]
-    expect(sidebar.get_by_role("button", name=re.compile(live_title))).to_be_visible()
-    expect(sidebar.get_by_role("button", name=re.compile(archived["title"]))).to_have_count(0)
+    expect(chat_row(sidebar, live_title)).to_be_visible()
+    expect(chat_row(sidebar, archived["title"])).to_have_count(0)
 
     settings = _open_settings_tab(page, "Archived Chats")
 
@@ -288,7 +277,7 @@ def test_group_and_default_permissions_shape_the_workspace_and_chat_menu(open_as
     )
 
     live_title = upgraded.manifest["chats"]["live"]["title"]
-    menu = _chat_menu(_sidebar(member), live_title)
+    menu = chat_menu(_sidebar(member), live_title)
 
     expect(menu.get_by_role("button", name="Archive")).to_be_visible()
     expect(menu.get_by_role("button", name="Delete")).to_have_count(0)

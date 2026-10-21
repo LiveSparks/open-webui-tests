@@ -11,6 +11,8 @@ without storing the change: the chat update dropping `title`, the pin and archiv
 flipping, the delete route not deleting, the folder route not moving the chat, the clone route
 storing an empty conversation and the unread route leaving the read time alone. In the pre-fix
 build of 0.12.4 (9cbd27011 reverted) the rename to spaces shows no error and saves the blank title.
+Retargeted for dc45e3960, whose rows add how long ago the chat was updated to their name: passes on
+dev a915df8ce, 5 of 5.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from utils.sidebar_chats import chat_menu, chat_row
 from utils.sidebar_folders import folder_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -57,26 +60,11 @@ def _open_sidebar(page: Page) -> Locator:
     return page.get_by_role("navigation", name="Chat history")
 
 
-def _chat_row(sidebar: Locator, title: str) -> Locator:
-    return sidebar.get_by_role("button", name=title)
-
-
-def _chat_menu(sidebar: Locator, title: str) -> Locator:
-    """Open the menu on the row of `title`, which shows its trigger while the row has focus."""
-    row = sidebar.locator("#sidebar-chat-group").filter(has_text=title)
-    row.hover()
-    _chat_row(row, title).focus()
-    # the row drops its age label ("1m") from its name once the menu trigger is shown
-    expect(row.get_by_role("button", name=title, exact=True)).to_be_visible()
-    row.get_by_role("button", name="Chat Menu").first.click()
-    return sidebar.page.get_by_role("menu")
-
-
 @pytest.fixture
 def sidebar(page_for, owner) -> Locator:
     page = page_for(owner)
     side = _open_sidebar(page)
-    expect(_chat_row(side, TITLE)).to_be_visible()
+    expect(chat_row(side, TITLE)).to_be_visible()
     return side
 
 
@@ -87,26 +75,26 @@ def _reloaded(sidebar: Locator) -> Locator:
 
 
 def test_a_renamed_chat_keeps_its_new_title(sidebar):
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Rename").click()
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Rename").click()
     sidebar.page.keyboard.press("Control+A")
     sidebar.page.keyboard.type("Trip to the mountains")
     sidebar.page.keyboard.press("Enter")
-    expect(_chat_row(sidebar, "Trip to the mountains")).to_be_visible()
+    expect(chat_row(sidebar, "Trip to the mountains")).to_be_visible()
 
     _reloaded(sidebar)
-    expect(_chat_row(sidebar, "Trip to the mountains")).to_be_visible()
-    expect(_chat_row(sidebar, TITLE)).to_have_count(0)
+    expect(chat_row(sidebar, "Trip to the mountains")).to_be_visible()
+    expect(chat_row(sidebar, TITLE)).to_have_count(0)
 
 
 def test_a_chat_renamed_to_only_spaces_keeps_its_title(sidebar, owner):
     """#32770 (fix 9cbd27011): a title of only spaces was saved and the chat showed blank."""
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Rename").click()
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Rename").click()
     sidebar.page.keyboard.press("Control+A")
     sidebar.page.keyboard.type("   ")
     sidebar.page.keyboard.press("Enter")
 
     expect(sidebar.page.get_by_text("Title cannot be an empty string.")).to_be_visible()
-    expect(_chat_row(sidebar, TITLE)).to_be_visible()
+    expect(chat_row(sidebar, TITLE)).to_be_visible()
     with owner.client() as client:
         listed = client.get("/api/v1/chats/")
     assert listed.status_code == 200, listed.text
@@ -114,21 +102,21 @@ def test_a_chat_renamed_to_only_spaces_keeps_its_title(sidebar, owner):
 
 
 def test_a_pinned_chat_stays_pinned(sidebar):
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Pin").click()
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Pin").click()
     expect(sidebar.get_by_role("button", name="Pinned")).to_be_visible()
 
     _reloaded(sidebar)
     expect(sidebar.get_by_role("button", name="Pinned")).to_be_visible()
-    menu = _chat_menu(sidebar, TITLE)
+    menu = chat_menu(sidebar, TITLE)
     expect(menu.get_by_role("button", name="Unpin")).to_be_visible()
 
 
 def test_an_archived_chat_leaves_the_sidebar_for_the_archive(sidebar):
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Archive").click()
-    expect(_chat_row(sidebar, TITLE)).to_have_count(0)
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Archive").click()
+    expect(chat_row(sidebar, TITLE)).to_have_count(0)
 
     page = _reloaded(sidebar).page
-    expect(_chat_row(sidebar, TITLE)).to_have_count(0)
+    expect(chat_row(sidebar, TITLE)).to_have_count(0)
     page.get_by_role("button", name="User menu").first.click()
     page.get_by_role("menu").get_by_role("button", name="Settings").click()
     settings = page.get_by_role("dialog")
@@ -137,13 +125,13 @@ def test_an_archived_chat_leaves_the_sidebar_for_the_archive(sidebar):
 
 
 def test_a_deleted_chat_stays_gone(sidebar):
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Delete").click()
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Delete").click()
     confirm = sidebar.page.get_by_role("dialog", name="Delete chat?")
     confirm.get_by_role("button", name="Confirm").click()
-    expect(_chat_row(sidebar, TITLE)).to_have_count(0)
+    expect(chat_row(sidebar, TITLE)).to_have_count(0)
 
     _reloaded(sidebar)
-    expect(_chat_row(sidebar, TITLE)).to_have_count(0)
+    expect(chat_row(sidebar, TITLE)).to_have_count(0)
 
 
 def test_a_chat_moved_into_a_folder_stays_there(sidebar):
@@ -153,7 +141,7 @@ def test_a_chat_moved_into_a_folder_stays_there(sidebar):
     expect(folder).to_be_visible()
     expect(sidebar.get_by_text("No chats")).to_be_visible()
 
-    menu = _chat_menu(sidebar, TITLE)
+    menu = chat_menu(sidebar, TITLE)
     menu.get_by_role("button", name="Move").hover()
     sidebar.page.get_by_role("menu").get_by_role("button", name="Holidays").click()
     expect(sidebar.get_by_text("No chats")).to_have_count(0)
@@ -161,20 +149,20 @@ def test_a_chat_moved_into_a_folder_stays_there(sidebar):
     _reloaded(sidebar)
     expect(folder).to_be_visible()
     expect(sidebar.get_by_text("No chats")).to_have_count(0)
-    expect(_chat_row(sidebar, TITLE)).to_have_count(1)
+    expect(chat_row(sidebar, TITLE)).to_have_count(1)
 
 
 def test_a_clone_holds_the_conversation_and_leaves_the_original(sidebar):
     page = sidebar.page
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Clone").click()
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Clone").click()
     clone_title = f"Clone of {TITLE}"
-    expect(_chat_row(sidebar, clone_title)).to_be_visible()
+    expect(chat_row(sidebar, clone_title)).to_be_visible()
     expect(page.get_by_text("A cottage above the harbour.")).to_be_visible()
 
     _reloaded(sidebar)
-    expect(_chat_row(sidebar, clone_title)).to_be_visible()
+    expect(chat_row(sidebar, clone_title)).to_be_visible()
     expect(page.get_by_text("A cottage above the harbour.")).to_be_visible()
-    _chat_row(sidebar, TITLE).first.click()
+    chat_row(sidebar, TITLE).first.click()
     expect(page.get_by_text("A cottage above the harbour.")).to_be_visible()
 
 
@@ -186,13 +174,13 @@ def _unread_dot(sidebar: Locator, title: str) -> Locator:
 
 def test_a_chat_marked_unread_keeps_its_dot_until_it_is_opened(sidebar):
     expect(_unread_dot(sidebar, TITLE)).to_have_count(0)
-    _chat_menu(sidebar, TITLE).get_by_role("button", name="Mark as unread").click()
+    chat_menu(sidebar, TITLE).get_by_role("button", name="Mark as unread").click()
     expect(_unread_dot(sidebar, TITLE)).to_be_visible()
 
     _reloaded(sidebar)
     expect(_unread_dot(sidebar, TITLE)).to_be_visible()
-    _chat_row(sidebar, TITLE).first.click()
+    chat_row(sidebar, TITLE).first.click()
     expect(sidebar.page.get_by_text("A cottage above the harbour.")).to_be_visible()
     sidebar.page.goto("/")
-    expect(_chat_row(sidebar, TITLE).first).to_be_visible()
+    expect(chat_row(sidebar, TITLE).first).to_be_visible()
     expect(_unread_dot(sidebar, TITLE)).to_have_count(0)
