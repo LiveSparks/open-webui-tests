@@ -34,6 +34,7 @@ from harness.backends import wait_until
 from harness.calendar_api import (
     DAY_NS,
     HOUR_NS,
+    NO_REMINDER,
     create_event,
     default_calendar_id,
     events_between,
@@ -107,7 +108,7 @@ def _make_in_editor(
     editor = _open_editor(page)
     editor.get_by_placeholder("Event title").fill(title)
     _fill_when(editor, day, start, end)
-    for label in choices.values():
+    for label in {"reminder": "None", **choices}.values():
         _select(editor, label).select_option(label=label)
     _save(editor, "Create")
 
@@ -120,6 +121,7 @@ def _event(owner: Actor, title: str, start: dt.datetime, calendar_id: str | None
             title=title,
             start_at=to_ns(start),
             end_at=to_ns(start) + HOUR_NS,
+            meta=NO_REMINDER,
             **fields,
         )
     assert created.status_code == 200, created.text
@@ -224,6 +226,7 @@ def test_a_shared_event_shows_to_the_reader_at_the_readers_time_and_day(page_for
     editor = _open_editor(owner_page)
     editor.get_by_placeholder("Event title").fill(title)
     _select(editor, "Remote team").select_option(label="Remote team")
+    _select(editor, "At time of event").select_option(label="None")
     _fill_when(editor, day, "08:00", "09:00")
     _save(editor, "Create")
     expect(_chip(owner_page, title)).to_have_text(re.compile(rf"^\s*8:00\W*AM\s*{title}\s*$"))
@@ -310,14 +313,11 @@ def test_the_week_view_puts_an_event_in_the_column_of_the_day_it_starts(page_for
     today = dt.date.today()
     sunday = today - dt.timedelta(days=(today.weekday() + 1) % 7)
     tuesday = sunday + dt.timedelta(days=2)
-    # no reminders: a run near these times would get a toast over the view buttons
-    quiet = {"meta": {"alert_minutes": -1}}
-    _event(owner, late, dt.datetime.combine(tuesday, dt.time(23, 30)).astimezone(), **quiet)
+    _event(owner, late, dt.datetime.combine(tuesday, dt.time(23, 30)).astimezone())
     _event(
         owner,
         early,
         dt.datetime.combine(tuesday + dt.timedelta(days=1), dt.time(0, 30)).astimezone(),
-        **quiet,
     )
     page = page_for(owner, path="/calendar")
     expect(page.get_by_role("button", name="Month", exact=True)).to_be_visible()

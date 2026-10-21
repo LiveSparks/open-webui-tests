@@ -20,7 +20,7 @@ import pytest
 from playwright.sync_api import Page
 
 from harness.actors import Actor
-from harness.calendar_api import create_event, default_calendar_id, to_ns
+from harness.calendar_api import NO_REMINDER, create_event, default_calendar_id, to_ns
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -39,6 +39,7 @@ def _event(owner: Actor, start: dt.datetime, end: dt.datetime) -> tuple[str, str
             title=title,
             start_at=to_ns(start),
             end_at=to_ns(end),
+            meta=NO_REMINDER,
         )
     assert created.status_code == 200, created.text
     return created.json()["id"], title

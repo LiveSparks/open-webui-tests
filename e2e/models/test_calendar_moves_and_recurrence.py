@@ -22,7 +22,7 @@ import uuid
 import pytest
 from playwright.sync_api import Page, expect
 
-from harness.calendar_api import HOUR_NS, create_event, default_calendar_id, to_ns
+from harness.calendar_api import HOUR_NS, NO_REMINDER, create_event, default_calendar_id, to_ns
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -48,6 +48,7 @@ def test_an_event_moved_a_week_later_in_the_editor_shows_on_its_new_day(page_for
             title=title,
             start_at=to_ns(original_start),
             end_at=to_ns(original_start) + HOUR_NS,
+            meta=NO_REMINDER,
         )
     assert created.status_code == 200, created.text
 

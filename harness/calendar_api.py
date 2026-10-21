@@ -10,6 +10,9 @@ SECOND_NS = 1_000_000_000
 MINUTE_NS = 60 * SECOND_NS
 HOUR_NS = 60 * MINUTE_NS
 DAY_NS = 24 * HOUR_NS
+# the editor's Reminder None; a browser test's event near the current time otherwise raises a
+# reminder toast over the page header
+NO_REMINDER = {"alert_minutes": -1}
 
 
 def to_ns(moment: dt.datetime) -> int:

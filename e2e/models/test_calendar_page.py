@@ -44,6 +44,7 @@ from harness.actors import Actor
 from harness.calendar_api import (
     DAY_NS,
     HOUR_NS,
+    NO_REMINDER,
     create_event,
     default_calendar_id,
     events_between,
@@ -82,6 +83,7 @@ def _event(owner: Actor, title: str, start: dt.datetime, calendar_id: str | None
             title=title,
             start_at=to_ns(start),
             end_at=to_ns(start) + HOUR_NS,
+            meta=NO_REMINDER,
             **fields,
         )
     assert created.status_code == 200, created.text
@@ -115,13 +117,22 @@ def _open_editor(page: Page, at: dt.time = dt.time(12)) -> Locator:
     page.clock.set_fixed_time(dt.datetime.combine(dt.date.today(), at))
     page.goto("/calendar")
     page.get_by_role("button", name="Create", exact=True).click()
-    return page.get_by_role("dialog")
+    editor = page.get_by_role("dialog")
+    _no_reminder(editor)
+    return editor
 
 
 def _fill_when(editor: Locator, day: dt.date, start: str, end: str) -> None:
     editor.locator('input[type="date"]').fill(day.isoformat())
     editor.locator('input[type="time"]').first.fill(start)
     editor.locator('input[type="time"]').last.fill(end)
+
+
+def _no_reminder(editor: Locator) -> None:
+    reminder = editor.locator("select").filter(
+        has=editor.page.get_by_role("option", name="At time of event")
+    )
+    reminder.select_option(label="None")
 
 
 def _repeat(editor: Locator, label: str) -> None:
@@ -217,6 +228,7 @@ def test_clicking_an_empty_day_starts_an_event_at_nine_that_day(page_for, make_u
     page.get_by_role("button", name="20", exact=True).last.click()
     editor = page.get_by_role("dialog")
     editor.get_by_placeholder("Event title").fill(title)
+    _no_reminder(editor)
     _save(editor, "Create")
 
     saved = _saved(owner, title)
