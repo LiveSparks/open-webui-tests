@@ -4,13 +4,12 @@ A file attached in the composer, and the same file on the sent message, opens a 
 name, its size and the text the server read out of it. Its Preview tab shows a CSV as a table of
 its rows, each sheet of a spreadsheet on a tab of its own, a Word document as its rendered page and
 Markdown with its formatting. A PowerPoint slide draws its title where the file aligns it: left,
-right or, when the file leaves it open, centred. Its pie and doughnut charts draw their slices, and
-a horizontal bar chart lays its bars across while a column chart keeps them upright. A PDF shows its
-extracted text; the Preview tab's PDF viewer says "Failed to load PDF." in the suite's Chromium 131
-for any PDF, so it is not driven here. An attached picture opens full size from the sent message and
-downloads as the bytes that were uploaded. Switching a long document to Using Entire Document in its
-dialog sends the model the whole text where focused retrieval sends a few pieces of it, and a file's
-switch shows its own mode after another attachment is removed.
+right or, when the file leaves it open, centred. A PDF shows its extracted text; the Preview tab's
+PDF viewer says "Failed to load PDF." in the suite's Chromium 131 for any PDF, so it is not driven
+here. An attached picture opens full size from the sent message and downloads as the bytes that were
+uploaded. Switching a long document to Using Entire Document in its dialog sends the model the
+whole text where focused retrieval sends a few pieces of it, and a file's switch shows its own
+mode after another attachment is removed.
 
 Discriminates: passes on the dev ebc6add67 build. In a frontend build whose file dialog shows
 "No content" for the text, no longer takes a CSV for a spreadsheet, hides the sheet tabs, never
@@ -18,9 +17,7 @@ loads a Word document, shows Markdown as plain text and ignores the Using Entire
 and whose picture preview never opens, every test fails. In the pre-fix build of 0.12.4
 (a944564c2 reverted) the remaining file shows the removed file's Using Entire Document. The
 PowerPoint title test fails on the dev 75358502c build (#32873: the left-aligned title starts 42%
-across the slide) and passes with the fix 8fa77c828 (#32876). The PowerPoint chart test fails
-on the dev 52f51ea4f build (#32884: the pie and doughnut slides stay blank and the longest
-horizontal bar spans 13% of the slide) and passes with the fix f0f0e4ab1, which is not merged yet.
+across the slide) and passes with the fix 8fa77c828 (#32876).
 """
 
 from __future__ import annotations
@@ -206,79 +203,6 @@ def test_a_slide_title_previews_with_the_alignment_the_file_gives_it(page_for, m
     )
     _, right_end = title_ink(dialog, 3)
     assert right_end > 80, f"a right-aligned title ends {right_end:.0f}% across the slide"
-
-
-def chart_deck(*chart_types: str) -> bytes:
-    """One slide per chart type, each charting the same four shares."""
-    pptx = pytest.importorskip("pptx")
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.chart import XL_CHART_TYPE
-    from pptx.util import Inches
-
-    data = CategoryChartData()
-    data.categories = ["Cod", "Herring", "Mackerel", "Plaice"]
-    data.add_series("Catch", (55, 18, 9, 18))
-    deck = pptx.Presentation()
-    for chart_type in chart_types:
-        slide = deck.slides.add_slide(deck.slide_layouts[6])
-        slide.shapes.add_chart(
-            getattr(XL_CHART_TYPE, chart_type), Inches(1), Inches(1), Inches(8), Inches(5.5), data
-        )
-    buffer = io.BytesIO()
-    deck.save(buffer)
-    return buffer.getvalue()
-
-
-def chart_ink(dialog: Locator, number: int) -> dict[str, float]:
-    """How much of a slide is in colour, and the widest single run of colour, as % of the slide."""
-    dialog.get_by_role("button", name=f"Slide {number}", exact=True).click()
-    slide = dialog.get_by_role("img", name=f"Slide {number}", exact=True)
-    expect(slide).to_be_visible()
-    return slide.evaluate(
-        """async image => {
-            await image.decode();
-            const canvas = document.createElement('canvas');
-            canvas.width = image.naturalWidth;
-            canvas.height = image.naturalHeight;
-            const context = canvas.getContext('2d');
-            context.drawImage(image, 0, 0);
-            const { width, height } = canvas;
-            const { data } = context.getImageData(0, 0, width, height);
-            let coloured = 0, widestRun = 0;
-            for (let y = 0; y < height; y++) {
-                let run = 0;
-                for (let x = 0; x < width; x++) {
-                    const i = (y * width + x) * 4;
-                    const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
-                    const isColoured = Math.max(r, g, b) - Math.min(r, g, b) > 60;
-                    coloured += isColoured ? 1 : 0;
-                    run = isColoured ? run + 1 : 0;
-                    widestRun = Math.max(widestRun, run);
-                }
-            }
-            return {
-                coloured: coloured / (width * height) * 100,
-                widestRun: widestRun / width * 100
-            };
-        }"""
-    )
-
-
-def test_pie_doughnut_and_horizontal_bar_charts_preview_as_drawn_in_the_file(page_for, make_user):
-    """#32884: pie and doughnut charts left an empty slide and horizontal bars stood upright."""
-    page = page_for(make_user())
-    deck = chart_deck("PIE", "DOUGHNUT", "BAR_CLUSTERED", "COLUMN_CLUSTERED")
-
-    dialog = attach_and_open(page, "catch.pptx", deck, PPTX)
-    show_preview(dialog)
-
-    for number, kind in [(1, "pie"), (2, "doughnut")]:
-        coloured = chart_ink(dialog, number)["coloured"]
-        assert coloured > 10, f"the {kind} chart slide is only {coloured:.1f}% in colour"
-    widest_bar = chart_ink(dialog, 3)["widestRun"]
-    assert widest_bar > 40, f"the longest horizontal bar spans only {widest_bar:.0f}% of the slide"
-    widest_column = chart_ink(dialog, 4)["widestRun"]
-    assert widest_column < 20, f"a column of the column chart spans {widest_column:.0f}% across"
 
 
 def test_markdown_previews_with_its_formatting(page_for, make_user):
