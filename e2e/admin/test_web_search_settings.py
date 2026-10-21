@@ -6,8 +6,12 @@ many results, and the hits the model is given back are only the ones from the li
 SearXNG picked as the engine, with a query URL and a language, is asked the model's query in that
 language, and its results are what the model reads.
 
+With web search off and no engine picked, the tab still saves the loader settings, while with web
+search on it keeps asking for an engine (issue #32831).
+
 Discriminates: passes on dev 30f3f6a8f; in a frontend build whose Web Search form sends the stored
-settings back in place of the edited ones, every test fails.
+settings back in place of the edited ones, every test fails. On dev ca8f451cc the loader test is
+red: the engine list blocks the save even with web search off.
 """
 
 from __future__ import annotations
@@ -137,3 +141,44 @@ def test_searxng_is_asked_the_query_in_the_saved_language(
     assert "q=harbour+ferry" in search.path or "q=harbour%20ferry" in search.path, search.path
     assert "language=de" in search.path
     assert "Die Faehre" in json.dumps(requests[-1]["messages"])
+
+
+def no_engine_tab(page_for, admin, web_search_on: bool) -> tuple[Page, Locator]:
+    with admin.client() as client:
+        save_web_settings(client, ENABLE_WEB_SEARCH=web_search_on, WEB_SEARCH_ENGINE="")
+    page = page_for(admin, path="/admin/settings/web")
+    settings = page.get_by_role("dialog")
+    expect(settings.get_by_placeholder("Timeout", exact=True)).to_be_visible()
+    return page, settings
+
+
+def saved_loader_timeout(admin) -> str | None:
+    with admin.client() as client:
+        current = client.get(RETRIEVAL_CONFIG[0])
+    assert current.status_code == 200, current.text
+    return current.json()["web"]["WEB_LOADER_TIMEOUT"]
+
+
+@pytest.mark.regression
+def test_the_loader_settings_save_with_web_search_off_and_no_engine(page_for, admin, preserve):
+    # open-webui/open-webui#32831: the engine list asked for an engine and nothing was sent
+    preserve(RETRIEVAL_CONFIG)
+    page, settings = no_engine_tab(page_for, admin, web_search_on=False)
+    settings.get_by_placeholder("Timeout", exact=True).fill("15")
+    save(page, settings)
+
+    assert saved_loader_timeout(admin) == "15"
+
+
+def test_web_search_on_still_asks_for_an_engine(page_for, admin, preserve):
+    preserve(RETRIEVAL_CONFIG)
+    page, settings = no_engine_tab(page_for, admin, web_search_on=True)
+    timeout_before = saved_loader_timeout(admin)
+    settings.get_by_placeholder("Timeout", exact=True).fill("16")
+    settings.get_by_role("button", name="Save", exact=True).click()
+
+    engines = settings.get_by_role("combobox").filter(
+        has=page.get_by_role("option", name="searxng", exact=True)
+    )
+    expect(engines).to_be_focused()
+    assert saved_loader_timeout(admin) == timeout_before
