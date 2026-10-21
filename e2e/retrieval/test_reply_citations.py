@@ -25,7 +25,7 @@ from harness import upstream as reply
 from harness.access import grant
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, listed_source, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -78,7 +78,7 @@ def _open_listed_source(page: Page, name: str, count: int = 1):
     chat = conversation(page)
     label = "Toggle 1 source" if count == 1 else f"Toggle {count} sources"
     chat.get_by_role("button", name=label).click()
-    chat.get_by_role("button", name=f"View source: {name}").click()
+    listed_source(page, name).click()
     return page.get_by_role("dialog")
 
 

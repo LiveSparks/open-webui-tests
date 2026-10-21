@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from playwright.sync_api import Locator, Page, expect
 
 REPLY_TIMEOUT_MS = 30_000
@@ -34,6 +36,12 @@ def replies(page: Page) -> Locator:
 
 def last_reply(page: Page) -> Locator:
     return replies(page).last
+
+
+def listed_source(page: Page, name: str) -> Locator:
+    """An entry of an opened source list, which reads out its number before the name."""
+    label = re.compile(rf"^View source: \d+ {re.escape(name)}$")
+    return conversation(page).get_by_role("button", name=label)
 
 
 def expect_reply(page: Page, text: str) -> None:

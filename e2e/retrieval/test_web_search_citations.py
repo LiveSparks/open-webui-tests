@@ -84,6 +84,6 @@ def test_the_page_the_model_read_is_the_reply_source(page_for, searcher, listene
     citation.get_by_role("button", name="Close citation modal").click()
 
     chat.get_by_role("button", name="Toggle 1 source").click()
-    listed = chat.get_by_role("button", name=re.compile(r"^View source: http"))
+    listed = chat.get_by_role("button", name=re.compile(r"^View source: \d+ http"))
     expect(listed).to_have_count(1)
-    expect(listed).to_have_accessible_name(f"View source: {page_url}")
+    expect(listed).to_have_accessible_name(f"View source: 1 {page_url}")

@@ -22,7 +22,7 @@ from playwright.sync_api import expect
 
 from harness import upstream as reply
 from harness.knowledge_bases import add_text_file, knowledge_base
-from utils.chat_ui import conversation, expect_reply, send
+from utils.chat_ui import conversation, expect_reply, listed_source, send
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -57,7 +57,7 @@ def test_a_knowledge_tool_citation_shows_its_relevance(page_for, shared_notes, u
 
     chat = conversation(page)
     chat.get_by_role("button", name="Toggle 1 source").click()
-    chat.get_by_role("button", name=f"View source: 1 {filename}").click()
+    listed_source(page, filename).click()
     citation = page.get_by_role("dialog")
     expect(citation).to_contain_text(NOTES)
     expect(citation.get_by_text(PERCENTAGE)).to_be_visible()

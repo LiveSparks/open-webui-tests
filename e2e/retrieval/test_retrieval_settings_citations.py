@@ -30,7 +30,14 @@ from harness.actors import Actor, admin_of, create_user
 from harness.keyword_embeddings import keyword_embedding_env, serve_keyword_embeddings
 from harness.listener import ReceivedRequest, json_answer, listening
 from harness.web_retrieval import RETRIEVAL_CONFIG
-from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply, send
+from utils.chat_ui import (
+    REPLY_TIMEOUT_MS,
+    chat_input,
+    conversation,
+    expect_reply,
+    listed_source,
+    send,
+)
 
 pytestmark = [
     pytest.mark.journey,
@@ -169,7 +176,7 @@ def cited_passages(page: Page) -> Locator:
     """Open the reply's one source; returns the dialog listing its passages."""
     chat = conversation(page)
     chat.get_by_role("button", name="Toggle 1 source").click()
-    chat.get_by_role("button", name=f"View source: {NOTES[0]}").click()
+    listed_source(page, NOTES[0]).click()
     citation = page.get_by_role("dialog")
     expect(citation.get_by_role("link", name=NOTES[0])).to_be_visible()
     return citation
