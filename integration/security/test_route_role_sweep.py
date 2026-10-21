@@ -76,7 +76,6 @@ PUBLIC_ROUTES = {
     ("GET", "/oauth/clients/{client_id}/callback"): "a tool server's provider redirects here",
     ("POST", "/oauth/backchannel-logout"): "the provider calls it with a signed token",
     ("POST", "/api/v1/channels/webhooks/{webhook_id}/{token}"): "the path carries the secret",
-    ("GET", "/api/v1/retrieval/ef/{text}"): "declared only with ENV=dev, like /openapi.json",
 }
 
 # Routes whose role the dependency chain does not tell, by (method, path): how they check.

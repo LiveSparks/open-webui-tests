@@ -5,8 +5,10 @@ open-webui 0.11.1, fix `ea55d3879` (maintainer refac, no PR): `POST /api/v1/mode
 model a connection serves, or one with no base model. Such an entry is no preset; it replaces the
 provider's model for everyone, so the user's system prompt reached every chat anyone started with
 what looked like the stock model. The fix requires a base model on non-admin writes, refuses an id
-a connection serves (an Ollama id also without its tag), with 401 on create and a skipped entry on
-import, and refuses clearing a base model on update. Admins keep the unrestricted path.
+a connection serves (an Ollama id also without its tag), with 401 on create, and refuses clearing a
+base model on update. Import skipped such an entry until cb7d7e851 (#32866); it now stops there with
+the same 401, keeping the models before it and dropping the ones after. Admins keep the unrestricted
+path.
 
 Each test serves a fresh id from the scripted provider or an Ollama listener, so no workspace row
 claims it yet (the harness gives `mock-model` a row when it publishes it).
@@ -15,7 +17,9 @@ Twin of unit/security/test_workspace_model_shadowing.py.
 
 Discriminates: passes on bbfa876af, fails with ea55d3879 reverted (create and import store the
 shadowing entries, update clears the base model and the admin's chat with the provider model
-carries the user's system prompt); the nearby tests pass on both.
+carries the user's system prompt); the nearby tests pass on both. The import test, retargeted to
+the stop of cb7d7e851, passes on 35b51e09e and fails there with the provider id check removed
+(the entry is stored and the import answers 200).
 """
 
 from __future__ import annotations
@@ -150,20 +154,28 @@ def test_create_refuses_a_provider_model_id(
     assert _stored(admin, provider_model_id) is None
 
 
-def test_import_skips_a_provider_model_id_and_keeps_the_rest(
+def test_import_stops_at_a_provider_model_id_and_keeps_what_came_before(
     workspace_user, admin, provider_model_id
 ):
-    helper_id = _fresh_id("helper")
-    models = [_model(provider_model_id, MOCK_MODEL_ID), _model(helper_id, MOCK_MODEL_ID, "Helper")]
+    before_id, after_id = _fresh_id("before"), _fresh_id("after")
+    models = [
+        _model(before_id, MOCK_MODEL_ID, "Before"),
+        _model(provider_model_id, MOCK_MODEL_ID),
+        _model(after_id, MOCK_MODEL_ID, "After"),
+    ]
     with workspace_user.client() as client:
         imported = client.post("/api/v1/models/import", json={"models": models})
 
-    assert imported.status_code == 200, imported.text
+    assert imported.status_code == 401, (
+        f"importing a model file with the provider id {provider_model_id} answered "
+        f"HTTP {imported.status_code}: {imported.text} (cb7d7e851)"
+    )
     assert _stored(admin, provider_model_id) is None, (
         "importing a model file stored an entry under a provider model id (ea55d3879)"
     )
-    assert _stored(admin, helper_id)["base_model_id"] == MOCK_MODEL_ID
-    _delete(admin, helper_id)
+    assert _stored(admin, before_id)["base_model_id"] == MOCK_MODEL_ID
+    assert _stored(admin, after_id) is None, "the import went on past the refused model"
+    _delete(admin, before_id, after_id)
 
 
 def test_update_refuses_clearing_the_base_model(workspace_user, admin, preset_id):
