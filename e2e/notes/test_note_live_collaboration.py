@@ -9,6 +9,9 @@ reload.
 
 `test_a_reader_with_the_note_open_sees_the_writing_after_a_reload` failed on dev 1c010b438 in CI:
 the note was saved a few characters short (open-webui/open-webui#31585, fix PR #31596 open).
+`test_both_edits_survive_a_reload_and_are_stored` fails now and then: when both pages reopen the
+note at nearly the same moment, both can load the saved text, so the text shows up and is stored
+twice (open-webui/open-webui#32824).
 
 Discriminates: passes on dev 176d31d1d. In a frontend copy, the editor not applying remote Yjs
 updates turns the three writer tests red and the editor staying editable for a reader turns the
