@@ -1,6 +1,6 @@
 """Automatic context compaction cut the conversation in the wrong place or fired at the wrong time.
 
-Six 0.11.0 fixes and a later seventh in `utils/context_compaction.py` and `utils/response.py`.
+Six 0.11.0 fixes and two later ones in `utils/context_compaction.py` and `utils/response.py`.
 When a saved chat grows past the token threshold, the next turn asks a model for a summary of the
 older turns and sends the provider the system prompt (with the summary appended) plus the recent
 turns.
@@ -27,6 +27,10 @@ turns.
    enough back to keep the retention share), so the follow-up went out whole and failed against
    the model's context window. It is now cut at the follow-up. The summary prompt renders only
    each message's visible text, so tool output stored on the earlier reply reaches neither request.
+8. Model threshold in the context usage (#32821): a model's own threshold, set on the workspace
+   model or in the admin model defaults, decided when a turn compacted, but `GET
+   /api/v1/chats/{id}` reported the global threshold, so the chat's usage gauge read a few
+   percent right before compaction fired.
 
 Twin of unit/chat/test_context_compaction.py.
 
@@ -39,7 +43,9 @@ cap fails the capped case; ignoring the retention setting fails the keep-half ca
 `input_tokens` (dev ef67cc3fa) fails the upgraded-chat test for all three dialects. The usage
 dialect, under-threshold, compaction-off, clamp and normalization tests pass on all. Both
 one-exchange cases pass with the #32781 fix (0adecf863) and fail on dev 2d9852c60 before it (no
-summary is made and the whole chat is sent, the tool output included).
+summary is made and the whole chat is sent, the tool output included). Both model-threshold
+cases pass with the #32821 fix and fail on dev ca8f451cc before it (the global threshold is
+reported while the turn still compacts at the model's).
 """
 
 from __future__ import annotations
@@ -63,6 +69,7 @@ from harness.upstream import MOCK_MODEL_ID
 pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_source]
 
 CHAT_CONFIG = ("/api/v1/chats/config", "/api/v1/chats/config")
+MODELS_CONFIG = ("/api/v1/configs/models", "/api/v1/configs/models")
 SYSTEM_PROMPT = "You are a careful travel agent."
 SUMMARY = "SUMMARY OF THE EARLIER TURNS"
 COMPACTION_MODEL = "compaction-model"
@@ -359,6 +366,59 @@ def test_a_chat_threshold_is_capped_by_the_global_one(
         )
 
     assert len(summary_requests(upstream)) == 1
+
+
+@pytest.fixture
+def default_model_params(admin, preserve):
+    """`default_model_params(params)` sets the parameters every model starts from."""
+    preserve(MODELS_CONFIG)
+
+    def configure(params: dict) -> None:
+        with admin.client() as client:
+            current = client.get(MODELS_CONFIG[0]).json()
+            updated = client.post(
+                MODELS_CONFIG[1], json={**current, "DEFAULT_MODEL_PARAMS": params}
+            )
+        assert updated.status_code == 200, updated.text
+
+    return configure
+
+
+@pytest.mark.parametrize("source", ["workspace-model", "admin-model-defaults"])
+def test_the_reported_threshold_is_the_models_own(
+    make_user, upstream, compaction, default_model_params, source
+):
+    compaction(threshold=1_000_000)
+    model_params = {"compact_token_threshold": 500}
+    if source == "admin-model-defaults":
+        default_model_params(model_params)
+        model_params = {}
+    model_id = f"small-window-{uuid.uuid4().hex[:8]}"
+    upstream.queue(reply.text(SUMMARY, match=is_summary_request), reply.text("answer 4"))
+    # an admin account, so the workspace model needs no access grant
+    with make_user("admin").client() as client:
+        created = client.post(
+            "/api/v1/models/create",
+            json={
+                "id": model_id,
+                "base_model_id": MOCK_MODEL_ID,
+                "name": "Small window",
+                "meta": {},
+                "params": model_params,
+            },
+        )
+        assert created.status_code == 200, created.text
+        client.get("/api/models").raise_for_status()
+        chat_id, last_id = seed_chat(client, turns(3), model=model_id)
+        context_usage = client.get(f"/api/v1/chats/{chat_id}").json()["context_usage"]
+        next_turn(client, chat_id, last_id, "question 4", model=model_id)
+        client.post("/api/v1/models/model/delete", json={"id": model_id})
+
+    assert len(summary_requests(upstream)) == 1, "the model's own threshold did not compact"
+    assert context_usage["threshold"] == 500, (
+        f"the chat reports {context_usage['threshold']} tokens as its limit, "
+        "while it compacts at the model's 500"
+    )
 
 
 @pytest.mark.parametrize(
