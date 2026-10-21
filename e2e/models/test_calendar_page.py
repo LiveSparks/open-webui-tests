@@ -19,6 +19,9 @@
   next day, and since PR #31303 (6fdbe3ab6) the end keeps that one day offset from whatever day
   is typed, though the editor shows no end date. The other editor tests open it at noon, so they
   do not depend on when they run.
+* With Calendar switched off by the admin, or the calendar permission taken away, opening the
+  page sends a user home as Notes and Automations do, issue open-webui/open-webui#32834. It
+  stayed on an empty month grid with a "401 Unauthorized" toast.
 
 Discriminates: in a frontend build with the editor dropping the location on create, the all-day
 start taken from the time field, the edit saving the old title, the delete never sent, a clicked
@@ -28,6 +31,8 @@ test went red and the rest stayed green; in a backend copy with the calendar too
 as UTC the model's event test went red, and with calendars listed to their owners only the
 sharing test went red at the reader. The occurrence test fails on dev 176d31d1d, before PR #30971.
 The late evening test is red on dev ebc6add67 (open-webui/open-webui#31994, fixed by 69a1c5732).
+Both send-home tests are red on dev ca8f451cc, whose page stays on /calendar
+(open-webui/open-webui#32834).
 """
 
 from __future__ import annotations
@@ -435,3 +440,35 @@ def test_another_account_sees_an_event_only_once_its_calendar_is_shared(page_for
 
     reader_page = page_for(reader, path="/calendar")
     expect(_chip(reader_page, title)).to_be_visible()
+
+
+# ---------------------------------------------------------------- calendar not available
+
+
+def test_the_admin_switch_sends_a_user_home_from_the_calendar_page(
+    page_for, make_user, admin, preserve
+):
+    preserve("admin_config")
+    with admin.client() as client:
+        current = client.get("/api/v1/auths/admin/config").json()
+        switched = client.post(
+            "/api/v1/auths/admin/config", json={**current, "ENABLE_CALENDAR": False}
+        )
+    assert switched.status_code == 200, switched.text
+
+    page = page_for(make_user(), path="/calendar")
+
+    expect(page).to_have_url(re.compile(r"/$"))
+
+
+def test_a_user_without_the_calendar_permission_is_sent_home(page_for, make_user, admin, preserve):
+    preserve("permissions")
+    with admin.client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["features"]["calendar"] = False
+        withdrawn = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert withdrawn.status_code == 200, withdrawn.text
+
+    page = page_for(make_user(), path="/calendar")
+
+    expect(page).to_have_url(re.compile(r"/$"))
