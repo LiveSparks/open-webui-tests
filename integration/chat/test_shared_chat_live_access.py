@@ -4,20 +4,22 @@ The owner shares a chat with the share dialog's two calls (create the link, then
 it and the mode) or shares a folder with the folder dialog, and the people with a grant join the
 chat in their tab. A turn from anyone reaches every joined tab live, as a shared `chat:messages`
 event with the author on the user message and then the reply through `chat:completion`. A tab
-without access, or with a "Clone only" grant, cannot join. Removing a member from the group,
-or taking a grant off the folder, sends the joined tabs a `chat:access` event, drops the tab that
-lost access from the live feed and closes the chat to that account. A folder reader can reply in
+without access, or with a "Clone only" grant, cannot join. Taking a grant off the folder sends
+the joined tabs a `chat:access` event. Removing a member from the group, or taking a grant off
+the folder, drops the tab that lost access from the live feed and closes the chat to that account,
+while the members who keep access go on getting it. A folder reader can reply in
 the owner's chats only while the folder is in "Allow replies" mode, and the folder's chat list
 then names both of them as the people who wrote in that chat. Only the owner shares a folder
 and sets its mode: a member with a write grant is refused, while their ordinary Edit Folder save
 still works.
 
-Discriminates: passes on dev b5a20423e; in a backend copy, `get_event_emitter` skipping the
+Discriminates: passes on dev a9adb2b78; in a backend copy, `get_event_emitter` skipping the
 shared room emit (`if shared_event:` made false) fails the live turn test and the group removal
 test, the `events:chat` join handler skipping the access check fails the join test, the group
-removal test and the folder grant removal test, `refresh_chat_access` skipping `leave_room`
-fails the folder grant removal test, `refresh_chat_access` never emitting `chat:access` fails
-the group removal test and the folder grant removal test, `get_accessible_chat_by_id` dropping
+removal test and the folder grant removal test, `refresh_group_sessions` doing nothing (the
+removed member's tabs stay connected) fails the group removal test, `refresh_chat_access`
+skipping `leave_room` fails the folder grant removal test, `refresh_chat_access` never emitting
+`chat:access` fails the folder grant removal test, `get_accessible_chat_by_id` dropping
 the folder `share_mode == 'continue'` condition fails the folder reply test,
 `update_folder_access_by_id` letting a write grant change sharing fails the folder sharing test,
 and the folder update route skipping its share mode check fails the same test. On dev
@@ -262,7 +264,6 @@ def test_removing_a_member_from_the_group_cuts_their_live_feed(admin, make_user,
                 f"/api/v1/groups/id/{group_id}/users/remove", json={"user_ids": [leaver.id]}
             )
         assert removed.status_code == 200, removed.text
-        assert _wait_for_access_event(stayer_tab, chat_id), "no chat:access event for the stayer"
 
         turn, _ = _reply_in(owner, upstream, chat_id, reply_id, "is the pier clear now?")
         assert _entry_for_turn(owner_tab, chat_id, turn.user_message_id) is not None
@@ -270,7 +271,9 @@ def test_removing_a_member_from_the_group_cuts_their_live_feed(admin, make_user,
             "the member who stayed lost the feed"
         )
         time.sleep(QUIET_SECONDS)
-        assert _entry_for_turn(leaver_tab, chat_id, turn.user_message_id, timeout=0) is None
+        assert _entry_for_turn(leaver_tab, chat_id, turn.user_message_id, timeout=0) is None, (
+            "the removed member's tab still got the chat's new turn"
+        )
 
         # a reconnecting tab rejoins the chat it had open
         with connected(leaver) as reconnected_tab:
