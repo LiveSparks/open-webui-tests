@@ -16,7 +16,8 @@ gRPC collector is `harness/otlp_collector.py`.
 Discriminates: passes on dev bbfa876af; in a backend copy, skipping `session.initialize()` fails the
 MCP verification, building the httpx client without `headers`, with `follow_redirects=False` or with
 `verify=False` always fails the bearer, moved and certificate tests in turn, taking an `isError`
-result for a success fails the failing tool test, dropping the `validators.url` check lets the
+result for a success fails the failing tool test, and so does raising the `isError` content list
+in place of its text (#32918, red on dev 63eed95c8), dropping the `validators.url` check lets the
 malformed link through to the fetch, calling it without `simple_host` refuses the bare hostname,
 dropping it from the search result filter keeps the malformed results, a loader that stores no page
 title fails the metadata test, asking BeautifulSoup for an unknown parser in place of "xml" fails
@@ -190,12 +191,17 @@ def test_the_model_calls_an_mcp_tool_and_gets_its_answer(harbour_tools, upstream
 
 
 def test_a_failing_mcp_tool_is_reported_to_the_model_as_an_error(harbour_tools, upstream):
+    """#32918: the error reached the model as a dump of the MCP content list, not its text."""
     person, server_id = harbour_tools
 
     answered = _tool_result(person, upstream, server_id, "capsize", {})
 
     assert CAPSIZE_ERROR in answered
-    assert "error" in json.loads(answered), f"the failure came back as a result: {answered}"
+    reported = json.loads(answered)
+    assert "error" in reported, f"the failure came back as a result: {answered}"
+    assert reported["error"].endswith(CAPSIZE_ERROR), (
+        f"the model got the content list instead of the server's error text: {reported['error']}"
+    )
 
 
 @pytest.fixture
