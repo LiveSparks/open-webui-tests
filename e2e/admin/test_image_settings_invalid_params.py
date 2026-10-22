@@ -8,10 +8,13 @@ and stays usable, so the parameters can be corrected and saved.
 open-webui issue #32835: on a fresh install the engine is OpenAI with no key, and Save refused
 every change with "OpenAI API Key is required." even with image generation off, so image editing
 could not be set up on another engine. The key is now asked for only while generation is on.
+The Gemini key of image editing had the same flaw: with Gemini as the edit engine and no key, the
+browser refused every save even with Image Edit off. It is now required only while Image Edit is on.
 
 Discriminates: passes on the dev a5bc78300 build; with the check for the two parameter fields
-missing from the save handler the message never shows and Save stays disabled. The #32835 test
-passes with the fix and fails on dev 63eed95c8 (the key error shows and image editing stays off).
+missing from the save handler the message never shows and Save stays disabled. The #32835
+tests pass with the fix and fail on dev 63eed95c8 (the generation key error shows and image
+editing stays off; the empty Gemini edit key blocks the save and the new base URL is not stored).
 """
 
 from __future__ import annotations
@@ -140,3 +143,47 @@ def test_image_edit_saves_without_a_generation_key_while_generation_is_off(
     assert stored["ENABLE_IMAGE_GENERATION"] is False, (
         "image generation was saved on without an API key"
     )
+
+
+def test_image_settings_save_without_an_edit_key_while_image_edit_is_off(
+    page_for, make_user, admin, preserve
+):
+    preserve(IMAGES_CONFIG)
+    with admin.client() as client:
+        save_image_settings(
+            client,
+            ENABLE_IMAGE_GENERATION=False,
+            IMAGE_GENERATION_ENGINE="openai",
+            IMAGES_OPENAI_API_KEY="sk-image-test",
+            ENABLE_IMAGE_EDIT=False,
+            IMAGE_EDIT_ENGINE="gemini",
+            IMAGES_EDIT_GEMINI_API_KEY="",
+            IMAGES_EDIT_GEMINI_API_BASE_URL="http://127.0.0.1:9/v1beta",
+        )
+    page = page_for(make_user(role="admin"))
+    settings = open_images_tab(page)
+    save = settings.get_by_role("button", name="Save", exact=True)
+
+    # the Gemini edit fields come last on the tab
+    edit_base_url = settings.get_by_placeholder("API Base URL").last
+    edit_base_url.fill("http://127.0.0.1:9/v1beta/edited")
+    save.click()
+    expect(
+        page.get_by_text("Settings saved successfully!").first,
+        "#32835: saving with Image Edit off still asked for the Gemini edit key",
+    ).to_be_visible()
+    stored = saved_settings(admin)
+    assert stored["IMAGES_EDIT_GEMINI_API_BASE_URL"] == "http://127.0.0.1:9/v1beta/edited", (
+        f"the edit base URL was not saved: {stored['IMAGES_EDIT_GEMINI_API_BASE_URL']}"
+    )
+
+    image_edit = settings.get_by_role("switch", name="Image Edit")
+    image_edit.click()
+    expect(image_edit).to_be_checked()
+    save.click()
+    edit_key = settings.get_by_placeholder("API Key").last
+    assert edit_key.evaluate("field => field.validity.valueMissing"), (
+        "Image Edit on with Gemini and no key was not refused"
+    )
+    stored = saved_settings(admin)
+    assert stored["ENABLE_IMAGE_EDIT"] is False, "image editing was saved on without a Gemini key"
