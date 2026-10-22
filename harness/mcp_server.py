@@ -11,7 +11,10 @@ answers `PONDERED` after the number of seconds it is asked to wait; with `struct
 content), `headline`, answering `HEADLINE` as plain text alone, `berths`, answering the list
 `BERTHS` from a typed return (one text block per item and the list as structured content), and
 `harbours`, answering the list `HARBOURS` the way the standalone `fastmcp` package does (the whole
-list as one JSON text block and as structured content under `result`). `tls=True` serves it over
+list as one JSON text block and as structured content under `result`); with `composed=True`,
+`find_page`, whose input schema has no top-level properties and offers its arguments in `anyOf`
+branches (a page `id`, or a `path` with its `locale`), answering with the arguments it received
+as JSON. `tls=True` serves it over
 HTTPS with a self-signed certificate. With `bearer_key` every request without that key gets a
 plain 401, the way a server keyed by an API key answers (no OAuth metadata).
 `mcp_connection(...)` is the admin's connection to it without auth; save it through
@@ -59,6 +62,23 @@ CONDITIONS = {"city": "Graz", "temperature_c": 15.5, "humidity": 71, "raining": 
 HEADLINE = "Fog lifting over the Mur by noon."
 BERTHS = ["Berth A by the crane", "Berth B past the ferry"]
 HARBOURS = [{"name": "Rovinj marina", "berths": 120}, {"name": "Piran marina", "berths": 80}]
+FIND_PAGE_SCHEMA = {
+    "type": "object",
+    "anyOf": [
+        {
+            "type": "object",
+            "properties": {"id": {"type": "integer", "exclusiveMinimum": 0}},
+            "required": ["id"],
+            "additionalProperties": False,
+        },
+        {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "locale": {"type": "string"}},
+            "required": ["path", "locale"],
+            "additionalProperties": False,
+        },
+    ],
+}
 SNAPSHOT_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
@@ -103,6 +123,7 @@ def _echo_server(
     failing: bool = False,
     slow: bool = False,
     structured: bool = False,
+    composed: bool = False,
     **auth: Any,
 ) -> FastMCP:
     server = FastMCP("harness-mcp", log_level="WARNING", **auth)
@@ -162,6 +183,17 @@ def _echo_server(
                 structuredContent={"result": HARBOURS},
             )
 
+    if composed:
+
+        @server.tool(description="Find a wiki page by its id, or by its path and locale.")
+        def find_page(
+            id: int | None = None, path: str | None = None, locale: str | None = None
+        ) -> str:
+            given = {"id": id, "path": path, "locale": locale}
+            return json.dumps({key: value for key, value in given.items() if value is not None})
+
+        server._tool_manager.get_tool("find_page").parameters = FIND_PAGE_SCHEMA
+
     return server
 
 
@@ -172,6 +204,7 @@ def serving_mcp(
     failing: bool = False,
     slow: bool = False,
     structured: bool = False,
+    composed: bool = False,
     tls: bool = False,
     host: str = "127.0.0.1",
     name: str | None = None,
@@ -180,7 +213,7 @@ def serving_mcp(
 ) -> Iterator[str]:
     """Serve the echo server on `port` (a free one by default); `auth` goes to FastMCP."""
     port = port or free_port()
-    app = _echo_server(media, failing, slow, structured, **auth).streamable_http_app()
+    app = _echo_server(media, failing, slow, structured, composed, **auth).streamable_http_app()
     if bearer_key:
         app = _requiring_bearer(app, bearer_key)
     with tempfile.TemporaryDirectory(prefix="owui-mcp-") as certificates:
