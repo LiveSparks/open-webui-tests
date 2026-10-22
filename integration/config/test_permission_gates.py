@@ -16,6 +16,11 @@ open-webui 0.11.1 and 0.11.2 fixes, each pinned where a user or the provider see
   with image generation switched off and ran the web search step with web search switched off.
   The search route now refuses on its own, so that step shows in the reply as a search that
   failed on a permission error; the test reads the reply's steps as well as the search engine.
+* `e92638dc7` (PR #32991): the per-kind sharing switches (models, knowledge,
+  prompts, tools, skills, notes, folders) only hid the Access button, so a user with sharing off
+  could still create an item shared with a group or share an existing one over the API. The
+  server now drops such grants the way it drops public grants without public sharing. These
+  narrow tests stay red until that fix merges.
 
 The router-level half of `ad8c79f686` (#27766, a partial settings save serialized every default)
 is no longer visible on its own: the settings store now patches `ui` field by field, so a
@@ -29,13 +34,18 @@ Discriminates: passes on bbfa876af; reverting `80d2f4154` or `8fc5ffe26` fails t
 `934802e18` the barred memory test and `646a568ae` with `e17dfae72` the switched-off image and web
 search tests; the partial-save test fails with `ad8c79f686` and the store's field-level `ui`
 patching (98a920168) both reverted. The positive tests, image editing with generation off among
-them, and the all-off round trip pass on both.
+them, and the all-off round trip pass on both. The 13 "without sharing" tests fail on dev
+2ea6bf436 (the group grant is stored) and pass with `e92638dc7`; the group-allowed, admin and
+private tests pass on both.
 """
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
+from harness.access import grant, make_group
 from harness.channel_chat import serve_openai_images
 from harness.channel_quotes import enable_channels, group_channel, post_message
 from harness.chat import ask, send_message
@@ -114,6 +124,186 @@ def test_every_sharing_flag_saved_off_stays_off(admin, permissions):
     stored = _save_permissions(admin, {**permissions, "sharing": sharing})
 
     assert stored["sharing"] == sharing
+
+
+# sharing permissions: the server holds each kind's sharing switch, not only the Access button
+
+SHARED_KINDS = ["models", "knowledge", "prompts", "tools", "skills", "notes", "folders"]
+TOOL_SOURCE = 'class Tools:\n    def ping(self) -> str:\n        return "pong"\n'
+
+
+def _create_body(kind: str, tag: str) -> tuple[str, dict]:
+    bodies = {
+        "models": (
+            "/api/v1/models/create",
+            {
+                "id": f"shared-{tag}",
+                "base_model_id": MOCK_MODEL_ID,
+                "name": tag,
+                "meta": {},
+                "params": {},
+            },
+        ),
+        "knowledge": ("/api/v1/knowledge/create", {"name": tag, "description": tag}),
+        "prompts": (
+            "/api/v1/prompts/create",
+            {"command": f"shared{tag}", "name": tag, "content": "hi"},
+        ),
+        "tools": (
+            "/api/v1/tools/create",
+            {
+                "id": f"shared_{tag}",
+                "name": tag,
+                "content": TOOL_SOURCE,
+                "meta": {"description": tag},
+            },
+        ),
+        "skills": (
+            "/api/v1/skills/create",
+            {"id": f"shared-{tag}", "name": tag, "description": tag, "content": "hi", "meta": {}},
+        ),
+        "notes": ("/api/v1/notes/create", {"title": tag, "data": {"content": {"md": "hi"}}}),
+        "folders": ("/api/v1/folders/", {"name": tag}),
+    }
+    return bodies[kind]
+
+
+def _create_item(actor, kind: str, grants: list[dict] | None = None) -> str:
+    path, body = _create_body(kind, uuid.uuid4().hex[:8])
+    if grants is not None:
+        body["access_grants"] = grants
+    with actor.client() as client:
+        created = client.post(path, json=body)
+    assert created.status_code == 200, created.text
+    return created.json()["id"]
+
+
+def _share_item(actor, kind: str, item_id: str, grants: list[dict]) -> None:
+    """Save the grants the way the item's Access dialog does."""
+    paths = {
+        "models": "/api/v1/models/model/access/update",
+        "knowledge": f"/api/v1/knowledge/{item_id}/access/update",
+        "prompts": f"/api/v1/prompts/id/{item_id}/access/update",
+        "tools": f"/api/v1/tools/id/{item_id}/access/update",
+        "skills": f"/api/v1/skills/id/{item_id}/access/update",
+        "notes": f"/api/v1/notes/{item_id}/access/update",
+        "folders": f"/api/v1/folders/{item_id}/access/update",
+    }
+    body = {"access_grants": grants}
+    if kind == "models":
+        body |= {"id": item_id, "name": item_id}
+    with actor.client() as client:
+        saved = client.post(paths[kind], json=body)
+    assert saved.status_code == 200, saved.text
+
+
+def _stored_grants(admin, kind: str, item_id: str) -> list[tuple]:
+    paths = {
+        "models": f"/api/v1/models/model?id={item_id}",
+        "knowledge": f"/api/v1/knowledge/{item_id}",
+        "prompts": f"/api/v1/prompts/id/{item_id}",
+        "tools": f"/api/v1/tools/id/{item_id}",
+        "skills": f"/api/v1/skills/id/{item_id}",
+        "notes": f"/api/v1/notes/{item_id}",
+        "folders": f"/api/v1/folders/{item_id}",
+    }
+    with admin.client() as client:
+        stored = client.get(paths[kind])
+    assert stored.status_code == 200, stored.text
+    return [
+        (entry["principal_type"], entry["principal_id"], entry["permission"])
+        for entry in stored.json()["access_grants"]
+    ]
+
+
+@pytest.fixture
+def sharing_switched_off(admin, permissions) -> dict:
+    """Every kind's sharing off for users, while user and group grants stay allowed."""
+    sharing = {**permissions["sharing"], **{kind: False for kind in SHARED_KINDS}}
+    workspace = {**permissions["workspace"], **{kind: True for kind in SHARED_KINDS[:5]}}
+    features = {**permissions["features"], "folders": True, "notes": True}
+    allowed = {**permissions["access_grants"], "allow_users": True, "allow_groups": True}
+    return _save_permissions(
+        admin,
+        {
+            **permissions,
+            "sharing": sharing,
+            "workspace": workspace,
+            "features": features,
+            "access_grants": allowed,
+        },
+    )
+
+
+def _shared_with(admin, make_user) -> tuple[list[dict], tuple]:
+    group_id = make_group(admin, [make_user()])
+    return [grant("group", group_id, "read")], ("group", group_id, "read")
+
+
+@pytest.mark.parametrize("kind", [kind for kind in SHARED_KINDS if kind != "folders"])
+def test_a_user_without_sharing_cannot_create_a_shared_item(
+    admin, make_user, sharing_switched_off, kind
+):
+    grants, group_grant = _shared_with(admin, make_user)
+
+    item_id = _create_item(make_user(), kind, grants)
+
+    stored = _stored_grants(admin, kind, item_id)
+    assert group_grant not in stored, (
+        f"a user with {kind} sharing switched off created an item shared with a group, because "
+        f"only the interface checked the switch: {stored}"
+    )
+
+
+@pytest.mark.parametrize("kind", SHARED_KINDS)
+def test_a_user_without_sharing_cannot_share_their_item(
+    admin, make_user, sharing_switched_off, kind
+):
+    owner = make_user()
+    grants, group_grant = _shared_with(admin, make_user)
+    item_id = _create_item(owner, kind)
+
+    _share_item(owner, kind, item_id, grants)
+
+    stored = _stored_grants(admin, kind, item_id)
+    assert group_grant not in stored, (
+        f"a user with {kind} sharing switched off shared their item with a group, because only "
+        f"the interface checked the switch: {stored}"
+    )
+
+
+@pytest.mark.parametrize("kind", SHARED_KINDS)
+def test_a_user_whose_group_allows_sharing_can_share(admin, make_user, sharing_switched_off, kind):
+    owner = make_user()
+    make_group(admin, [owner], {"sharing": {kind: True}})
+    grants, group_grant = _shared_with(admin, make_user)
+    item_id = _create_item(owner, kind)
+
+    _share_item(owner, kind, item_id, grants)
+
+    assert group_grant in _stored_grants(admin, kind, item_id)
+
+
+@pytest.mark.parametrize("kind", SHARED_KINDS)
+def test_an_admin_shares_with_user_sharing_switched_off(
+    admin, make_user, sharing_switched_off, kind
+):
+    grants, group_grant = _shared_with(admin, make_user)
+    item_id = _create_item(admin, kind)
+
+    _share_item(admin, kind, item_id, grants)
+
+    assert group_grant in _stored_grants(admin, kind, item_id)
+
+
+@pytest.mark.parametrize("kind", SHARED_KINDS)
+def test_a_user_without_sharing_keeps_private_items(admin, make_user, sharing_switched_off, kind):
+    owner = make_user()
+    item_id = _create_item(owner, kind, [] if kind != "folders" else None)
+
+    _share_item(owner, kind, item_id, [])
+
+    assert _stored_grants(admin, kind, item_id) == []
 
 
 # a partial settings save keeps what the user did not touch

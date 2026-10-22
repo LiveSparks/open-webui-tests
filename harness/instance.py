@@ -57,6 +57,16 @@ LAUNCHER = BOOT_IMPORT + BOOT_SERVE
 
 
 # set, not just unset: open_webui.env fills unset names from the checkout's .env
+SHAREABLE_KINDS = (
+    "WORKSPACE_MODELS",
+    "WORKSPACE_KNOWLEDGE",
+    "WORKSPACE_PROMPTS",
+    "WORKSPACE_TOOLS",
+    "WORKSPACE_SKILLS",
+    "NOTES",
+    "FOLDERS",
+)
+
 ISOLATED_ENV = {
     "DATABASE_TYPE": "",
     "OPENAI_API_BASE_URLS": "",
@@ -229,6 +239,8 @@ def launch(upstream: MockUpstream, extra_env: dict[str, str]) -> Iterator[Launch
             "OPENAI_API_KEY": "sk-mock",
             "OPENAI_API_BASE_URLS": upstream.base_url,
             "OPENAI_API_KEYS": "sk-mock",
+            # tests share items as regular owners, which takes each kind's sharing switch
+            **{f"USER_PERMISSIONS_{kind}_ALLOW_SHARING": "true" for kind in SHAREABLE_KINDS},
             **service_env,
             **extra_env,
         }
