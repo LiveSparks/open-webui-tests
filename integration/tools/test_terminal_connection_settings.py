@@ -13,7 +13,8 @@ test here, since an automation run on dev 1c010b438 never reaches the model
 (open-webui/open-webui#32066).
 
 The user's tab is a socket client that answers the server's shell check the way the web client
-does. A personal terminal (one the browser calls) carries the setting in the request itself.
+does. A personal terminal (one the browser calls) carries the setting in the request itself, and
+reaches the model only while the admin's Direct Integrations switch is on.
 
 Discriminates: passes on dev 1c010b438; with a20b622ba's backend hunks reverted in a backend copy
 the working-directory-off test and both `always` tests fail (the description names the folder; the
@@ -206,7 +207,10 @@ def test_user_shell_tools_auto_follows_the_open_shell(admin, terminal, member, u
 
 
 @pytest.mark.parametrize("setting", ["always", "auto"])
-def test_a_personal_terminal_carries_its_user_shell_tools_setting(make_user, upstream, setting):
+def test_a_personal_terminal_carries_its_user_shell_tools_setting(
+    make_user, upstream, direct_integrations, setting
+):
+    direct_integrations(True)
     # personal terminals need the direct tool servers permission, which admins have
     owner = make_user(role="admin")
     address = f"http://127.0.0.1:9/{uuid.uuid4().hex[:6]}"

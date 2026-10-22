@@ -3,7 +3,8 @@
 The request names the chat to continue, the models to answer and the user's own tool servers, so
 the server decides what each part may do. Continuing another user's chat is refused and leaves
 that chat as it was, one message sent to two models stores a reply from each, and tool servers
-in the request reach the model only for an account with `features.direct_tool_servers`.
+in the request reach the model only for an account with `features.direct_tool_servers`, and only
+while the admin's Direct Integrations switch is on.
 
 Discriminates: in a backend copy, dropping the ownership check on an existing chat in
 `chat_completion` fails the foreign-chat test (the stranger's message is stored in the chat),
@@ -14,6 +15,11 @@ The regenerate test pins a fixed bug (PR open-webui/open-webui#32326, fix 99a9f6
 after adding a model resends the stored question with both models on it, and the server kept the
 old model list, so a reload laid the replies out as versions of one. It passes on dev 5032e834e
 and fails on a backend copy with 99a9f60b9 reverted (the question keeps one model).
+
+The Direct Integrations test pins a bug fixed by PR open-webui/open-webui#32996: turning the
+switch off only hid the Integrations tab, and the tool servers and terminals users had already
+saved kept reaching the model, for admins and permitted users alike. It fails on dev 2ea6bf436
+(both are offered with the switch off) and passes with the fix.
 """
 
 from __future__ import annotations
@@ -37,6 +43,17 @@ TOOL_SERVER = {
             "name": "lookup_weather",
             "description": "The weather in a city.",
             "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
+        }
+    ],
+}
+PERSONAL_TERMINAL = {
+    "url": "http://127.0.0.1:9/terminal",
+    "is_terminal": True,
+    "specs": [
+        {
+            "name": "run_personal_command",
+            "description": "Run a command on my own terminal.",
+            "parameters": {"type": "object", "properties": {"command": {"type": "string"}}},
         }
     ],
 }
@@ -198,8 +215,9 @@ def test_tool_servers_in_the_request_are_dropped_without_the_permission(make_use
 
 
 def test_tool_servers_in_the_request_reach_the_model_with_the_permission(
-    admin, make_user, upstream, tool_server_group
+    admin, make_user, upstream, tool_server_group, direct_integrations
 ):
+    direct_integrations(True)
     account = make_user()
     with admin.client() as client:
         added = client.post(
@@ -208,6 +226,36 @@ def test_tool_servers_in_the_request_reach_the_model_with_the_permission(
     assert added.status_code == 200, added.text
 
     with account.client() as client:
-        ask(client, "what is the weather in Oslo?", tool_servers=[TOOL_SERVER])
+        ask(
+            client,
+            "what is the weather in Oslo?",
+            tool_servers=[TOOL_SERVER, PERSONAL_TERMINAL],
+        )
 
-    assert "lookup_weather" in _offered_tools(upstream)
+    assert {"lookup_weather", "run_personal_command"} <= _offered_tools(upstream)
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("role", ["user", "admin"])
+def test_tool_servers_in_the_request_are_dropped_while_direct_integrations_is_off(
+    admin, make_user, upstream, tool_server_group, direct_integrations, role
+):
+    direct_integrations(False)
+    account = make_user(role=role)
+    with admin.client() as client:
+        added = client.post(
+            f"/api/v1/groups/id/{tool_server_group}/users/add", json={"user_ids": [account.id]}
+        )
+    assert added.status_code == 200, added.text
+
+    with account.client() as client:
+        ask(
+            client,
+            "what is the weather in Oslo?",
+            tool_servers=[TOOL_SERVER, PERSONAL_TERMINAL],
+        )
+
+    offered = _offered_tools(upstream)
+    assert not {"lookup_weather", "run_personal_command"} & offered, (
+        f"the {role}'s tool server or terminal was offered with Direct Integrations off: {offered}"
+    )

@@ -9,7 +9,8 @@ chat after the user approved a tool call. Each now sees the same personal tools 
 model.
 
 The personal server's address is never called: its tools run in the browser, and only the specs
-the model is offered are checked here.
+the model is offered are checked here. Personal tool servers reach the model only while the admin's
+Direct Integrations switch is on, so every test turns it on.
 
 `test_a_subagent_is_offered_the_personal_tools` is red on dev 62f70a844: since de73bb830 a chat
 request whose reply message is already stored in the chat, the way automations, sub-agents and
@@ -82,14 +83,18 @@ def _is_subagent(request: dict) -> bool:
     return bool(users) and SUBAGENT_TASK in str(users[-1]["content"])
 
 
-def test_the_main_model_is_offered_the_personal_tools(make_user, upstream):
+def test_the_main_model_is_offered_the_personal_tools(make_user, upstream, direct_integrations):
+    direct_integrations(True)
     with make_user(role="admin").client() as client:
         ask(client, "what can you do?", tool_servers=[PERSONAL_SERVER])
 
     assert PERSONAL_TOOL in _offered(upstream.chat_requests()[-1])
 
 
-def test_a_subagent_is_offered_the_personal_tools(subagents_enabled, make_user, upstream):
+def test_a_subagent_is_offered_the_personal_tools(
+    subagents_enabled, make_user, upstream, direct_integrations
+):
+    direct_integrations(True)
     upstream.queue(
         reply.tool_call("delegate_task", {"task": SUBAGENT_TASK}),
         reply.text("It stays dry.", match=_is_subagent),
@@ -109,8 +114,9 @@ def test_a_subagent_is_offered_the_personal_tools(subagents_enabled, make_user, 
 
 
 def test_a_chat_resumed_after_an_approval_keeps_the_personal_tools(
-    tool_approval_on, make_user, upstream
+    tool_approval_on, make_user, upstream, direct_integrations
 ):
+    direct_integrations(True)
     upstream.queue(reply.tool_call("get_current_timestamp", {}), reply.text("It is late."))
     with make_user(role="admin").client() as client:
         turn = send_message(

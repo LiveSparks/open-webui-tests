@@ -38,6 +38,7 @@ SETTINGS = {
     "permissions": ("/api/v1/users/default/permissions", "/api/v1/users/default/permissions"),
     "admin_config": ("/api/v1/auths/admin/config", "/api/v1/auths/admin/config"),
     "tasks": ("/api/v1/tasks/config", "/api/v1/tasks/config/update"),
+    "connections": ("/api/v1/configs/connections", "/api/v1/configs/connections"),
 }
 
 
@@ -121,6 +122,22 @@ def make_user(instance: LaunchedInstance) -> Callable[..., Actor]:
         return create_user(instance, role=role, **options)
 
     return factory
+
+
+@pytest.fixture
+def direct_integrations(admin: Actor, preserve) -> Callable[[bool], None]:
+    """Sets the admin's Direct Integrations switch; the tool servers and terminals a user adds
+    in their own settings reach the model only while it is on."""
+    preserve("connections")
+    read_path, write_path = SETTINGS["connections"]
+
+    def switch(enabled: bool) -> None:
+        with admin.client() as client:
+            current = client.get(read_path).json()
+            saved = client.post(write_path, json={**current, "ENABLE_DIRECT_INTEGRATIONS": enabled})
+        assert saved.status_code == 200, saved.text
+
+    return switch
 
 
 @pytest.fixture
