@@ -5,8 +5,13 @@ no JSON object in the Additional Parameters of the OpenAI engine or of AUTOMATIC
 Save button spinning and showed nothing. Save now reports "Invalid JSON format for Parameters"
 and stays usable, so the parameters can be corrected and saved.
 
+open-webui issue #32835: on a fresh install the engine is OpenAI with no key, and Save refused
+every change with "OpenAI API Key is required." even with image generation off, so image editing
+could not be set up on another engine. The key is now asked for only while generation is on.
+
 Discriminates: passes on the dev a5bc78300 build; with the check for the two parameter fields
-missing from the save handler the message never shows and Save stays disabled.
+missing from the save handler the message never shows and Save stays disabled. The #32835 test
+passes with the fix and fails on dev 63eed95c8 (the key error shows and image editing stays off).
 """
 
 from __future__ import annotations
@@ -16,7 +21,12 @@ import json
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from harness.image_engines import IMAGES_CONFIG, save_image_settings, serve_automatic1111
+from harness.image_engines import (
+    GEMINI_API_KEY,
+    IMAGES_CONFIG,
+    save_image_settings,
+    serve_automatic1111,
+)
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -87,3 +97,46 @@ def test_invalid_automatic1111_parameters_are_reported_and_save_works_once_fixed
     save_refused_then_fixed(page, settings, AUTOMATIC1111_PARAMS)
 
     assert saved_settings(admin)["AUTOMATIC1111_PARAMS"] == AUTOMATIC1111_PARAMS
+
+
+def test_image_edit_saves_without_a_generation_key_while_generation_is_off(
+    page_for, make_user, admin, preserve
+):
+    preserve(IMAGES_CONFIG)
+    with admin.client() as client:
+        save_image_settings(
+            client,
+            ENABLE_IMAGE_GENERATION=False,
+            IMAGE_GENERATION_ENGINE="openai",
+            IMAGE_GENERATION_MODEL="gpt-image-1",
+            IMAGES_OPENAI_API_KEY="",
+            ENABLE_IMAGE_EDIT=False,
+            IMAGE_EDIT_ENGINE="gemini",
+            IMAGES_EDIT_GEMINI_API_KEY=GEMINI_API_KEY,
+        )
+    page = page_for(make_user(role="admin"))
+    settings = open_images_tab(page)
+    save = settings.get_by_role("button", name="Save", exact=True)
+
+    image_edit = settings.get_by_role("switch", name="Image Edit")
+    image_edit.click()
+    expect(image_edit).to_be_checked()
+    save.click()
+    expect(
+        page.get_by_text("Settings saved successfully!").first,
+        "#32835: saving with image generation off still asked for its API key",
+    ).to_be_visible()
+    stored = saved_settings(admin)
+    assert stored["ENABLE_IMAGE_EDIT"] is True, (
+        f"image editing was not saved: {stored['ENABLE_IMAGE_EDIT']}"
+    )
+
+    image_generation = settings.get_by_role("switch", name="Image Generation")
+    image_generation.click()
+    expect(image_generation).to_be_checked()
+    save.click()
+    expect(page.get_by_text("OpenAI API Key is required.")).to_be_visible()
+    stored = saved_settings(admin)
+    assert stored["ENABLE_IMAGE_GENERATION"] is False, (
+        "image generation was saved on without an API key"
+    )
