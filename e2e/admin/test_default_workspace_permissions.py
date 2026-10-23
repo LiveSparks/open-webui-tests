@@ -12,7 +12,7 @@ and each shows where a person meets it:
   Import JSON (Import for skills) or Export JSON, each by its own switch and none when both are
   off.
 - Sharing of Models, Prompts, Knowledge, Tools, Skills and Notes: the item's Access dialog offers
-  Add Access; off, the dialog has no Add Access button, however Public Sharing is set.
+  Add Access; off, the item's page has no Access button, however Public Sharing is set.
 - Public Sharing of the same six: the Access dialog's visibility list offers Public next to
   Private; off, it lists Private only.
 - Allow Sharing With Users / Groups: the Add Access picker lists the users or the groups.
@@ -26,7 +26,10 @@ Public, an empty picker) turns red every "switched on" test, the "offers its cre
 and the default picker test. Retargeted for 9bbb95048, which renamed the skills entry to Import;
 the import and export tests pass on dev 178de3666. The Public Sharing tests were retargeted for
 784b72f19, whose access dialog picks the visibility from a menu; they pass on dev 206bf9723, and
-a build that always offers Public turns the "but not public" and "withdraws" tests red.
+a build that always offers Public turns the "but not public" and "withdraws" tests red. The
+"withdraws" test was retargeted for ac12b04aa (#32979), which hides the Access button from users
+without the sharing permission; it passes on dev 72d86c6b1 and fails on ac12b04aa^ (the button
+is there and opens a dialog that can change nothing).
 """
 
 from __future__ import annotations
@@ -248,9 +251,18 @@ SHARED_KINDS = {
 }
 
 
+def open_item_page(page: Page, owner: Actor, kind: str) -> None:
+    """Open a fresh item `owner` owns and wait for the header that holds its Access button."""
+    page.goto(SHARED_KINDS[kind][0](owner))
+    if kind == "notes":
+        expect(page.get_by_role("main").get_by_text("Berth 4.")).to_be_visible()
+    else:
+        expect(page.get_by_role("button", name="Back", exact=True)).to_be_visible()
+
+
 def open_access_dialog(page: Page, owner: Actor, kind: str) -> Locator:
     """The Access dialog of a fresh item `owner` owns, opened from the item's own page."""
-    page.goto(SHARED_KINDS[kind][0](owner))
+    open_item_page(page, owner, kind)
     page.get_by_role("button", name="Access", exact=True).click()
     return page.get_by_role("dialog").filter(has_text="Access Control")
 
@@ -307,16 +319,16 @@ def test_public_sharing_switched_back_off_withdraws_public_only(
 
 
 @pytest.mark.parametrize("kind", SHARED_KINDS)
-def test_sharing_switched_back_off_withdraws_add_access_and_public(
+def test_sharing_switched_back_off_withdraws_the_access_button(
     kind, owner_after, switch_defaults, page_for
 ):
     owner = owner_after(sharing_switches(kind, 0, 1))
     switch_defaults({SHARED_KINDS[kind][2]: False})
+    page = page_for(owner)
 
-    dialog = open_access_dialog(page_for(owner), owner, kind)
+    open_item_page(page, owner, kind)
 
-    expect(visibility_choices(dialog)).to_have_text(["Private"])
-    expect(dialog.get_by_role("button", name="Add Access")).to_have_count(0)
+    expect(page.get_by_role("button", name="Access", exact=True)).to_have_count(0)
 
 
 GRANT_SWITCHES = {"users": "Allow Sharing With Users", "groups": "Allow Sharing With Groups"}

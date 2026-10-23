@@ -10,8 +10,9 @@
   the file failed to load when they click it, and sent back to the list on a reload.
 - Sharing switches: an admin switches a group's Knowledge Sharing on in the group editor, which
   brings up Knowledge Public Sharing below it; its member is then offered Add Access and Public on
-  their own base while a user outside the group is not. An owner without public sharing whose
-  base an admin made public can take it private but is not offered Public again.
+  their own base while a user outside the group gets no Access button at all. An owner without
+  public sharing whose base an admin made public can take it private but is not offered Public
+  again.
 - Base model: a model shared with everyone on a base model only admins may use is listed for a
   user, and a message to it is refused with an error and never reaches the base model; one on a
   base the user may read answers.
@@ -25,7 +26,9 @@ sent the text); one whose file access check always allows fails the open page te
 group switch and public-to-private tests were retargeted for 784b72f19, whose access dialog picks
 the visibility from a menu: they pass on dev 3dd1db147, a build whose visibility menu saves no
 change fails the public tests, and one that always offers Public fails the group switch and
-public-to-private tests.
+public-to-private tests. The group switch test was retargeted for ac12b04aa (#32979), which hides
+the Access button from users without the sharing permission; it passes on dev 72d86c6b1 and fails
+on ac12b04aa^ (the outsider's base shows the button).
 """
 
 from __future__ import annotations
@@ -305,8 +308,13 @@ def _open_group_permissions(page: Page, group_name: str) -> Locator:
     return editing
 
 
-def _base_access(page: Page, base: dict) -> Locator:
+def _open_base(page: Page, base: dict) -> None:
     page.goto(f"/workspace/knowledge/{base['id']}")
+    expect(page.get_by_role("main").get_by_label("Knowledge Name")).to_have_value(base["name"])
+
+
+def _base_access(page: Page, base: dict) -> Locator:
+    _open_base(page, base)
     return _access_dialog(page)
 
 
@@ -339,9 +347,10 @@ def test_a_groups_knowledge_sharing_switch_offers_its_members_add_access_and_pub
     expect(member_dialog.get_by_role("button", name="Add Access")).to_be_visible()
     expect(visibility_choices(member_dialog)).to_have_text(["Private", "Public"])
 
-    outsider_dialog = _base_access(page_for(outsider), _knowledge(outsider))
-    expect(outsider_dialog.get_by_role("button", name="Add Access")).to_have_count(0)
-    expect(visibility_choices(outsider_dialog)).to_have_text(["Private"])
+    outsider_page = page_for(outsider)
+    _open_base(outsider_page, _knowledge(outsider))
+    access = outsider_page.get_by_role("main").get_by_role("button", name="Access", exact=True)
+    expect(access).to_have_count(0)
 
 
 def test_an_owner_without_public_sharing_can_make_a_public_base_private_but_not_public_again(

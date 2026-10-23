@@ -4,10 +4,10 @@ In Admin Panel > Users > Groups an admin opens a group, switches permissions in 
 and saves. Each section reaches the group's members and nobody else: Prompts Access with Import
 Prompts gives a member the Prompts workspace with Import JSON while an outsider is sent home;
 Notes Sharing with Notes Public Sharing offers a member Add Access and Public on their own note
-while an outsider's note stays Private; Allow Chat Controls gives a member the Controls button
-the defaults withdraw; Notes under Features reaches a member of a granting group even when their
-other group leaves it off. A group cannot take away what the defaults give: switching Allow File
-Upload off notes that the default stays enabled, and the member still attaches a file.
+while an outsider's note has no Access button; Allow Chat Controls gives a member the Controls
+button the defaults withdraw; Notes under Features reaches a member of a granting group even when
+their other group leaves it off. A group cannot take away what the defaults give: switching Allow
+File Upload off notes that the default stays enabled, and the member still attaches a file.
 
 Changes reach a member's open tab without a reload, as the groups docs promise: Knowledge Access
 switched on puts Workspace in their user menu and switched off takes it away again (and a reload
@@ -25,7 +25,9 @@ Workspace tests and the reset test red; no access refresh sent to the members tu
 reset and default model tests red. In a frontend copy whose access refresh leaves the account and
 config as they were, the open-tab, reset and default model tests go red, and without the "will
 remain enabled" note the file upload test does; Reset to Defaults keeping the switches as they
-were turns the reset test red.
+were turns the reset test red. The notes sharing test was retargeted for ac12b04aa (#32979),
+which hides the Access button from users without the sharing permission; it passes on dev
+72d86c6b1 and fails on ac12b04aa^ (the outsider's note shows the button).
 """
 
 from __future__ import annotations
@@ -173,12 +175,17 @@ def test_prompts_access_with_import_reaches_the_members_and_not_an_outsider(
     outsider_page.wait_for_url(lambda url: "/workspace" not in url)
 
 
-def _note_access_dialog(page: Page, owner: Actor) -> Locator:
+def _open_own_note(page: Page, owner: Actor) -> None:
     form = {"title": f"Berths {uuid.uuid4().hex[:6]}", "data": {"content": {"md": "Berth 4."}}}
     with owner.client() as client:
         created = client.post("/api/v1/notes/create", json=form)
     assert created.status_code == 200, created.text
     page.goto(f"/notes/{created.json()['id']}")
+    expect(page.get_by_role("main").get_by_text("Berth 4.")).to_be_visible()
+
+
+def _note_access_dialog(page: Page, owner: Actor) -> Locator:
+    _open_own_note(page, owner)
     page.get_by_role("button", name="Access", exact=True).click()
     return page.get_by_role("dialog").filter(has_text="Access Control")
 
@@ -200,9 +207,9 @@ def test_notes_sharing_with_public_reaches_the_members_and_not_an_outsider(
     member_dialog = _note_access_dialog(page_for(member), member)
     expect(member_dialog.get_by_role("button", name="Add Access")).to_be_visible()
     expect(_visibility_choices(member_dialog)).to_have_text(["Private", "Public"])
-    outsider_dialog = _note_access_dialog(page_for(outsider), outsider)
-    expect(_visibility_choices(outsider_dialog)).to_have_text(["Private"])
-    expect(outsider_dialog.get_by_role("button", name="Add Access")).to_have_count(0)
+    outsider_page = page_for(outsider)
+    _open_own_note(outsider_page, outsider)
+    expect(outsider_page.get_by_role("button", name="Access", exact=True)).to_have_count(0)
 
 
 def test_chat_controls_withdrawn_by_default_come_back_for_the_members(

@@ -11,7 +11,7 @@ note is no longer listed, and the API no longer finds it. The Access button open
 where an owner allowed to share notes adds a person or a group from the access list at Read or
 Write, changes the level or removes them, or makes the note public; each change is saved at once,
 and the other account then meets the note read-only, editable or not at all. Without the sharing
-permission the panel has no access list.
+permission the editor has no Access button and the note's menu on the Notes page no Access entry.
 
 The table-cell download test is red with Redis (`OWUI_TEST_REDIS=1`) on dev 0f5a58f5f: the server
 handles the editor's live updates concurrently, so an update that arrives early can cancel the save
@@ -22,12 +22,13 @@ Discriminates: passes on dev 176d31d1d; in a frontend copy, each test fails when
 is cut: the copied link pointing at the Notes page (editor and list), the clipboard's plain text
 getting the HTML, the plain-text download writing the HTML, the upload not saving the note's
 files, the chip's close button not saving, the access panel never sending the grants, the editor's
-Delete not calling the API, removing a person dropping only their write grant and the access list
-shown without the sharing permission.
+Delete not calling the API and removing a person dropping only their write grant.
 In the a5bc78300 build with #31539 reverted, the second line of a table cell starts a broken row.
 The public and no-list tests read the Visibility menu that replaced the panel's Private and Public
 select: they pass on dev b40891e0a, and a frontend copy of it whose menu never sends the grants
-turns the public test red and one offering Public without the sharing permission the no-list test.
+turns the public test red. The no-access test was retargeted for ac12b04aa (#32979), which hides
+the Access button and menu entry from users without the sharing permission; it passes on dev
+72d86c6b1 and fails on ac12b04aa^ (both are there).
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import make_group
 from harness.actors import Actor
-from utils.access_control import choose_visibility, visibility_choices
+from utils.access_control import choose_visibility
 from utils.chat_ui import chat_input
 from utils.member_picker import pick_member
 
@@ -440,7 +441,7 @@ def test_making_a_note_public_lets_any_account_read_it(page_for, sharer, make_us
             client.delete(f"/api/v1/notes/{note_id}/delete").raise_for_status()
 
 
-def test_without_the_sharing_permission_the_access_panel_has_no_list(
+def test_without_the_sharing_permission_the_note_offers_no_access(
     page_for, admin, make_user, preserve
 ):
     preserve("permissions")
@@ -450,13 +451,17 @@ def test_without_the_sharing_permission_the_access_panel_has_no_list(
         saved = client.post("/api/v1/users/default/permissions", json=permissions)
     assert saved.status_code == 200, saved.text
     owner = make_user()
-    note_id = _create_note(owner, _unique("Private"), "just for me")
+    title = _unique("Private")
+    note_id = _create_note(owner, title, "just for me")
     page = page_for(owner)
     _open_note(page, note_id, "just for me")
 
-    panel = _open_access_panel(page)
+    access = page.get_by_role("main").get_by_role("button", name="Access", exact=True)
+    expect(access).to_have_count(0)
 
-    private = panel.get_by_text("Only select users and groups with permission can access")
-    expect(private).to_be_visible()
-    expect(panel.get_by_role("button", name="Add Access")).to_have_count(0)
-    expect(visibility_choices(panel)).to_have_text(["Private"])
+    page.goto("/notes")
+    row = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    row.get_by_label("Note Menu").click()
+    menu = page.get_by_role("menu")
+    expect(menu.get_by_role("button", name="Download")).to_be_visible()
+    expect(menu.get_by_role("button", name="Access", exact=True)).to_have_count(0)
