@@ -51,7 +51,7 @@ def _heading_above(sidebar, title: str) -> str:
     """The time heading the chat titled `title` is listed under."""
     row = sidebar.locator("#sidebar-chat-group").filter(has_text=title)
     # headings carry no id, the chat rows between them do
-    heading = row.locator("xpath=preceding-sibling::div[not(@id='sidebar-chat-group')][1]")
+    heading = row.locator("xpath=preceding-sibling::*[not(@id='sidebar-chat-group')][1]")
     return heading.inner_text().strip()
 
 

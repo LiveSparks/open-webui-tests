@@ -51,8 +51,9 @@ def personal_terminal():
 
 
 def test_the_page_reads_the_personal_terminals_agents_md_for_the_model(
-    page_for, make_user, upstream, personal_terminal
+    page_for, make_user, upstream, personal_terminal, direct_integrations
 ):
+    direct_integrations(True)
     account = make_user(role="admin")
     page = page_for(account)
     terminal = {

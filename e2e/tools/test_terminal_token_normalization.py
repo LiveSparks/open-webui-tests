@@ -36,7 +36,6 @@ pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.
 NAME = "My laptop"
 KEY = "sesame"
 HOME = "/home/ada"
-CONNECTIONS_CONFIG = ("/api/v1/configs/connections", "/api/v1/configs/connections")
 SPEC = {"openapi": "3.0.0", "info": {"title": "Open Terminal", "version": "1"}, "paths": {}}
 
 
@@ -91,8 +90,11 @@ def wait_for_session_auth(server: FakeTerminalServer, timeout: float = 15.0) -> 
 
 
 @pytest.fixture
-def opened_with_a_padded_key(page_for, make_user, personal_terminal) -> FakeTerminalServer:
+def opened_with_a_padded_key(
+    page_for, make_user, personal_terminal, direct_integrations
+) -> FakeTerminalServer:
     """The dock opened on a terminal whose key was saved with spaces around it."""
+    direct_integrations(True)
     account = make_user(role="admin")
     page = page_for(account)
     save_personal_terminal(account, personal_terminal, f"  {KEY}  ")
@@ -124,21 +126,10 @@ def test_every_request_to_the_terminal_carries_the_trimmed_key(opened_with_a_pad
     assert not untrimmed, f"these calls sent the terminal key untrimmed: {untrimmed} (#25613)"
 
 
-@pytest.fixture
-def personal_integrations(admin, preserve) -> None:
-    """The Integrations tab of a user's own settings, which the admin switches on."""
-    preserve(CONNECTIONS_CONFIG)
-    with admin.client() as client:
-        current = client.get(CONNECTIONS_CONFIG[0]).json()
-        saved = client.post(
-            CONNECTIONS_CONFIG[1], json={**current, "ENABLE_DIRECT_INTEGRATIONS": True}
-        )
-    assert saved.status_code == 200, saved.text
-
-
 def test_a_key_typed_with_a_trailing_space_is_saved_trimmed(
-    page_for, make_user, personal_terminal, personal_integrations
+    page_for, make_user, personal_terminal, direct_integrations
 ):
+    direct_integrations(True)
     account = make_user(role="admin")
     page = page_for(account)
     page.get_by_role("button", name="User menu").first.click()
