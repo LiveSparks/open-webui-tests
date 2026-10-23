@@ -71,7 +71,7 @@ def test_requirements_resolve() -> None:
     if uv:
         # uv resolves the whole graph without installing; fast + offline-ish.
         proc = subprocess.run(
-            [uv, "pip", "compile", "--quiet", str(req), "-o", os.devnull],
+            [uv, "pip", "compile", "--quiet", str(req)],
             capture_output=True,
             text=True,
             timeout=600,
