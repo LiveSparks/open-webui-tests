@@ -94,7 +94,7 @@ def test_a_tap_on_the_plus_button_opens_its_menu_at_1_5x(page_for, make_user, lo
 
     composer_buttons(page)["+"].click()
 
-    expect(page.get_by_role("menu").get_by_role("button", name="Upload Files")).to_be_visible()
+    expect(page.get_by_role("menu").get_by_role("menuitem", name="Upload Files")).to_be_visible()
 
 
 def test_the_composer_buttons_are_tappable_at_the_default_scale(

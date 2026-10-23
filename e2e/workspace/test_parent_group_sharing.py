@@ -283,8 +283,8 @@ def test_a_tool_shared_with_the_parent_is_listed_under_integrations_for_a_subgro
         page = page_for(family.member)
         expect(chat_input(page)).to_be_visible()
         page.get_by_label("Integrations").click()
-        page.get_by_role("button", name=re.compile(r"^Tools")).click()
-        expect(page.get_by_role("button", name=name)).to_be_visible()
+        page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
+        expect(page.get_by_role("menuitemcheckbox", name=name)).to_be_visible()
     finally:
         with admin.client() as client:
             client.delete(f"/api/v1/tools/id/{tool_id}/delete")

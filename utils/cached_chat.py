@@ -16,30 +16,33 @@ from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from harness.upstream import Reply
-from utils.chat_ui import chat_input, close_menu, expect_reply, send
+from utils.chat_ui import (
+    chat_input,
+    close_menu,
+    expect_reply,
+    open_input_menu,
+    open_integrations_menu,
+    send,
+)
 from utils.tooltips import tooltip_button
 
 CALL_NUMBERS = itertools.count(1)
 
 
 def attach(page: Page, name: str, content: str | bytes, mime_type: str = "text/plain") -> None:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="More", exact=True).last.click()
+    menu = open_input_menu(page)
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        menu.get_by_role("menuitem", name="Upload Files").click()
     buffer = content.encode() if isinstance(content, str) else content
     chooser.value.set_files({"name": name, "mimeType": mime_type, "buffer": buffer})
 
 
 def attach_from_menu(page: Page, submenu: str, name: str) -> None:
     """Attach a knowledge base, note or chat through the chat input's More menu."""
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="More", exact=True).last.click()
-    menu = page.get_by_role("menu")
-    expect(menu.get_by_role("button").first).to_be_visible()
-    if menu.get_by_role("button", name=submenu).count() == 0:
-        menu.get_by_role("button").first.click()  # it reopens on the list last picked from
-    menu.get_by_role("button", name=submenu).click()
+    menu = open_input_menu(page)
+    if menu.get_by_role("menuitem", name=submenu).count() == 0:
+        menu.get_by_role("menuitem").first.click()  # it reopens on the list last picked from
+    menu.get_by_role("menuitem", name=submenu).click()
     menu.get_by_role("button", name=name).first.click()
     expect(page.locator("form").get_by_text(name).first).to_be_visible()
 
@@ -93,10 +96,9 @@ def tool_results(request: dict) -> str:
 
 def turn_on_tool(page: Page, tool_name: str) -> None:
     """Switch a workspace tool on for this chat from the Integrations menu."""
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    tool = page.get_by_role("menu").get_by_role("button", name=tool_name)
+    menu = open_integrations_menu(page)
+    menu.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
+    tool = menu.get_by_role("menuitemcheckbox", name=tool_name)
     tool.click()
-    expect(tool).to_have_attribute("aria-pressed", "true")
+    expect(tool).to_have_attribute("aria-checked", "true")
     close_menu(page)

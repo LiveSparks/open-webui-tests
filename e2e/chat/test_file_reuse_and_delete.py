@@ -65,7 +65,7 @@ def open_attach_files(page: Page) -> Locator:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name="More", exact=True).last.click()
     menu = page.get_by_role("menu")
-    menu.get_by_role("button", name="Attach Files").click()
+    menu.get_by_role("menuitem", name="Attach Files").click()
     expect(menu.get_by_placeholder("Search Files")).to_be_visible()
     return menu
 

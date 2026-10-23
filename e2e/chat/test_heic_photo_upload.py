@@ -43,7 +43,7 @@ def attach(page: Page, name: str, content: bytes, mime_type: str) -> None:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name="More", exact=True).last.click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files({"name": name, "mimeType": mime_type, "buffer": content})
 
 

@@ -58,13 +58,14 @@ from harness.web_retrieval import (
 )
 from utils.chat_ui import (
     REPLY_TIMEOUT_MS,
-    chat_input,
     conversation,
     expect_reply,
     last_reply,
     listed_source,
     regenerate_buttons,
     send,
+    set_tool_approval_mode,
+    turn_on_integration,
 )
 from utils.model_selector import select_model
 
@@ -153,15 +154,6 @@ def expect_shout_shown(page: Page, word: str) -> None:
     expect(last_reply(page)).not_to_contain_text("call_tool")
 
 
-def set_approval_mode(page: Page, mode: str) -> None:
-    expect(chat_input(page)).to_be_visible()
-    # the sidebar has a "More" button of its own
-    page.locator("#input-menu-button").click()
-    page.get_by_role("button", name="Tool Permissions").click()
-    page.get_by_role("button", name=mode).click()
-    page.keyboard.press("Escape")
-
-
 def approval_button(page: Page, name: str):
     button = conversation(page).get_by_role("button", name=name, exact=True)
     expect(button).to_have_count(1, timeout=REPLY_TIMEOUT_MS)
@@ -234,7 +226,7 @@ def test_an_approval_prompt_names_the_dispatched_tool(
 ):
     page = page_for(make_user())
     select_model(page, shouter)
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
 
     allowed = f"shout yes {uuid.uuid4().hex[:6]}"
     upstream.queue(
@@ -435,10 +427,7 @@ def test_a_picture_drawn_through_call_tool_shows_and_is_stored(
         reply.text("Here is your lighthouse.", match=reply.answering(prompt)),
     )
     page = page_for(person)
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("menu").get_by_role("button", name="Image", exact=True).click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Image")
     send(page, prompt)
     expect_reply(page, "Here is your lighthouse.")
 
@@ -496,10 +485,7 @@ def test_a_page_read_through_call_tool_is_the_reply_source(page_for, searcher, l
         reply.text("Two herons [1].", match=reply.answering(prompt)),
     )
     page = page_for(create_user(searcher))
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
     send(page, prompt)
     expect_reply(page, "Two herons")
 
@@ -535,7 +521,7 @@ def test_a_mixed_round_asks_each_call_in_turn_and_a_second_round_asks_again(
 ):
     page = page_for(make_user())
     select_model(page, shouter)
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
 
     prompt = f"shout twice {uuid.uuid4().hex[:6]}"
     round_one = [
@@ -585,7 +571,7 @@ def test_a_pending_dispatch_survives_a_reload_and_another_tab_can_allow_it(
     account = make_user()
     page = page_for(account)
     select_model(page, shouter)
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     prompt = f"shout later {uuid.uuid4().hex[:6]}"
     upstream.queue(
         call_tool("shout", {"text": "patience"}, prompt, "call_p"),
@@ -613,7 +599,7 @@ def test_switching_to_full_access_runs_the_pending_calls_and_ask_asks_again_late
 ):
     page = page_for(make_user())
     select_model(page, shouter)
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     prompt = f"shout both {uuid.uuid4().hex[:6]}"
     both = [
         dispatched("shout", {"text": "first"}, "call_1"),
@@ -625,11 +611,11 @@ def test_switching_to_full_access_runs_the_pending_calls_and_ask_asks_again_late
     )
     send(page, prompt)
     approval_button(page, "Allow")
-    set_approval_mode(page, "Full access")
+    set_tool_approval_mode(page, "Full access")
     expect_reply(page, "Both shouted.")
     assert tool_results(upstream, prompt) == ["FIRST", "SECOND"]
 
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     again = f"shout again {uuid.uuid4().hex[:6]}"
     upstream.queue(
         call_tool("shout", {"text": "asked"}, again, "call_3"),
@@ -645,7 +631,7 @@ def test_a_denied_dispatch_is_asked_again_on_regenerate_and_continue_runs_nothin
 ):
     page = page_for(make_user())
     select_model(page, shouter)
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     prompt = f"shout maybe {uuid.uuid4().hex[:6]}"
     upstream.queue(
         call_tool("shout", {"text": "maybe"}, prompt, "call_m"),
@@ -682,7 +668,7 @@ def test_a_temporary_chat_asks_before_running_the_dispatched_tool(
 ):
     page = page_for(make_user())
     select_model(page, shouter)
-    set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     page.get_by_role("button", name="Temporary Chat").click()
 
     for word, action, answer, result in (

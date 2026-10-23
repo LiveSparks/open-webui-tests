@@ -45,6 +45,7 @@ from utils.chat_ui import (
     conversation,
     expect_reply,
     last_reply,
+    open_integrations_menu,
     replies,
     send,
     turn_on_integration,
@@ -96,13 +97,6 @@ def image_settings(page: Page) -> Locator:
 def open_chat(page: Page) -> Page:
     expect(chat_input(page)).to_be_visible(timeout=REPLY_TIMEOUT_MS)
     return page
-
-
-def integrations_menu(page: Page) -> Locator:
-    page.get_by_label("Integrations").click()
-    menu = page.get_by_role("menu")
-    expect(menu.get_by_role("button").first).to_be_visible()
-    return menu
 
 
 def turn_on_image(page: Page) -> None:
@@ -181,13 +175,17 @@ def test_an_admin_sets_up_the_openai_engine_and_it_draws(
 def test_the_image_switch_follows_the_admin_setting(page_for, make_user, image_engine):
     image_engine(ENABLE_IMAGE_GENERATION=False, ENABLE_IMAGE_EDIT=False)
     page = open_chat(page_for(make_user()))
-    image_switch = integrations_menu(page).get_by_role("button", name="Image", exact=True)
+    image_switch = open_integrations_menu(page).get_by_role(
+        "menuitemcheckbox", name="Image", exact=True
+    )
     expect(image_switch).to_have_count(0)
 
     image_engine()
     page.reload()
     expect(
-        integrations_menu(open_chat(page)).get_by_role("button", name="Image", exact=True)
+        open_integrations_menu(open_chat(page)).get_by_role(
+            "menuitemcheckbox", name="Image", exact=True
+        )
     ).to_be_visible()
 
 
@@ -196,7 +194,9 @@ def test_a_user_without_the_permission_gets_no_image_switch(
 ):
     image_engine()
     page = open_chat(page_for(make_user()))
-    image_switch = integrations_menu(page).get_by_role("button", name="Image", exact=True)
+    image_switch = open_integrations_menu(page).get_by_role(
+        "menuitemcheckbox", name="Image", exact=True
+    )
     expect(image_switch).to_have_count(0)
 
 

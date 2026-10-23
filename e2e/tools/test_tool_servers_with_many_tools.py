@@ -90,16 +90,18 @@ def test_a_server_among_many_is_found_by_part_of_its_name_and_offered_alone(
         )
         page = page_for(make_user())
         menu = open_tools_menu(page)
-        expect(menu.get_by_role("button", name=control)).to_be_visible()
-        expect(menu.get_by_role("button", name=fillers[0])).to_be_visible()
+        expect(menu.get_by_role("menuitemcheckbox", name=control)).to_be_visible()
+        expect(menu.get_by_role("menuitemcheckbox", name=fillers[0])).to_be_visible()
 
         menu.get_by_placeholder("Search tools").fill("tide tab")
 
-        expect(menu.get_by_role("button", name=control)).to_have_count(0)
-        expect(menu.get_by_role("button", name=fillers[0])).to_have_count(0)
-        expect(menu.get_by_role("button", name=target)).to_be_visible()
-        menu.get_by_role("button", name=target).click()
-        expect(menu.get_by_role("button", name=target)).to_have_attribute("aria-pressed", "true")
+        expect(menu.get_by_role("menuitemcheckbox", name=control)).to_have_count(0)
+        expect(menu.get_by_role("menuitemcheckbox", name=fillers[0])).to_have_count(0)
+        expect(menu.get_by_role("menuitemcheckbox", name=target)).to_be_visible()
+        menu.get_by_role("menuitemcheckbox", name=target).click()
+        expect(menu.get_by_role("menuitemcheckbox", name=target)).to_have_attribute(
+            "aria-checked", "true"
+        )
         page.keyboard.press("Escape")
         question = ask(page, upstream)
 

@@ -175,7 +175,7 @@ def test_a_picture_removed_while_editing_a_question_is_not_sent_again(
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name="More", exact=True).last.click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files({"name": "buoy.png", "mimeType": "image/png", "buffer": RED_PNG})
     expect(page.get_by_role("button", name="Show image preview")).to_be_visible()
     upstream.queue(
@@ -205,7 +205,7 @@ def test_a_document_removed_while_editing_a_question_stays_off_it_after_a_save(
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name="More", exact=True).last.click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files(
         {"name": "packing-list.txt", "mimeType": "text/plain", "buffer": b"rope, lamp, oilskin"}
     )

@@ -19,7 +19,14 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
-from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply, send
+from utils.chat_ui import (
+    REPLY_TIMEOUT_MS,
+    chat_input,
+    conversation,
+    expect_reply,
+    send,
+    set_tool_approval_mode,
+)
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -35,15 +42,6 @@ def tool_approval_on(admin, preserve) -> None:
         client.post(
             CHAT_CONFIG[1], json={**current, "ENABLE_TOOL_PERMISSIONS": True}
         ).raise_for_status()
-
-
-def _set_approval_mode(page: Page, mode: str) -> None:
-    expect(chat_input(page)).to_be_visible()
-    # the sidebar has a "More" button of its own
-    page.locator("#input-menu-button").click()
-    page.get_by_role("button", name="Tool Permissions").click()
-    page.get_by_role("button", name=mode).click()
-    page.keyboard.press("Escape")
 
 
 def _ask_for_the_time(page: Page, upstream, answer: str) -> str:
@@ -71,7 +69,7 @@ def test_a_denied_call_never_runs_and_the_model_is_told(
     tool_approval_on, page_for, make_user, upstream
 ):
     page = page_for(make_user())
-    _set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     question = _ask_for_the_time(page, upstream, "I was not allowed to check.")
 
     _approval_button(page, "Deny").click()
@@ -82,7 +80,7 @@ def test_a_denied_call_never_runs_and_the_model_is_told(
 
 def test_an_allowed_call_runs(tool_approval_on, page_for, make_user, upstream):
     page = page_for(make_user())
-    _set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     question = _ask_for_the_time(page, upstream, "Checked the clock.")
 
     _approval_button(page, "Allow").click()
@@ -97,7 +95,7 @@ def test_the_shortcuts_allow_and_deny_the_call_on_screen(
     tool_approval_on, page_for, make_user, upstream
 ):
     page = page_for(make_user())
-    _set_approval_mode(page, "Ask for approval")
+    set_tool_approval_mode(page, "Ask for approval")
     allowed = _ask_for_the_time(page, upstream, "Allowed by keyboard.")
     _approval_button(page, "Allow")
     page.keyboard.press("Control+Alt+Enter")

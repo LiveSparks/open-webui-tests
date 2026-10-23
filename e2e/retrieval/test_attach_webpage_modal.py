@@ -73,7 +73,7 @@ def link(pages, path: str) -> str:
 def open_modal(page: Page):
     expect(chat_input(page)).to_be_visible(timeout=30_000)
     page.get_by_role("button", name="More", exact=True).last.click()
-    page.get_by_role("button", name="Attach Webpage").click()
+    page.get_by_role("menuitem", name="Attach Webpage").click()
     modal = page.get_by_role("textbox", name="Webpage URLs")
     expect(modal).to_be_visible()
     return modal
@@ -218,10 +218,10 @@ def test_a_user_without_the_web_upload_permission_cannot_open_the_modal(
     expect(chat_input(page)).to_be_visible(timeout=30_000)
     page.get_by_role("button", name="More", exact=True).last.click()
 
-    page.get_by_role("button", name="Attach Webpage").hover()
+    page.get_by_role("menuitem", name="Attach Webpage").hover()
 
     expect(page.get_by_text("You do not have permission to upload web content.")).to_be_visible()
-    page.get_by_role("button", name="Attach Webpage").click()
+    page.get_by_role("menuitem", name="Attach Webpage").click()
     expect(page.get_by_role("textbox", name="Webpage URLs")).to_have_count(0)
 
 

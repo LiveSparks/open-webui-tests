@@ -57,7 +57,14 @@ from harness.image_engines import (
     serve_gemini,
 )
 from harness.listener import json_answer
-from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, expect_reply, replies, send
+from utils.chat_ui import (
+    REPLY_TIMEOUT_MS,
+    chat_input,
+    expect_reply,
+    replies,
+    send,
+    turn_on_integration,
+)
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -122,10 +129,7 @@ def open_image_chat(page: Page) -> None:
     """A new chat with Image turned on under Integrations."""
     page.goto("/")
     expect(chat_input(page)).to_be_visible(timeout=REPLY_TIMEOUT_MS)
-    page.get_by_label("Integrations").click()
-    menu = page.get_by_role("menu")
-    menu.get_by_role("button", name="Image", exact=True).click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Image")
 
 
 def draw(page: Page, upstream, prompt: str) -> str:
@@ -147,7 +151,7 @@ def attach_picture(page: Page) -> str:
     page.get_by_role("button", name="More", exact=True).last.click()
     with page.expect_response(_is_file_upload) as uploaded:
         with page.expect_file_chooser() as chooser:
-            page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+            page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
         chooser.value.set_files(
             {"name": "harbour.png", "mimeType": "image/png", "buffer": ATTACHED_PNG}
         )

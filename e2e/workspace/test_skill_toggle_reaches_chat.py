@@ -72,9 +72,9 @@ def _skills_in_chat_menu(page: Page, anchor: str):
     """Open the chat's Integrations > Skills list; returns it once `anchor` shows in it."""
     expect(chat_input(page)).to_be_visible()
     page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Skills")).click()
+    page.get_by_role("menuitem", name=re.compile(r"^Skills")).click()
     menu = page.get_by_role("menu")
-    expect(menu.get_by_role("button", name=re.compile(re.escape(anchor)))).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=re.compile(re.escape(anchor)))).to_be_visible()
     return menu
 
 
@@ -86,13 +86,17 @@ def test_a_skill_turned_off_leaves_the_chat_menu_at_once(page_for, skill_owner):
     add(switched)
     page = page_for(account)
     before = _skills_in_chat_menu(page, anchor)
-    expect(before.get_by_role("button", name=re.compile(re.escape(switched)))).to_be_visible()
+    expect(
+        before.get_by_role("menuitemcheckbox", name=re.compile(re.escape(switched)))
+    ).to_be_visible()
     page.keyboard.press("Escape")
 
     _switch_in_workspace(page, switched)
     after = _skills_in_chat_menu(page, anchor)
 
-    expect(after.get_by_role("button", name=re.compile(re.escape(switched)))).to_have_count(0)
+    expect(
+        after.get_by_role("menuitemcheckbox", name=re.compile(re.escape(switched)))
+    ).to_have_count(0)
 
 
 def test_a_skill_turned_on_joins_the_chat_menu_at_once(page_for, skill_owner):
@@ -103,10 +107,14 @@ def test_a_skill_turned_on_joins_the_chat_menu_at_once(page_for, skill_owner):
     add(switched, active=False)
     page = page_for(account)
     before = _skills_in_chat_menu(page, anchor)
-    expect(before.get_by_role("button", name=re.compile(re.escape(switched)))).to_have_count(0)
+    expect(
+        before.get_by_role("menuitemcheckbox", name=re.compile(re.escape(switched)))
+    ).to_have_count(0)
     page.keyboard.press("Escape")
 
     _switch_in_workspace(page, switched)
     after = _skills_in_chat_menu(page, anchor)
 
-    expect(after.get_by_role("button", name=re.compile(re.escape(switched)))).to_be_visible()
+    expect(
+        after.get_by_role("menuitemcheckbox", name=re.compile(re.escape(switched)))
+    ).to_be_visible()

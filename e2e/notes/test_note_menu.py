@@ -440,7 +440,15 @@ def test_making_a_note_public_lets_any_account_read_it(page_for, sharer, make_us
             client.delete(f"/api/v1/notes/{note_id}/delete").raise_for_status()
 
 
-def test_without_the_sharing_permission_the_access_panel_has_no_list(page_for, make_user):
+def test_without_the_sharing_permission_the_access_panel_has_no_list(
+    page_for, admin, make_user, preserve
+):
+    preserve("permissions")
+    with admin.client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["sharing"].update(notes=False, public_notes=False)
+        saved = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert saved.status_code == 200, saved.text
     owner = make_user()
     note_id = _create_note(owner, _unique("Private"), "just for me")
     page = page_for(owner)

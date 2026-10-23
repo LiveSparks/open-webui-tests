@@ -53,8 +53,8 @@ def test_pressing_a_server_that_asks_for_many_scopes_connects_it(
         expect(chat_input(page)).to_be_visible()
 
         page.get_by_label("Integrations").click()
-        page.get_by_role("button", name=re.compile(r"^Tools")).click()
-        page.get_by_role("button", name=server_id).click()
+        page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
+        page.get_by_role("menuitem", name=server_id).click()
 
         # the round trip ends at the app: with a token issued, or sent home with an error
         page.wait_for_url(
@@ -72,8 +72,10 @@ def test_pressing_a_server_that_asks_for_many_scopes_connects_it(
             reply.text("Done.", match=reply.answering(question)),
         )
         page.get_by_label("Integrations").click()
-        page.get_by_role("button", name=re.compile(r"^Tools")).click()
-        expect(page.get_by_role("button", name=server_id)).to_have_attribute("aria-pressed", "true")
+        page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
+        expect(page.get_by_role("menuitemcheckbox", name=server_id)).to_have_attribute(
+            "aria-checked", "true"
+        )
         page.keyboard.press("Escape")
         send(page, question)
         expect_reply(page, "Done.")

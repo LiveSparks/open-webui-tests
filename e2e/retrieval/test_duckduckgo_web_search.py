@@ -21,7 +21,7 @@ from harness import upstream as reply
 from harness.actors import create_user
 from harness.duckduckgo import Result, duckduckgo_env, duckduckgo_settings, serving_duckduckgo
 from harness.web_retrieval import save_web_settings, web_settings_restored
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.chat_ui import conversation, expect_reply, send, turn_on_integration
 
 pytestmark = [
     pytest.mark.journey,
@@ -69,11 +69,7 @@ def test_the_model_searches_duckduckgo_and_the_chat_shows_what_it_found(
         reply.text("By the water.", match=reply.answering(QUESTION)),
     )
     page = page_for(create_user(searcher))
-    expect(chat_input(page)).to_be_visible()
-
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
     send(page, QUESTION)
     expect_reply(page, "By the water.")
 

@@ -39,7 +39,13 @@ from harness.search_apis import (
     serving_search_apis,
 )
 from harness.web_retrieval import LOCAL_WEB_FETCH, web_settings_restored
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.chat_ui import (
+    conversation,
+    expect_reply,
+    last_reply,
+    send,
+    turn_on_integration,
+)
 
 pytestmark = [
     pytest.mark.journey,
@@ -106,10 +112,7 @@ def set_up_engine(page: Page, engine: Engine, apis: SearchApis) -> None:
 
 
 def turn_web_search_on(page: Page) -> None:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
 
 
 def tool_results(searcher, question: str) -> list[str]:

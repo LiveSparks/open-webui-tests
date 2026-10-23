@@ -143,7 +143,7 @@ def ask_about_the_notes(page_for, ranked, reader: Actor, question: str) -> Page:
     expect(chat_input(page)).to_be_visible(timeout=REPLY_TIMEOUT_MS)
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     name, text = NOTES
     chooser.value.set_files({"name": name, "mimeType": "text/plain", "buffer": text.encode()})
     expect(page.get_by_role("button", name=name)).to_be_visible()

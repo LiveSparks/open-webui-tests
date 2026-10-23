@@ -24,6 +24,11 @@ def _folder_sharing_switch(page: Page):
 
 def test_enabled_folder_sharing_is_still_on_after_a_reload(page_for, admin, preserve):
     preserve("permissions")
+    with admin.client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["sharing"]["folders"] = False
+        saved = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert saved.status_code == 200, saved.text
     page = page_for(admin, path="/admin/users/groups")
 
     switch = _folder_sharing_switch(page)

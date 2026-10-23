@@ -128,7 +128,7 @@ def test_a_default_capability_switched_off_refuses_an_image(
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files({"name": "pier.png", "mimeType": "image/png", "buffer": PIXEL_PNG})
 
     expect(page.get_by_text("Selected model(s) do not support image inputs")).to_be_visible()
@@ -140,7 +140,7 @@ def test_an_image_attaches_while_the_default_capabilities_allow_it(page_for, mak
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     with page.expect_response(is_file_upload) as uploaded:
         chooser.value.set_files({"name": "pier.png", "mimeType": "image/png", "buffer": PIXEL_PNG})
     file_id = uploaded.value.json()["id"]

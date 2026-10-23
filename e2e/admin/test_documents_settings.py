@@ -61,7 +61,7 @@ def choose_files(page: Page, *files: dict) -> None:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files(list(files))
 
 

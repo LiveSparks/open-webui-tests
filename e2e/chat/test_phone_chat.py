@@ -130,7 +130,7 @@ def request_answering(upstream, question: str) -> dict:
 def open_plus_menu(page: Page) -> Locator:
     tap_on_screen(page.get_by_role("button", name="More", exact=True).last)
     menu = page.get_by_role("menu")
-    expect_on_screen(menu.get_by_role("button", name="Upload Files"))
+    expect_on_screen(menu.get_by_role("menuitem", name="Upload Files"))
     return menu
 
 
@@ -294,7 +294,7 @@ def test_the_model_picked_in_the_selector_answers_the_next_message(phone, admin,
 def test_a_file_from_the_plus_menu_reaches_the_model(phone, upstream):
     menu = open_plus_menu(phone)
     with phone.expect_file_chooser() as chooser:
-        tap_on_screen(menu.get_by_role("button", name="Upload Files"))
+        tap_on_screen(menu.get_by_role("menuitem", name="Upload Files"))
     chooser.value.set_files(
         {"name": "tides.txt", "mimeType": "text/plain", "buffer": b"High tide comes at noon."}
     )
@@ -309,7 +309,7 @@ def test_a_file_from_the_plus_menu_reaches_the_model(phone, upstream):
 def test_capture_opens_the_camera_and_the_photo_reaches_the_model(phone, upstream):
     menu = open_plus_menu(phone)
     with phone.expect_file_chooser() as chooser:
-        tap_on_screen(menu.get_by_role("button", name="Capture"))
+        tap_on_screen(menu.get_by_role("menuitem", name="Capture"))
     camera = chooser.value.element
     assert camera.get_attribute("capture") == "environment", "Capture opened no camera"
     chooser.value.set_files({"name": "photo.png", "mimeType": "image/png", "buffer": RED_PNG})

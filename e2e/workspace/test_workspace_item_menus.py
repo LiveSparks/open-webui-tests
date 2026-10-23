@@ -138,8 +138,8 @@ def _integration_tools(page: Page) -> Locator:
     page.goto("/")
     expect(chat_input(page)).to_be_visible()
     page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    return page.get_by_role("button")
+    page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
+    return page.get_by_role("menuitemcheckbox")
 
 
 def test_a_cloned_model_is_a_second_model_with_the_same_system_prompt(page_for, builder):

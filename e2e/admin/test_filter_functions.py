@@ -29,7 +29,7 @@ from harness.actors import Actor
 from harness.plugins import installed_function
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
-from utils.chat_ui import chat_input, expect_reply, last_reply, send
+from utils.chat_ui import chat_input, expect_reply, last_reply, open_integrations_menu, send
 from utils.tooltips import tooltip_button
 from utils.valves import customise, valve
 
@@ -245,11 +245,10 @@ def test_a_switched_on_filter_chip_opens_its_user_valves_and_they_stamp_the_repl
 ):
     with installed_function(admin, STAMPING_FILTER, is_global=True) as filter_id:
         page = page_for(make_user())
-        expect(chat_input(page)).to_be_visible()
-        page.get_by_label("Integrations").click()
-        switch = page.get_by_role("menu").get_by_role("button", name=re.compile(filter_id))
+        menu = open_integrations_menu(page)
+        switch = menu.get_by_role("menuitemcheckbox", name=re.compile(filter_id))
         switch.click()
-        expect(switch).to_have_attribute("aria-pressed", "true")
+        expect(switch).to_have_attribute("aria-checked", "true")
         page.keyboard.press("Escape")
         expect(page.get_by_role("menu")).to_have_count(0)
 

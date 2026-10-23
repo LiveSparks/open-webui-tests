@@ -28,7 +28,13 @@ from harness.web_retrieval import (
     serve_search_results,
     web_settings_restored,
 )
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.chat_ui import (
+    conversation,
+    expect_reply,
+    last_reply,
+    send,
+    turn_on_integration,
+)
 
 pytestmark = [
     pytest.mark.journey,
@@ -64,11 +70,7 @@ def test_the_page_the_model_read_is_the_reply_source(page_for, searcher, listene
         reply.text("Two herons [1].", match=answering),
     )
     page = page_for(create_user(searcher))
-    expect(chat_input(page)).to_be_visible()
-
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
     send(page, QUESTION)
     expect_reply(page, "Two herons")
 

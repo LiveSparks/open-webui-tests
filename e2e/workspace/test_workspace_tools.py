@@ -28,7 +28,8 @@ from playwright.sync_api import expect
 
 from harness import upstream as reply
 from harness.listener import text_answer
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.cached_chat import turn_on_tool
+from utils.chat_ui import conversation, expect_reply, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -74,11 +75,7 @@ def test_a_tool_from_the_editor_is_called_and_its_result_shows(page_for, toolsmi
         reply.text("Ada holds locker 7.", match=reply.answering(question)),
     )
     page.goto("/")
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name=name).click()
-    page.keyboard.press("Escape")
+    turn_on_tool(page, name)
     send(page, question)
     expect_reply(page, "Ada holds locker 7.")
 

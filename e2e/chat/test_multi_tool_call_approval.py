@@ -18,7 +18,13 @@ import pytest
 from playwright.sync_api import expect
 
 from harness import upstream as reply
-from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply, send
+from utils.chat_ui import (
+    REPLY_TIMEOUT_MS,
+    conversation,
+    expect_reply,
+    send,
+    set_tool_approval_mode,
+)
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -76,12 +82,7 @@ def test_both_calls_of_a_turn_are_allowed_one_after_the_other(
     )
     account = make_user()
     page = page_for(account)
-    expect(chat_input(page)).to_be_visible()
-    # the sidebar has a "More" button of its own
-    page.locator("#input-menu-button").click()
-    page.get_by_role("button", name="Tool Permissions").click()
-    page.get_by_role("button", name="Ask for approval").click()
-    page.keyboard.press("Escape")
+    set_tool_approval_mode(page, "Ask for approval")
 
     send(page, question)
     allow = conversation(page).get_by_role("button", name="Allow", exact=True)

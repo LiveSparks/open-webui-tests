@@ -5,9 +5,10 @@ from __future__ import annotations
 from playwright.sync_api import Locator
 
 
-def tooltip_button(scope: Locator, tooltip: str) -> Locator:
-    """The button in `scope` whose tooltip reads `tooltip`; hover first when it shows on hover."""
-    buttons = scope.get_by_role("button")
+def tooltip_button(scope: Locator, tooltip: str, role: str = "button") -> Locator:
+    """The button (or other `role`) in `scope` whose tooltip reads `tooltip`; hover first when it
+    shows on hover."""
+    buttons = scope.get_by_role(role)
     index = buttons.evaluate_all(
         "(buttons, tooltip) => buttons.findIndex("
         "(button) => button.parentElement?._tippy?.props.content === tooltip)",

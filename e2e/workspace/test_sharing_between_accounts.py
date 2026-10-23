@@ -177,8 +177,8 @@ def _prompt_offered(page: Page, item: dict) -> Locator:
 def _tool_offered(page: Page, item: dict) -> Locator:
     _new_chat(page)
     page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    return page.get_by_role("button", name=item["name"])
+    page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
+    return page.get_by_role("menuitemcheckbox", name=item["name"])
 
 
 def _knowledge_offered(page: Page, item: dict) -> Locator:
@@ -311,8 +311,14 @@ def _base_access(page: Page, base: dict) -> Locator:
 
 
 def test_a_groups_knowledge_sharing_switch_offers_its_members_add_access_and_public(
-    admin, make_user, page_for
+    admin, make_user, page_for, preserve
 ):
+    preserve("permissions")
+    with admin.client() as client:
+        permissions = client.get("/api/v1/users/default/permissions").json()
+        permissions["sharing"].update(knowledge=False, public_knowledge=False)
+        saved = client.post("/api/v1/users/default/permissions", json=permissions)
+    assert saved.status_code == 200, saved.text
     member, outsider = make_user(), make_user()
     group_id = make_group(admin, [member], KNOWLEDGE_USER)
     make_group(admin, [outsider], KNOWLEDGE_USER)

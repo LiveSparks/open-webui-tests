@@ -34,7 +34,8 @@ from harness.actors import Actor, create_user
 from harness.json_codecs import CODECS, CROSSINGS, MIXED_TEXT, codec_pair
 from harness.python_tools import python_tool
 from harness.upstream import MOCK_MODEL_ID
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.cached_chat import turn_on_tool
+from utils.chat_ui import conversation, expect_reply, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -166,11 +167,7 @@ def test_a_tool_result_of_mixed_text_shows_its_values_when_expanded(page_for, pa
     )
     with python_tool(admin, TOOL_SOURCE, name=_unique("Greetings ")):
         page = page_for(admin)
-        expect(chat_input(page)).to_be_visible()
-        page.get_by_label("Integrations").click()
-        page.get_by_role("button", name=re.compile(r"^Tools")).click()
-        page.get_by_role("button", name=re.compile("^Greetings ")).click()
-        page.keyboard.press("Escape")
+        turn_on_tool(page, "Greetings ")
         send(page, question)
         expect_reply(page, f"{GERMAN} done")
 

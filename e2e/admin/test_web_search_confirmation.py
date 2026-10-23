@@ -22,7 +22,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import expect_reply, open_integrations_menu, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -57,9 +57,7 @@ def save_confirmation(admin_page: Page, turn_on: bool) -> None:
 
 
 def turn_web_search_on(page: Page) -> None:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
+    open_integrations_menu(page).get_by_role("menuitemcheckbox", name="Web Search").click()
 
 
 def offered_tools(upstream, question: str) -> set[str]:

@@ -21,13 +21,13 @@ import uuid
 from typing import Iterator
 
 import pytest
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from harness.actors import Actor
 from harness.upstream import MOCK_MODEL_ID
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import expect_reply, open_integrations_menu, send
 from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -69,14 +69,6 @@ def crew(admin, make_user) -> Iterator[tuple[str, Actor]]:
         client.delete(f"/api/v1/groups/id/{group_id}/delete")
 
 
-def integrations_menu(page: Page) -> Locator:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    menu = page.get_by_role("menu")
-    expect(menu).to_be_visible()
-    return menu
-
-
 def offered_tools(page: Page, upstream, question: str) -> set[str]:
     upstream.queue(reply.text("Calm seas.", match=reply.answering(question)))
     send(page, question)
@@ -89,15 +81,15 @@ def test_the_chip_by_the_input_turns_web_search_off_again(
     page_for, make_user, upstream, web_search_on
 ):
     page = page_for(make_user())
-    toggle = integrations_menu(page).get_by_role("button", name="Web Search")
+    toggle = open_integrations_menu(page).get_by_role("menuitemcheckbox", name="Web Search")
     toggle.click()
-    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(toggle).to_have_attribute("aria-checked", "true")
     page.keyboard.press("Escape")
 
     tooltip_button(page.locator("form"), "Web Search").click()
-    expect(integrations_menu(page).get_by_role("button", name="Web Search")).to_have_attribute(
-        "aria-pressed", "false"
-    )
+    expect(
+        open_integrations_menu(page).get_by_role("menuitemcheckbox", name="Web Search")
+    ).to_have_attribute("aria-checked", "false")
     page.keyboard.press("Escape")
 
     assert not WEB_TOOLS & offered_tools(page, upstream, "Is the sea calm at the quay?")
@@ -121,9 +113,11 @@ def test_a_group_permission_gives_web_search_back_to_its_members(
     expect(admin_page.get_by_text("Group updated successfully")).to_be_visible()
 
     outsider = page_for(make_user())
-    expect(integrations_menu(outsider).get_by_role("button", name="Web Search")).to_have_count(0)
+    expect(
+        open_integrations_menu(outsider).get_by_role("menuitemcheckbox", name="Web Search")
+    ).to_have_count(0)
     member_page = page_for(member)
-    integrations_menu(member_page).get_by_role("button", name="Web Search").click()
+    open_integrations_menu(member_page).get_by_role("menuitemcheckbox", name="Web Search").click()
     member_page.keyboard.press("Escape")
 
     assert WEB_TOOLS <= offered_tools(member_page, upstream, "Is the sea calm at the slipway?")

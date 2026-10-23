@@ -81,7 +81,7 @@ def ask_about(page: Page, upstream, name: str, mime_type: str, content: bytes) -
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files({"name": name, "mimeType": mime_type, "buffer": content})
     expect(page.get_by_role("button", name=name)).to_be_visible()
     upstream.queue(reply.text("At 06:42.", match=reply.answering(QUESTION)))

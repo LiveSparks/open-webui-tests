@@ -252,7 +252,7 @@ def test_a_group_switching_file_upload_off_leaves_the_default_in_place(
     member_page = ready(page_for(member))
     member_page.get_by_role("button", name="More", exact=True).last.click()
     with member_page.expect_file_chooser() as chooser:
-        member_page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        member_page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files(
         files=[{"name": "manifest.txt", "mimeType": "text/plain", "buffer": b"Berth 4"}]
     )

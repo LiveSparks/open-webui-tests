@@ -16,13 +16,12 @@ mutation build) the `&quot;` page shows no embed and the `&lt;b&gt;` page gains 
 
 from __future__ import annotations
 
-import re
-
 import pytest
 from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from harness.python_tools import python_tool
+from utils.cached_chat import turn_on_tool
 from utils.chat_ui import expect_reply, last_reply, send
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -51,10 +50,7 @@ def embed_tool(admin):
 
 
 def call_tool(page: Page, upstream, method: str) -> None:
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name="Page embedder").click()
-    page.keyboard.press("Escape")
+    turn_on_tool(page, "Page embedder")
     upstream.queue(
         reply.tool_call(method, {}, match=reply.answering("show the page")),
         reply.text("Page shown.", match=reply.answering("show the page")),

@@ -7,7 +7,7 @@ import re
 from playwright.sync_api import Locator, Page, expect
 
 from utils.access_control import choose_visibility
-from utils.chat_ui import chat_input, close_menu, conversation
+from utils.chat_ui import close_menu, conversation, open_integrations_menu
 from utils.tooltips import tooltip_button
 
 
@@ -86,10 +86,8 @@ def connection_row(settings: Locator, name: str) -> Locator:
 def open_tools_menu(page: Page) -> Locator:
     """The chat's Integrations > Tools list, on a freshly loaded chat page."""
     page.goto("/")
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    menu = page.get_by_role("menu")
+    menu = open_integrations_menu(page)
+    menu.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
     expect(menu.get_by_placeholder("Search tools")).to_be_visible()
     return menu
 
@@ -97,8 +95,9 @@ def open_tools_menu(page: Page) -> Locator:
 def pick_tool(page: Page, name: str) -> None:
     """Turn on the tool or tool server `name` for the next message of a new chat."""
     menu = open_tools_menu(page)
-    menu.get_by_role("button", name=name).click()
-    expect(menu.get_by_role("button", name=name)).to_have_attribute("aria-pressed", "true")
+    tool = menu.get_by_role("menuitemcheckbox", name=name)
+    tool.click()
+    expect(tool).to_have_attribute("aria-checked", "true")
     close_menu(page)
 
 

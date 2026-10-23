@@ -1,9 +1,10 @@
 """The search dialog, opened with Ctrl+K or the sidebar's Search entry, used the way a person does.
 
-Retargeted for b4db56ae9, which rebuilt the dialog: the results are options in the "Search
-results" list, the selected one is repeated in a preview pane beside it, and an empty query lists
-pinned and recent chats. `search` returns once the server has answered the typed query, so a
-count or an absence read after it is about that query and not the list it replaces.
+Retargeted for b4db56ae9, which rebuilt the dialog: the results are options in a list, the
+selected one is repeated in a preview pane beside it, and an empty query lists pinned and recent
+chats. Since 0a5c105ab the list is named by its caption, "Pinned & recent" or "Results".
+`search` returns once the server has answered the typed query, so a count or an absence read
+after it is about that query and not the list it replaces.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from playwright.sync_api import Locator, Page, expect
 from utils.chat_ui import chat_input
 
 SEARCH_PATH = "/api/v1/search"
+RESULT_LIST_NAMES = re.compile(r"^(Pinned & recent|Results)$")
 
 
 def search_dialog(page: Page) -> Locator:
@@ -58,7 +60,7 @@ def search(dialog: Locator, text: str) -> None:
 
 
 def results(dialog: Locator) -> Locator:
-    return dialog.get_by_role("listbox", name="Search results").get_by_role("option")
+    return dialog.get_by_role("listbox", name=RESULT_LIST_NAMES).get_by_role("option")
 
 
 def result(dialog: Locator, title: str) -> Locator:

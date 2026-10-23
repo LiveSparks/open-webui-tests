@@ -22,11 +22,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 from typing import Iterator
 
 import pytest
-from playwright.sync_api import expect
 
 from harness import backends
 from harness import upstream as reply
@@ -34,7 +32,8 @@ from harness.actors import Actor, admin_of, create_user
 from harness.instance import LaunchedInstance
 from harness.python_tools import python_tool
 from harness.split_proxy import splitting
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.cached_chat import turn_on_tool
+from utils.chat_ui import expect_reply, send
 
 pytestmark = [
     pytest.mark.regression,
@@ -122,11 +121,7 @@ def test_the_typed_answer_reaches_a_tool_on_the_instance_without_the_pages_socke
     )
     with python_tool(admin_of(fleet["socket"]), ASK_THE_PAGE, name="Ask the page"):
         page = page_for(at(create_user(fleet["socket"]), split_address))
-        expect(chat_input(page)).to_be_visible()
-        page.get_by_label("Integrations").click()
-        page.get_by_role("button", name=re.compile(r"^Tools")).click()
-        page.get_by_role("button", name="Ask the page").click()
-        page.keyboard.press("Escape")
+        turn_on_tool(page, "Ask the page")
 
         send(page, prompt)
         dialog = page.get_by_role("dialog", name="Your name?")

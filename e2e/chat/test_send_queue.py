@@ -65,7 +65,7 @@ def failed_upload_ahead(page: Page, upstream) -> Page:
 
     page.get_by_role("button", name="More", exact=True).last.click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files({"name": "notes.txt", "mimeType": "text/plain", "buffer": b"notes"})
     send(page, FIRST)
     expect(queued_item(page, FIRST)).to_be_visible()

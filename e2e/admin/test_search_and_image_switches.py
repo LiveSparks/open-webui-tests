@@ -18,7 +18,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.image_engines import IMAGES_CONFIG, save_image_settings, serve_gemini
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
-from utils.chat_ui import chat_input
+from utils.chat_ui import open_integrations_menu
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -70,11 +70,7 @@ def save_default_permission(page: Page, switch: str, turn_on: bool) -> None:
 
 
 def menu_entry(page: Page, entry: str) -> Locator:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    menu = page.get_by_role("menu")
-    expect(menu).to_be_visible()
-    return menu.get_by_role("button", name=entry, exact=True)
+    return open_integrations_menu(page).get_by_role("menuitemcheckbox", name=entry, exact=True)
 
 
 @pytest.mark.parametrize("entry", TABS)

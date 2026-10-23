@@ -19,8 +19,6 @@ did, the failure case fails, and in one that reports failure always, the success
 
 from __future__ import annotations
 
-import re
-
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
@@ -28,8 +26,8 @@ from harness import upstream as reply
 from harness.instance import free_port
 from harness.listener import ReceivedRequest, json_answer
 from harness.openapi_server import authorization
-from utils.chat_ui import chat_input, expect_reply, send
-from utils.tool_servers import choose_auth, tool_output, verify
+from utils.chat_ui import expect_reply, send
+from utils.tool_servers import choose_auth, pick_tool, tool_output, verify
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -155,12 +153,7 @@ def add_tool_server(page: Page, url: str, key: str | None = None) -> None:
 
 
 def pick_added_server(page: Page) -> None:
-    page.goto("/")
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name="Tide table").click()
-    page.keyboard.press("Escape")
+    pick_tool(page, "Tide table")
 
 
 def test_an_added_tool_server_offers_its_operation_to_the_model(

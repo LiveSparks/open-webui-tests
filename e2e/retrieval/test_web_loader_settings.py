@@ -38,7 +38,14 @@ from harness.web_retrieval import (
     serve_search_results,
     web_settings_restored,
 )
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.chat_ui import (
+    chat_input,
+    conversation,
+    expect_reply,
+    last_reply,
+    send,
+    turn_on_integration,
+)
 
 pytestmark = [
     pytest.mark.journey,
@@ -161,10 +168,7 @@ def fetch_in_a_chat(page: Page, reader, link: str, question: str) -> str:
         reply.tool_call("fetch_url", {"url": link}, "call_fetch", match=answering),
         reply.text("The log says so [1].", match=answering),
     )
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
     send(page, question)
     expect_reply(page, "The log says so")
     follow_up = [body for body in reader.upstream.chat_requests() if answering(body)][-1]
@@ -236,7 +240,7 @@ def test_the_fetch_length_limit_cuts_what_the_model_reads(page_for, reader, read
 def attach_webpage(page: Page, link: str) -> None:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name="More", exact=True).last.click()
-    page.get_by_role("button", name="Attach Webpage").click()
+    page.get_by_role("menuitem", name="Attach Webpage").click()
     page.get_by_role("textbox", name="Webpage URLs").fill(link)
     page.get_by_role("button", name="Add", exact=True).click()
     expect(page.get_by_text(link)).to_be_visible()

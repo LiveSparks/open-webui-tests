@@ -89,7 +89,7 @@ def test_a_saved_rag_template_wraps_an_uploaded_file(admin_page, preserve, upstr
     expect(chat_input(admin_page)).to_be_visible()
     admin_page.get_by_role("main").get_by_label("More").click()
     with admin_page.expect_file_chooser() as chooser:
-        admin_page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        admin_page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files(
         {
             "name": "shelves.txt",

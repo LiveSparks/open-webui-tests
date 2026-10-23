@@ -71,7 +71,7 @@ from utils.cached_chat import (
     tool_results,
     turn_on_tool,
 )
-from utils.chat_ui import chat_input, conversation, expect_reply
+from utils.chat_ui import chat_input, conversation, expect_reply, turn_on_integration
 from utils.model_editor import section
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -434,9 +434,7 @@ def test_switching_web_search_on_mid_chat_rewrites_the_prefix(
     page = page_for(make_user(), path=f"/?models={cached_setup.id}")
 
     ask(page, upstream, "good morning", reply.text("Morning."))
-    page.get_by_label("Integrations").click()
-    page.get_by_role("menu").get_by_role("button", name="Web Search").click()
-    page.keyboard.press("Escape")
+    turn_on_integration(page, "Web Search")
     ask(page, upstream, "look up the tides", reply.text("High at noon."))
 
     requests = chat_requests(upstream)

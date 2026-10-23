@@ -39,7 +39,7 @@ def attach_and_ask(page: Page, upstream) -> tuple[int, int]:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("main").get_by_label("More").click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files({"name": "buoy.png", "mimeType": "image/png", "buffer": buoy_png()})
     # an attached image shows as a chip or a thumbnail, both with a remove button
     expect(page.get_by_label("Remove file").first).to_be_attached()

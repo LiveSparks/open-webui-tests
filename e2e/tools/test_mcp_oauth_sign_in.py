@@ -48,7 +48,6 @@ from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
-ANY = re.compile(".*")
 CHECK = re.compile("Check OAuth Discovery|Verify Connection")
 EVERYONE = {"principal_type": "user", "principal_id": "*", "permission": "read"}
 
@@ -67,23 +66,23 @@ def sign_ins(mcp) -> list[dict]:
 def sign_in_from_the_tools_menu(page, mcp, server_name: str) -> None:
     """Press the server under Tools and follow the sign-in back to the chat."""
     sign_ins_before = len(sign_ins(mcp))
-    open_tools_menu(page).get_by_role("button", name=server_name).click()
+    open_tools_menu(page).get_by_role("menuitem", name=server_name).click()
     page.wait_for_url(
         lambda url: "error=" in url or len(sign_ins(mcp)) > sign_ins_before,
         timeout=30_000,
     )
     menu = open_tools_menu(page)
     assert "error=" not in page.url, page.url
-    # a server that needs a sign-in carries no pressed state at all
-    expect(menu.get_by_role("button", name=server_name)).to_have_attribute("aria-pressed", ANY)
+    # a server that needs a sign-in is a plain menu item, one signed in can be switched on
+    expect(menu.get_by_role("menuitemcheckbox", name=server_name)).to_be_visible()
     page.keyboard.press("Escape")
 
 
 def pick_connected_server(page, server_name: str) -> None:
     menu = open_tools_menu(page)
-    server = menu.get_by_role("button", name=server_name)
+    server = menu.get_by_role("menuitemcheckbox", name=server_name)
     server.click()
-    expect(server).to_have_attribute("aria-pressed", "true")
+    expect(server).to_have_attribute("aria-checked", "true")
     page.keyboard.press("Escape")
 
 
@@ -155,10 +154,10 @@ def test_disconnecting_signs_out_and_the_next_use_signs_in_again(
     sign_in_from_the_tools_menu(page, mcp, server_id)
 
     menu = open_tools_menu(page)
-    server = menu.get_by_role("button", name=server_id)
+    server = menu.get_by_role("menuitemcheckbox", name=server_id)
     tooltip_button(server, "Disconnect OAuth").click()
     expect(page.get_by_text("OAuth session disconnected")).to_be_visible()
-    expect(server).not_to_have_attribute("aria-pressed", ANY)
+    expect(menu.get_by_role("menuitem", name=server_id)).to_be_visible()
     page.keyboard.press("Escape")
 
     sign_in_from_the_tools_menu(page, mcp, server_id)

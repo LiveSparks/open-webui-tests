@@ -25,7 +25,7 @@ from harness import upstream as reply
 from harness.actors import Actor
 from harness.upstream import MOCK_MODEL_ID
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
-from utils.chat_ui import chat_input, expect_reply, send
+from utils.chat_ui import chat_input, expect_reply, open_integrations_menu, send
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -43,10 +43,7 @@ def ready(page: Page) -> None:
 
 def open_integrations(page: Page) -> Locator:
     ready(page)
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    menu = page.get_by_role("menu")
-    expect(menu.get_by_role("button").first).to_be_visible()
-    return menu
+    return open_integrations_menu(page)
 
 
 def offers_web_search(page: Page) -> bool:
@@ -55,7 +52,7 @@ def offers_web_search(page: Page) -> bool:
     if page.get_by_role("button", name="Integrations", exact=True).count() == 0:
         return False
     menu = open_integrations(page)
-    return menu.get_by_role("button", name="Web Search").count() > 0
+    return menu.get_by_role("menuitemcheckbox", name="Web Search").count() > 0
 
 
 @pytest.fixture
@@ -177,7 +174,7 @@ def builder(make_user) -> tuple[Actor, str]:
 
 def open_list(page: Page, entry: str) -> Locator:
     menu = open_integrations(page)
-    menu.get_by_role("button", name=re.compile(rf"^{entry}")).click()
+    menu.get_by_role("menuitem", name=re.compile(rf"^{entry}")).click()
     expect(menu.get_by_placeholder(f"Search {entry.lower()}")).to_be_visible()
     return menu
 
@@ -185,16 +182,16 @@ def open_list(page: Page, entry: str) -> Locator:
 def test_the_tool_search_narrows_the_list_by_name_and_by_description(page_for, builder):
     account, suffix = builder
     menu = open_list(page_for(account), "Tools")
-    expect(menu.get_by_role("button", name=f"Puffin counter {suffix}")).to_be_visible()
-    expect(menu.get_by_role("button", name=f"Tide table {suffix}")).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=f"Puffin counter {suffix}")).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=f"Tide table {suffix}")).to_be_visible()
 
     menu.get_by_placeholder("Search tools").fill(f"tide table {suffix}")
-    expect(menu.get_by_role("button", name=f"Puffin counter {suffix}")).to_have_count(0)
-    expect(menu.get_by_role("button", name=f"Tide table {suffix}")).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=f"Puffin counter {suffix}")).to_have_count(0)
+    expect(menu.get_by_role("menuitemcheckbox", name=f"Tide table {suffix}")).to_be_visible()
 
     menu.get_by_placeholder("Search tools").fill("seabirds on a cliff")
-    expect(menu.get_by_role("button", name=f"Puffin counter {suffix}")).to_be_visible()
-    expect(menu.get_by_role("button", name=f"Tide table {suffix}")).to_have_count(0)
+    expect(menu.get_by_role("menuitemcheckbox", name=f"Puffin counter {suffix}")).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=f"Tide table {suffix}")).to_have_count(0)
 
     menu.get_by_placeholder("Search tools").fill(f"lighthouse {suffix}")
     expect(menu.get_by_text("No tools found")).to_be_visible()
@@ -205,7 +202,7 @@ def test_a_tool_picked_from_the_search_is_offered_to_the_model(page_for, builder
     page = page_for(account)
     menu = open_list(page, "Tools")
     menu.get_by_placeholder("Search tools").fill("seabirds")
-    menu.get_by_role("button", name=f"Puffin counter {suffix}").click()
+    menu.get_by_role("menuitemcheckbox", name=f"Puffin counter {suffix}").click()
     page.keyboard.press("Escape")
     expect(page.get_by_role("button", name="Available Tools")).to_have_text("1")
 
@@ -221,12 +218,20 @@ def test_a_tool_picked_from_the_search_is_offered_to_the_model(page_for, builder
 def test_the_skill_search_narrows_the_list(page_for, builder):
     account, suffix = builder
     menu = open_list(page_for(account), "Skills")
-    expect(menu.get_by_role("button", name=re.compile(f"Knot tying {suffix}"))).to_be_visible()
-    expect(menu.get_by_role("button", name=re.compile(f"Rigging {suffix}"))).to_be_visible()
+    expect(
+        menu.get_by_role("menuitemcheckbox", name=re.compile(f"Knot tying {suffix}"))
+    ).to_be_visible()
+    expect(
+        menu.get_by_role("menuitemcheckbox", name=re.compile(f"Rigging {suffix}"))
+    ).to_be_visible()
 
     menu.get_by_placeholder("Search skills").fill(f"rigging {suffix}")
-    expect(menu.get_by_role("button", name=re.compile(f"Knot tying {suffix}"))).to_have_count(0)
-    expect(menu.get_by_role("button", name=re.compile(f"Rigging {suffix}"))).to_be_visible()
+    expect(
+        menu.get_by_role("menuitemcheckbox", name=re.compile(f"Knot tying {suffix}"))
+    ).to_have_count(0)
+    expect(
+        menu.get_by_role("menuitemcheckbox", name=re.compile(f"Rigging {suffix}"))
+    ).to_be_visible()
 
     menu.get_by_placeholder("Search skills").fill(f"anchor {suffix}")
     expect(menu.get_by_text("No skills found")).to_be_visible()

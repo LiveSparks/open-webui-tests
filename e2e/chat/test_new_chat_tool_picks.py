@@ -19,6 +19,7 @@ from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from harness.python_tools import python_tool
+from utils.cached_chat import turn_on_tool
 from utils.chat_ui import chat_input, expect_reply, send
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -43,12 +44,7 @@ def tool_badge(page: Page):
 
 
 def pick_tool(page: Page, name: str) -> None:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    menu = page.get_by_role("menu")
-    menu.get_by_role("button", name=re.compile(r"^Tools")).click()
-    menu.get_by_role("button", name=name).click()
-    page.keyboard.press("Escape")
+    turn_on_tool(page, name)
     expect(tool_badge(page)).to_have_text("1")
 
 

@@ -164,7 +164,7 @@ def open_menu(page: Page, button_name: str) -> Locator:
 
 
 def web_search_toggle(page: Page) -> Locator:
-    return page.get_by_role("menu").get_by_role("button", name="Web Search")
+    return page.get_by_role("menu").get_by_role("menuitemcheckbox", name="Web Search")
 
 
 def model_option(page: Page, name: str) -> Locator:
@@ -185,7 +185,7 @@ def test_unticking_file_upload_leaves_the_upload_unsupported(page_for, builder, 
     page = page_for(builder)
     open_chat_on(page, preset)
     with page.expect_file_chooser():
-        open_menu(page, "More").get_by_role("button", name="Upload Files").click()
+        open_menu(page, "More").get_by_role("menuitem", name="Upload Files").click()
 
     editor = open_editor(page, preset)
     set_checkbox(editor, "Capabilities", "File Upload", False)
@@ -193,7 +193,7 @@ def test_unticking_file_upload_leaves_the_upload_unsupported(page_for, builder, 
 
     open_chat_on(page, preset)
     menu = open_menu(page, "More")
-    unsupported = tooltip_button(menu, "Model(s) do not support file upload")
+    unsupported = tooltip_button(menu, "Model(s) do not support file upload", "menuitem")
     expect(unsupported).to_have_text("Upload Files")
 
 
@@ -226,7 +226,7 @@ def test_web_search_as_a_default_feature_is_on_in_a_new_chat(
 
     open_chat_on(page, preset)
     open_menu(page, "Integrations")
-    expect(web_search_toggle(page)).to_have_attribute("aria-pressed", "true")
+    expect(web_search_toggle(page)).to_have_attribute("aria-checked", "true")
     page.keyboard.press("Escape")
 
     def is_chat_request(request) -> bool:
@@ -414,7 +414,7 @@ TOGGLE_FILTER_SOURCE = """class Filter:
 def filter_switch(page: Page, filter_id: str) -> Locator:
     """The filter's switch in the chat's Integrations menu."""
     open_menu(page, "Integrations")
-    return page.get_by_role("menu").get_by_role("button", name=re.compile(filter_id))
+    return page.get_by_role("menu").get_by_role("menuitemcheckbox", name=re.compile(filter_id))
 
 
 def test_a_toggleable_filter_runs_only_while_switched_on_in_the_chat(
@@ -427,7 +427,7 @@ def test_a_toggleable_filter_runs_only_while_switched_on_in_the_chat(
         save(editor)
 
         open_chat_on(page, preset)
-        expect(filter_switch(page, filter_id)).to_have_attribute("aria-pressed", "false")
+        expect(filter_switch(page, filter_id)).to_have_attribute("aria-checked", "false")
         page.keyboard.press("Escape")
         expect(page.get_by_role("menu")).to_have_count(0)
         assert sent_request(page, upstream, "may I moor?")["messages"][-1]["content"] == (
@@ -436,7 +436,7 @@ def test_a_toggleable_filter_runs_only_while_switched_on_in_the_chat(
 
         switch = filter_switch(page, filter_id)
         switch.click()
-        expect(switch).to_have_attribute("aria-pressed", "true")
+        expect(switch).to_have_attribute("aria-checked", "true")
         page.keyboard.press("Escape")
         expect(page.get_by_role("menu")).to_have_count(0)
         request = sent_request(page, upstream, "may I moor now?")
@@ -459,7 +459,7 @@ def test_a_default_filter_starts_switched_on_in_a_new_chat(
         save(editor)
 
         open_chat_on(page, preset)
-        expect(filter_switch(page, filter_id)).to_have_attribute("aria-pressed", "true")
+        expect(filter_switch(page, filter_id)).to_have_attribute("aria-checked", "true")
         page.keyboard.press("Escape")
         expect(page.get_by_role("menu")).to_have_count(0)
         request = sent_request(page, upstream, "may I anchor here?")

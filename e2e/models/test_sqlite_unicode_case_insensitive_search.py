@@ -15,6 +15,7 @@ import pytest
 from playwright.sync_api import expect
 
 from utils.chat_ui import chat_input
+from utils.search_dialog import open_search_from_sidebar, results, search
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -32,11 +33,8 @@ def test_the_sidebar_search_finds_a_greek_title_typed_in_lowercase(page_for, mak
 
     page = page_for(account)
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Search", exact=True).first.click()
-    dialog = page.get_by_role("dialog")
-    dialog.get_by_placeholder("Search").fill("αθηνα")
+    dialog = open_search_from_sidebar(page)
+    search(dialog, "αθηνα")
 
-    # An empty query lists recent chats, so wait for the list to narrow to the match.
-    results = dialog.get_by_role("listbox", name="Search results").get_by_role("option")
-    expect(results).to_have_count(1)
-    expect(results).to_contain_text("ΑΘΗΝΑ")
+    expect(results(dialog)).to_have_count(1)
+    expect(results(dialog)).to_contain_text("ΑΘΗΝΑ")

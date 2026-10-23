@@ -21,7 +21,12 @@ from playwright.sync_api import Page, expect
 
 from harness import upstream as reply
 from harness.realtime_provider import serving_realtime_provider, using_realtime
-from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, conversation, expect_reply
+from utils.chat_ui import (
+    REPLY_TIMEOUT_MS,
+    conversation,
+    expect_reply,
+    set_tool_approval_mode,
+)
 from utils.voice_call import TURN_TIMEOUT_MS, call_status, start_call
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -48,12 +53,7 @@ def realtime(admin, e2e_instance):
 
 
 def ask_for_approval(page: Page) -> None:
-    expect(chat_input(page)).to_be_visible()
-    # the sidebar has a "More" button of its own
-    page.locator("#input-menu-button").click()
-    page.get_by_role("button", name="Tool Permissions").click()
-    page.get_by_role("button", name="Ask for approval").click()
-    page.keyboard.press("Escape")
+    set_tool_approval_mode(page, "Ask for approval")
 
 
 def test_a_spoken_request_waits_for_the_approval_in_chat_and_is_then_answered(

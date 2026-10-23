@@ -42,7 +42,7 @@ from harness.actors import Actor
 from harness.backends import wait_until
 from harness.chat_history import seed_chat
 from utils.cached_chat import attach
-from utils.chat_ui import chat_input, conversation, expect_reply, send
+from utils.chat_ui import chat_input, conversation, expect_reply, open_input_menu, send
 from utils.setting_rows import setting_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -452,10 +452,7 @@ def test_a_switched_off_context_compaction_sends_the_whole_long_chat(
 
 
 def tool_permissions_offered(page_for, account: Actor) -> Locator:
-    page = page_for(account)
-    expect(chat_input(page)).to_be_visible()
-    page.locator("#input-menu-button").click()
-    return page.get_by_role("button", name="Tool Permissions")
+    return open_input_menu(page_for(account)).get_by_role("menuitem", name="Tool Permissions")
 
 
 def test_switching_tool_permissions_on_offers_approval_in_the_chat_input_menu(
@@ -469,7 +466,7 @@ def test_switching_tool_permissions_on_offers_approval_in_the_chat_input_menu(
     offered = tool_permissions_offered(page_for, make_user())
 
     offered.click()
-    expect(offered.page.get_by_role("button", name="Ask for approval")).to_be_visible()
+    expect(offered.page.get_by_role("menuitemradio", name="Ask for approval")).to_be_visible()
 
 
 def test_switching_tool_permissions_off_takes_approval_out_of_the_chat_input_menu(

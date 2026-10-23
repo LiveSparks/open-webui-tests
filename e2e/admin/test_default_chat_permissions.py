@@ -231,7 +231,7 @@ def test_with_file_upload_off_upload_files_opens_no_file_picker(
     page.on("filechooser", lambda chooser: choosers.append(chooser))
 
     page.get_by_role("button", name="More", exact=True).last.click()
-    page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+    page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
 
     expect(page.get_by_role("menu")).to_be_visible()
     page.wait_for_timeout(1000)  # a picker would open at once
@@ -243,7 +243,7 @@ def test_with_file_upload_on_upload_files_attaches_the_file(page_for, make_user,
 
     page.get_by_role("button", name="More", exact=True).last.click()
     with page.expect_file_chooser() as chooser:
-        page.get_by_role("menu").get_by_role("button", name="Upload Files").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Upload Files").click()
     chooser.value.set_files(
         files=[{"name": "route.txt", "mimeType": "text/plain", "buffer": b"Heiligenblut"}]
     )

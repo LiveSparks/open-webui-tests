@@ -143,7 +143,9 @@ def test_a_server_switched_off_is_no_longer_offered(
         openapi_connection(listener.base_url, control, [EVERYONE]),
     )
     person_page = page_for(make_user())
-    expect(open_tools_menu(person_page).get_by_role("button", name=server_name)).to_be_visible()
+    expect(
+        open_tools_menu(person_page).get_by_role("menuitemcheckbox", name=server_name)
+    ).to_be_visible()
 
     settings = open_admin_integrations(admin_page)
     switch = connection_row(settings, server_name).get_by_role("switch")
@@ -152,8 +154,8 @@ def test_a_server_switched_off_is_no_longer_offered(
     expect(admin_page.get_by_text("Connections saved successfully")).to_be_visible()
 
     menu = open_tools_menu(person_page)
-    expect(menu.get_by_role("button", name=control)).to_be_visible()
-    expect(menu.get_by_role("button", name=server_name)).to_have_count(0)
+    expect(menu.get_by_role("menuitemcheckbox", name=control)).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=server_name)).to_have_count(0)
 
 
 def test_a_deleted_server_is_no_longer_offered(
@@ -167,7 +169,9 @@ def test_a_deleted_server_is_no_longer_offered(
         openapi_connection(listener.base_url, control, [EVERYONE]),
     )
     person_page = page_for(make_user())
-    expect(open_tools_menu(person_page).get_by_role("button", name=server_name)).to_be_visible()
+    expect(
+        open_tools_menu(person_page).get_by_role("menuitemcheckbox", name=server_name)
+    ).to_be_visible()
 
     settings = open_admin_integrations(admin_page)
     tooltip_button(connection_row(settings, server_name), "Configure").click()
@@ -178,8 +182,8 @@ def test_a_deleted_server_is_no_longer_offered(
     expect(settings.get_by_text(server_name)).to_have_count(0)
 
     menu = open_tools_menu(person_page)
-    expect(menu.get_by_role("button", name=control)).to_be_visible()
-    expect(menu.get_by_role("button", name=server_name)).to_have_count(0)
+    expect(menu.get_by_role("menuitemcheckbox", name=control)).to_be_visible()
+    expect(menu.get_by_role("menuitemcheckbox", name=server_name)).to_have_count(0)
 
 
 def test_a_server_shared_with_a_group_is_offered_to_its_members_only(
@@ -198,8 +202,8 @@ def test_a_server_shared_with_a_group_is_offered_to_its_members_only(
     save(admin_page, form)
 
     outsider_menu = open_tools_menu(page_for(outsider))
-    expect(outsider_menu.get_by_role("button", name=control)).to_be_visible()
-    expect(outsider_menu.get_by_role("button", name=server_name)).to_have_count(0)
+    expect(outsider_menu.get_by_role("menuitemcheckbox", name=control)).to_be_visible()
+    expect(outsider_menu.get_by_role("menuitemcheckbox", name=server_name)).to_have_count(0)
 
     member_page = page_for(member)
     pick_tool(member_page, server_name)

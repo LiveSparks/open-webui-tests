@@ -22,7 +22,7 @@ from harness import upstream as reply
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings, serve_search_results
-from utils.chat_ui import chat_input
+from utils.chat_ui import chat_input, open_integrations_menu
 from utils.model_selector import model_search
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -95,10 +95,9 @@ def pick_model(page: Page, current_id: str, model_id: str, *, compare: bool = Fa
 
 def web_search_shown_on(page: Page) -> bool:
     """What the Web Search toggle in the Integrations menu shows."""
-    page.get_by_role("button", name="Integrations", exact=True).last.click()
-    toggle = page.get_by_role("menu").get_by_role("button", name="Web Search")
+    toggle = open_integrations_menu(page).get_by_role("menuitemcheckbox", name="Web Search")
     expect(toggle).to_be_visible()
-    shown_on = toggle.get_attribute("aria-pressed") == "true"
+    shown_on = toggle.get_attribute("aria-checked") == "true"
     page.keyboard.press("Escape")
     expect(toggle).to_be_hidden()
     return shown_on

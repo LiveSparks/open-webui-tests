@@ -68,11 +68,46 @@ def close_menu(page: Page) -> None:
     expect(page.get_by_role("menu")).to_have_count(0)
 
 
+def menu_entries(menu: Locator) -> Locator:
+    """Every entry of a chat input menu: plain items and the ones that switch on and off."""
+    return (
+        menu.get_by_role("menuitem")
+        .or_(menu.get_by_role("menuitemcheckbox"))
+        .or_(menu.get_by_role("menuitemradio"))
+    )
+
+
+def _open_composer_menu(page: Page, button: str) -> Locator:
+    expect(chat_input(page)).to_be_visible()
+    page.get_by_role("button", name=button, exact=True).last.click()
+    menu = page.get_by_role("menu")
+    expect(menu_entries(menu).first).to_be_visible()
+    return menu
+
+
+def open_input_menu(page: Page) -> Locator:
+    """The chat input's More menu (uploads, attachments, tool permissions), once it shows."""
+    return _open_composer_menu(page, "More")
+
+
+def open_integrations_menu(page: Page) -> Locator:
+    """The chat input's Integrations menu (tools, skills, filters, web search), once it shows."""
+    return _open_composer_menu(page, "Integrations")
+
+
+def set_tool_approval_mode(page: Page, mode: str) -> None:
+    """Pick how this chat's tool calls are approved, under the More menu's Tool Permissions."""
+    menu = open_input_menu(page)
+    permissions = menu.get_by_role("menuitem", name="Tool Permissions")
+    permissions.click()
+    menu.get_by_role("menuitemradio", name=mode).click()
+    expect(permissions).to_contain_text(mode)
+    close_menu(page)
+
+
 def turn_on_integration(page: Page, name: str) -> None:
     """Switch `name` on for the next message from the chat's Integrations menu."""
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    switch = page.get_by_role("menu").get_by_role("button", name=name, exact=True)
+    switch = open_integrations_menu(page).get_by_role("menuitemcheckbox", name=name, exact=True)
     switch.click()
-    expect(switch).to_have_attribute("aria-pressed", "true")
+    expect(switch).to_have_attribute("aria-checked", "true")
     close_menu(page)

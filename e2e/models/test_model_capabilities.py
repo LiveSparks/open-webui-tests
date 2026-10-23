@@ -216,7 +216,9 @@ def test_unticking_image_generation_takes_the_image_switch_out(
 ):
     page = page_for(builder)
     open_chat_on(page, preset)
-    expect(open_menu(page, "Integrations").get_by_role("button", name="Image")).to_be_visible()
+    expect(
+        open_menu(page, "Integrations").get_by_role("menuitemcheckbox", name="Image")
+    ).to_be_visible()
 
     switch_capability(page, preset, "Image Generation", False)
 
@@ -224,7 +226,7 @@ def test_unticking_image_generation_takes_the_image_switch_out(
     integrations = page.get_by_role("button", name="Integrations", exact=True)
     if integrations.count():
         open_menu(page, "Integrations")
-    expect(page.get_by_role("menu").get_by_role("button", name="Image")).to_have_count(0)
+    expect(page.get_by_role("menu").get_by_role("menuitemcheckbox", name="Image")).to_have_count(0)
 
 
 def test_unticking_memory_keeps_a_stored_memory_out_of_the_chat(

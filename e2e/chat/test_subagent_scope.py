@@ -28,7 +28,8 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from harness.python_tools import python_tool
-from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send
+from utils.cached_chat import turn_on_tool
+from utils.chat_ui import conversation, expect_reply, last_reply, send
 from utils.member_picker import pick_member
 from utils.search_dialog import no_matches, open_search_from_sidebar, result, search
 
@@ -77,14 +78,6 @@ def delegated_row(page: Page, task: str) -> Locator:
     return last_reply(page).get_by_role("button", name=re.compile(name))
 
 
-def switch_on_tool(page: Page, name: str) -> None:
-    expect(chat_input(page)).to_be_visible()
-    page.get_by_label("Integrations").click()
-    page.get_by_role("button", name=re.compile(r"^Tools")).click()
-    page.get_by_role("button", name=name).click()
-    page.keyboard.press("Escape")
-
-
 def test_a_tool_switched_on_in_the_chat_reaches_the_subagent_and_one_left_off_does_not(
     subagents_on, admin, page_for, make_user, upstream
 ):
@@ -104,7 +97,7 @@ def test_a_tool_switched_on_in_the_chat_reaches_the_subagent_and_one_left_off_do
         python_tool(admin, TOOL_SOURCE.format(name=unused), unused_name),
     ):
         page = page_for(make_user())
-        switch_on_tool(page, used_name)
+        turn_on_tool(page, used_name)
         send(page, prompt)
         expect_reply(page, "The helper is done.")
 
