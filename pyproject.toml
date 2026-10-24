@@ -27,8 +27,7 @@ dependencies = [
     "googleapis-common-protos",
     "grpcio",
     "ldap3",
-    # mcp 2 renamed FastMCP, which the harness MCP server is built on.
-    "mcp<2",
+    "mcp",
     "numpy",
     "openai",
     "opentelemetry-proto",

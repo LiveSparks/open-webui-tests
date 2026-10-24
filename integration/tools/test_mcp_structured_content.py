@@ -142,7 +142,7 @@ def test_a_plain_string_from_an_sdk_tool_reaches_the_model_once(
     server_id = f"echo_{secrets.token_hex(4)}"
     said = "The tide turns at noon."
     upstream.queue(reply.tool_call(f"{server_id}_echo", {"text": said}), reply.text("Noted."))
-    # the harness echo tool is a plain `-> str` FastMCP tool, as the SDK's docs write one
+    # the harness echo tool is a plain `-> str` MCPServer tool, as the SDK's docs write one
     with serving_mcp() as url:
         connection = mcp_connection(url, server_id, [read_grant(person.id)])
         with admin.client() as client:

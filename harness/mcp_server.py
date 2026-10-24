@@ -1,4 +1,4 @@
-"""A Model Context Protocol tool server on a local port, built with the `mcp` SDK's own FastMCP.
+"""A Model Context Protocol tool server on a local port, built with the `mcp` SDK's own MCPServer.
 
 `serving_mcp()` runs one over Streamable HTTP in a thread of the test process and yields its
 URL, the one an admin enters for an MCP tool server connection. It offers a single tool, `echo`,
@@ -18,7 +18,7 @@ as JSON. `tls=True` serves it over
 HTTPS with a self-signed certificate. With `bearer_key` every request without that key gets a
 plain 401, the way a server keyed by an API key answers (no OAuth metadata).
 `mcp_connection(...)` is the admin's connection to it without auth; save it through
-`TOOL_SERVERS` after `preserve(TOOL_SERVERS)`. Given FastMCP's `auth` settings and a
+`TOOL_SERVERS` after `preserve(TOOL_SERVERS)`. Given MCPServer's `auth` settings and a
 `token_verifier`, the SDK guards it the way a real OAuth-protected MCP server is guarded: a
 request without a token the verifier accepts gets a 401 pointing at the protected-resource
 metadata it also serves. `host` is the address it listens on and `name` the host its URL
@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import uvicorn
-from mcp.server.fastmcp import Audio, FastMCP, Image
+from mcp.server.mcpserver import Audio, Image, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel
 
@@ -125,8 +126,8 @@ def _echo_server(
     structured: bool = False,
     composed: bool = False,
     **auth: Any,
-) -> FastMCP:
-    server = FastMCP("harness-mcp", log_level="WARNING", **auth)
+) -> MCPServer:
+    server = MCPServer("harness-mcp", log_level="WARNING", **auth)
 
     @server.tool(description=ECHO_DESCRIPTION)
     def echo(text: str) -> str:
@@ -146,7 +147,9 @@ def _echo_server(
 
         @server.tool(description="Take the boat out.")
         def capsize() -> str:
-            raise RuntimeError(CAPSIZE_ERROR)
+            # mcp 2 masks an unexpected crash; ToolError is the anticipated failure
+            # whose text still reaches the caller, as a raised error did on mcp 1.
+            raise ToolError(CAPSIZE_ERROR)
 
     if slow:
 
@@ -211,9 +214,12 @@ def serving_mcp(
     bearer_key: str | None = None,
     **auth: Any,
 ) -> Iterator[str]:
-    """Serve the echo server on `port` (a free one by default); `auth` goes to FastMCP."""
+    """Serve the echo server on `port` (a free one by default); `auth` goes to MCPServer."""
     port = port or free_port()
-    app = _echo_server(media, failing, slow, structured, composed, **auth).streamable_http_app()
+    # mcp 2 moved transport security off the server onto the Streamable HTTP app.
+    transport_security = auth.pop("transport_security", None)
+    server = _echo_server(media, failing, slow, structured, composed, **auth)
+    app = server.streamable_http_app(transport_security=transport_security)
     if bearer_key:
         app = _requiring_bearer(app, bearer_key)
     with tempfile.TemporaryDirectory(prefix="owui-mcp-") as certificates:
