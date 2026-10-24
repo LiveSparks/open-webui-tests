@@ -38,8 +38,7 @@ from harness import upstream as reply
 from harness.access import grant
 from harness.plugins import installed_function
 from utils.cached_chat import turn_on_tool
-from utils.chat_ui import chat_input, expect_reply, send
-from utils.tooltips import tooltip_button
+from utils.chat_ui import chat_input, expect_reply, integration_row, send
 from utils.valves import customise, valve
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -316,9 +315,9 @@ def set_nickname_from_integrations(page: Page, tool_name: str, nickname: str) ->
     expect(chat_input(page)).to_be_visible()
     page.get_by_label("Integrations").click()
     page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
-    tool_row = page.get_by_role("menuitemcheckbox", name=tool_name)
+    tool_row = integration_row(page.get_by_role("menu"), tool_name)
     tool_row.hover()
-    tooltip_button(tool_row, "Valves").click()
+    tool_row.get_by_role("button", name="Valves").click()
     dialog = page.get_by_role("dialog").filter(has_text="Valves")
     nickname_valve = valve(dialog, "Nickname", "What the tool calls you")
     customise(nickname_valve)

@@ -34,17 +34,17 @@ from playwright.sync_api import expect
 from harness import upstream as reply
 from harness.mcp_oauth import register_oauth_mcp, serving_protected_mcp
 from harness.mcp_server import TOOL_SERVERS
-from utils.chat_ui import expect_reply, send
+from utils.chat_ui import expect_reply, integration_row, send
 from utils.tool_servers import (
     choose_auth,
     make_public,
     open_add_connection,
     open_tools_menu,
+    press_to_sign_in,
     save,
     switch_to_mcp,
     tool_output,
 )
-from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -66,7 +66,7 @@ def sign_ins(mcp) -> list[dict]:
 def sign_in_from_the_tools_menu(page, mcp, server_name: str) -> None:
     """Press the server under Tools and follow the sign-in back to the chat."""
     sign_ins_before = len(sign_ins(mcp))
-    open_tools_menu(page).get_by_role("menuitem", name=server_name).click()
+    press_to_sign_in(open_tools_menu(page), server_name)
     page.wait_for_url(
         lambda url: "error=" in url or len(sign_ins(mcp)) > sign_ins_before,
         timeout=30_000,
@@ -154,8 +154,7 @@ def test_disconnecting_signs_out_and_the_next_use_signs_in_again(
     sign_in_from_the_tools_menu(page, mcp, server_id)
 
     menu = open_tools_menu(page)
-    server = menu.get_by_role("menuitemcheckbox", name=server_id)
-    tooltip_button(server, "Disconnect OAuth").click()
+    integration_row(menu, server_id).get_by_role("button", name="Disconnect OAuth").click()
     expect(page.get_by_text("OAuth session disconnected")).to_be_visible()
     expect(menu.get_by_role("menuitem", name=server_id)).to_be_visible()
     page.keyboard.press("Escape")

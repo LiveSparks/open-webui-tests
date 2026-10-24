@@ -7,7 +7,7 @@ import re
 from playwright.sync_api import Locator, Page, expect
 
 from utils.access_control import choose_visibility
-from utils.chat_ui import close_menu, conversation, open_integrations_menu
+from utils.chat_ui import close_menu, conversation, integration_row, open_integrations_menu
 from utils.tooltips import tooltip_button
 
 
@@ -90,6 +90,12 @@ def open_tools_menu(page: Page) -> Locator:
     menu.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
     expect(menu.get_by_placeholder("Search tools")).to_be_visible()
     return menu
+
+
+def press_to_sign_in(menu: Locator, server_name: str) -> None:
+    """Press a server under Tools that still needs a sign-in, which sends the browser to it."""
+    # the row's dimming layer takes the pointer, so press the row the way a person's click lands
+    integration_row(menu, server_name, role="menuitem").click()
 
 
 def pick_tool(page: Page, name: str) -> None:

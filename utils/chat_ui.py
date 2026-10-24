@@ -95,6 +95,13 @@ def open_integrations_menu(page: Page) -> Locator:
     return _open_composer_menu(page, "Integrations")
 
 
+def integration_row(menu: Locator, name: str, role: str = "menuitemcheckbox") -> Locator:
+    """The Integrations menu row of `name`: the innermost block holding its entry and the buttons
+    beside it (Valves, Disconnect OAuth)."""
+    entry = menu.page.get_by_role(role, name=name)
+    return menu.locator("div").filter(has=entry).last
+
+
 def set_tool_approval_mode(page: Page, mode: str) -> None:
     """Pick how this chat's tool calls are approved, under the More menu's Tool Permissions."""
     menu = open_input_menu(page)

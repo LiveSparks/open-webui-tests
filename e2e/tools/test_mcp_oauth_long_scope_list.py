@@ -31,6 +31,7 @@ from harness.mcp_oauth import GOOGLE_WORKSPACE_SCOPES, register_oauth_mcp, servi
 from harness.mcp_server import TOOL_SERVERS
 from harness.terminal_server import read_grant
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.tool_servers import press_to_sign_in
 
 pytestmark = [
     pytest.mark.regression,
@@ -54,7 +55,7 @@ def test_pressing_a_server_that_asks_for_many_scopes_connects_it(
 
         page.get_by_label("Integrations").click()
         page.get_by_role("menuitem", name=re.compile(r"^Tools")).click()
-        page.get_by_role("menuitem", name=server_id).click()
+        press_to_sign_in(page.get_by_role("menu"), server_id)
 
         # the round trip ends at the app: with a token issued, or sent home with an error
         page.wait_for_url(
