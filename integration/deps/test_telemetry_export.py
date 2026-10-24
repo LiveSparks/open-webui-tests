@@ -6,8 +6,10 @@ collector, here a local one (`harness.otel_collector`) that decodes what it gets
 the instrumentors: FastAPI's opens a span per request, which the sign-in check stamps with the
 user and how they signed in (a session or an API key). The client instrumentors open a span per
 outgoing call, which Open WebUI's hooks name after the method and URL and mark as an error on a
-4xx or 5xx answer: aiohttp's for the model provider, requests' for a Tika server, httpx's for an
-MCP server (async) and a Chroma server (sync). Redis's request hook stamps each command with the
+4xx or 5xx answer: aiohttp's for the model provider, requests' for a Tika server and httpx's for a
+Chroma server (sync). An MCP server's calls run over the mcp SDK's vendored httpx2, which the
+httpx instrumentor does not wrap, so the SDK exports its own protocol span per request instead.
+Redis's request hook stamps each command with the
 server and the statement, and SQLAlchemy's traces the synchronous engine. The metrics middleware
 counts requests by route template, observable gauges count the accounts, and the system metrics
 instrumentor reports the server's own memory and CPU time as psutil reads them. Every log line is
@@ -65,6 +67,7 @@ FASTAPI_SCOPE = "opentelemetry.instrumentation.fastapi"
 AIOHTTP_SCOPE = "opentelemetry.instrumentation.aiohttp_client"
 REQUESTS_SCOPE = "opentelemetry.instrumentation.requests"
 HTTPX_SCOPE = "opentelemetry.instrumentation.httpx"
+MCP_SDK_SCOPE = "mcp-python-sdk"
 REDIS_SCOPE = "opentelemetry.instrumentation.redis"
 RETRIEVAL_CONFIG = ("/api/v1/retrieval/config", "/api/v1/retrieval/config/update")
 SQLALCHEMY_SCOPE = "opentelemetry.instrumentation.sqlalchemy"
@@ -151,7 +154,7 @@ def test_calls_to_the_model_provider_are_client_spans_named_by_the_hooks(exporti
     assert failed[-1].status == STATUS_ERROR
 
 
-def test_calls_through_requests_and_httpx_are_client_spans_named_by_the_hooks(
+def test_calls_through_requests_are_hook_named_and_an_mcp_server_is_a_sdk_span(
     exporting, collector, preserve, listener
 ):
     preserve(RETRIEVAL_CONFIG, on=exporting)
@@ -183,11 +186,19 @@ def test_calls_through_requests_and_httpx_are_client_spans_named_by_the_hooks(
     assert extracted.attributes["http.status_code"] == 200
     assert extracted.status != STATUS_ERROR
     assert extracted.attributes["http.url"] == f"{listener.base_url}/tika/text"
-    mcp_calls = collector.wait_for(
-        lambda: _spans_named(collector, HTTPX_SCOPE, f"POST {mcp_url}"), "the MCP server calls"
+    # mcp 2 carries its traffic over the vendored httpx2, which the httpx instrumentor never sees;
+    # the SDK exports its own protocol span per request instead, under its own scope.
+    mcp_spans = collector.wait_for(
+        lambda: [
+            span
+            for span in collector.spans()
+            if span.scope == MCP_SDK_SCOPE
+            and span.attributes.get("mcp.method.name") == "tools/list"
+        ],
+        "the MCP tools/list span",
     )
-    assert {span.attributes["http.status_code"] for span in mcp_calls} <= {200, 202}
-    assert all(span.attributes["http.method"] == "POST" for span in mcp_calls)
+    assert all(span.status != STATUS_ERROR for span in mcp_spans)
+    assert all(span.attributes.get("jsonrpc.request.id") for span in mcp_spans)
 
 
 def _mcp(url: str) -> dict:

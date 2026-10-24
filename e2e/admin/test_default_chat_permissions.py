@@ -30,6 +30,7 @@ from harness.chat import ask
 from utils.chat_ui import last_reply
 from utils.model_selector import SELECTOR_BUTTON
 from utils.sidebar_folders import folder_link, folder_row
+from utils.user_menu import user_menu_trigger
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -178,7 +179,7 @@ def folder_menu_entries(page: Page, name: str) -> Locator:
 
 def archive_menu_entries(page: Page) -> Locator:
     """The entries of the Actions menu in Settings > Archived Chats, once they show."""
-    page.get_by_role("button", name="User menu").first.click()
+    user_menu_trigger(page).click()
     page.get_by_role("menu").get_by_role("button", name="Settings").click()
     settings = page.get_by_role("dialog")
     settings.get_by_role("tab", name="Archived Chats").click()

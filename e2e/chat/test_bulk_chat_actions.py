@@ -29,6 +29,7 @@ from harness.access import grant
 from harness.chat_history import seed_chat
 from utils.chat_ui import conversation
 from utils.setting_rows import setting_button
+from utils.user_menu import user_menu_trigger
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -62,7 +63,7 @@ def _open_sidebar(page: Page) -> Locator:
 
 
 def _open_settings_tab(page: Page, tab: str) -> Locator:
-    page.get_by_role("button", name="User menu").first.click()
+    user_menu_trigger(page).click()
     page.get_by_role("menu").get_by_role("button", name="Settings").click()
     settings = page.get_by_role("dialog")
     settings.get_by_role("tab", name=tab).click()

@@ -309,10 +309,11 @@ def test_an_unknown_terminal_is_still_refused(admin, dead_terminal):
 
 # --- ee1d9255f: an MCP server that fails to connect in a chat is logged with the reason -----
 
-# the reason as the traceback under the error line names it
+# the reason as the traceback under the error line names it. mcp 2 carries its traffic over the
+# vendored httpx2, and words a rejected handshake as an MCPError rather than echoing the 4xx.
 MCP_FAILURES = {
-    "refused": "httpx.ConnectError",
-    "unauthorized": "Client error '401 Unauthorized'",
+    "refused": "httpx2.ConnectError",
+    "unauthorized": "MCPError: Server returned an error response",
 }
 
 

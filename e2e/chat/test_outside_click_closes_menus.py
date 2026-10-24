@@ -32,7 +32,8 @@ UNCOVERED_POINT = """(element) => {
 
 
 def first_suggestion(page: Page) -> Locator:
-    return page.get_by_role("main").get_by_role("listitem").first
+    # the suggestion is the button; its listitem wrapper lays out as `contents` with no box
+    return page.get_by_role("main").get_by_role("listitem").first.get_by_role("button")
 
 
 def click_uncovered(target: Locator) -> None:

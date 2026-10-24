@@ -32,8 +32,9 @@ pytestmark = pytest.mark.depcheck
 
 IMPORT_NAME = "mcp"
 
-# The session calls client.py makes that no feature reaches yet: (method, positional arguments,
-# keyword arguments). Connecting, listing tools and calling one run end to end over HTTP.
+# The client.py calls into mcp's high-level Client that no feature reaches yet: (method,
+# positional arguments, keyword arguments). Connecting, listing tools and calling one run end to
+# end over HTTP.
 SESSION_CALLS = [
     ("list_resources", (), {"cursor": None}),
     ("read_resource", ("file:///notes.txt",), {}),
@@ -123,12 +124,12 @@ def test_every_call_into_an_imported_name_binds(depcheck, open_webui_backend):
 )
 def test_the_session_calls_client_py_makes_still_bind(depcheck, method, args, kwargs):
     mod = depcheck.load(IMPORT_NAME)
-    session_method = getattr(mod.ClientSession, method, None)
-    assert inspect.iscoroutinefunction(session_method), f"ClientSession.{method} is not async"
+    client_method = getattr(mod.Client, method, None)
+    assert inspect.iscoroutinefunction(client_method), f"Client.{method} is not async"
     try:
-        inspect.signature(session_method).bind(None, *args, **kwargs)
+        inspect.signature(client_method).bind(None, *args, **kwargs)
     except TypeError as error:
-        pytest.fail(f"client.py's ClientSession.{method}(...) call no longer binds: {error}")
+        pytest.fail(f"client.py's Client.{method}(...) call no longer binds: {error}")
 
 
 def test_list_resources_result_shape(depcheck):

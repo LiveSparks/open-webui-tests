@@ -57,6 +57,7 @@ from utils.phone import (
     swipe,
     tap_on_screen,
 )
+from utils.user_menu import user_menu_trigger
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -101,7 +102,7 @@ def expect_sidebar_open(page: Page) -> None:
     for entry in (
         sidebar_new_chat(page),
         sidebar(page).get_by_role("button", name="Search"),
-        sidebar(page).get_by_label("User menu"),
+        user_menu_trigger(page),
     ):
         expect_on_screen(entry)
 
