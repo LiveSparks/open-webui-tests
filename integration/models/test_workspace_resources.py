@@ -30,6 +30,8 @@ import uuid
 import httpx
 import pytest
 
+from harness.access import make_group
+
 pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_source]
 
 EVERYONE_READS = {"principal_type": "user", "principal_id": "*", "permission": "read"}
@@ -236,6 +238,7 @@ def test_a_note_shared_for_reading_with_one_person_is_listed(admin, make_user):
 
 def test_writable_and_own_notes_stay_out_of_the_read_only_list(admin, make_user):
     viewer = make_user()
+    make_group(admin, [viewer], {"sharing": {"public_notes": True}})
     writable = _shared_note(admin, _grant(viewer.id, "read"), _grant(viewer.id, "write"))
     own = _shared_note(viewer, EVERYONE_READS)
 

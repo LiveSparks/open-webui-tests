@@ -1115,7 +1115,7 @@ def test_a_reader_whose_grant_is_revoked_on_one_instance_stops_getting_messages_
             },
         )
     assert created.status_code == 200, created.text
-    channel_id, name = created.json()["id"], created.json()["name"]
+    channel_id = created.json()["id"]
     with (
         joined(signed_in_on(revoked, far)) as revoked_tab,
         joined(signed_in_on(kept, far)) as kept_tab,
@@ -1125,7 +1125,7 @@ def test_a_reader_whose_grant_is_revoked_on_one_instance_stops_getting_messages_
         assert _wait_for_types(revoked_events, channel_id, 1) == ["message"]
         assert _wait_for_types(kept_events, channel_id, 1) == ["message"]
 
-        _post_via(admin, channel_id, "update", name=name, access_grants=[_grant(kept, "read")])
+        _post_via(admin, channel_id, "access/update", access_grants=[_grant(kept, "read")])
         post_message(admin, channel_id, "after the change")
         after = _wait_for_types(kept_events, channel_id, 2)
         time.sleep(QUIET_PERIOD)

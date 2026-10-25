@@ -2,10 +2,10 @@
 
 The Access dialog opened from a skill, tool or note's menu saves every change straight to the
 item's access route, and offers Public only to an account with the public sharing permission for
-that kind. The server holds the same line on its own: a public grant sent by an owner without the
-permission is dropped while the rest of the save stands, so an unrelated account still cannot
-open the item; with the permission the grant is kept and any account can open it. The browser
-side is e2e/workspace/test_access_from_item_menus.py.
+that kind. The server holds the same line on its own: a save that includes Public from an owner
+without the permission is refused outright, so nothing is shared and an unrelated account still
+cannot open the item; with the permission the grant is kept and any account can open it. The
+browser side is e2e/workspace/test_access_from_item_menus.py.
 
 Discriminates: passes on dev 206bf9723 (3 of 3). In a backend copy whose grant filter no longer
 drops public grants every "without" case goes red (the stranger opens the item), and in one
@@ -112,7 +112,7 @@ def _owner(admin: Actor, make_user, kind: Kind, may_publish: bool) -> Actor:
     return account
 
 
-def _made_public_by(owner: Actor, kind: Kind, reader: Actor) -> tuple[str, list[tuple]]:
+def _save_public_grants(owner: Actor, kind: Kind, reader: Actor):
     """The owner saves the grants the dialog sends for Public plus a reader; returns what stuck."""
     with owner.client() as client:
         item_id = kind.create(client)
@@ -120,34 +120,31 @@ def _made_public_by(owner: Actor, kind: Kind, reader: Actor) -> tuple[str, list[
             kind.access_path.format(id=item_id),
             json={"access_grants": [EVERYONE_READS, grant("user", reader.id, "read")]},
         )
-        assert saved.status_code == 200, saved.text
         stored = client.get(kind.item_path.format(id=item_id))
     assert stored.status_code == 200, stored.text
     grants = [
         (entry["principal_type"], entry["principal_id"], entry["permission"])
         for entry in stored.json()["access_grants"]
     ]
-    return item_id, grants
+    return item_id, saved, grants
 
 
 @pytest.mark.parametrize("kind_name", list(KINDS))
-def test_without_the_public_permission_the_public_grant_is_dropped_and_the_rest_kept(
-    admin, make_user, kind_name
-):
+def test_without_the_public_permission_the_whole_save_is_refused(admin, make_user, kind_name):
     kind = KINDS[kind_name]
     owner = _owner(admin, make_user, kind, may_publish=False)
     reader, stranger = make_user(), make_user()
 
-    item_id, grants = _made_public_by(owner, kind, reader)
+    item_id, saved, grants = _save_public_grants(owner, kind, reader)
     with stranger.client() as client:
         opened_by_stranger = client.get(kind.item_path.format(id=item_id))
     with reader.client() as client:
         opened_by_reader = client.get(kind.item_path.format(id=item_id))
 
-    assert ("user", "*", "read") not in grants
-    assert ("user", reader.id, "read") in grants
+    assert saved.status_code == 403, saved.text
+    assert grants == [], grants
     assert opened_by_stranger.status_code != 200, opened_by_stranger.text
-    assert opened_by_reader.status_code == 200, opened_by_reader.text
+    assert opened_by_reader.status_code != 200, opened_by_reader.text
 
 
 @pytest.mark.parametrize("kind_name", list(KINDS))
@@ -156,9 +153,10 @@ def test_with_the_public_permission_any_account_opens_the_item(admin, make_user,
     owner = _owner(admin, make_user, kind, may_publish=True)
     reader, stranger = make_user(), make_user()
 
-    item_id, grants = _made_public_by(owner, kind, reader)
+    item_id, saved, grants = _save_public_grants(owner, kind, reader)
     with stranger.client() as client:
         opened_by_stranger = client.get(kind.item_path.format(id=item_id))
 
+    assert saved.status_code == 200, saved.text
     assert ("user", "*", "read") in grants
     assert opened_by_stranger.status_code == 200, opened_by_stranger.text

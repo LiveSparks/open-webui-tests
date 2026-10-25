@@ -38,7 +38,7 @@ pytestmark = [pytest.mark.journey, pytest.mark.api, pytest.mark.requires_source]
 CALENDAR = Shareable(
     create_path="/api/v1/calendars/create",
     create_body=lambda: {"name": f"shared {uuid.uuid4().hex[:8]}"},
-    access_path="/api/v1/calendars/{id}/update",
+    access_path="/api/v1/calendars/{id}/access/update",
 )
 START_NS = 1_900_000_000 * 1_000_000_000  # a fixed day in 2030, clear of any real schedule
 
@@ -91,7 +91,7 @@ def _owner_view(client: httpx.Client, fields: dict) -> dict | None:
 MATRIX = [
     ("GET", "/api/v1/calendars/{id}", None, None, READ),
     ("POST", "/api/v1/calendars/{id}/update", _fresh_name, None, WRITE),
-    ("POST", "/api/v1/calendars/{id}/update", {"access_grants": []}, None, OWNER),
+    ("POST", "/api/v1/calendars/{id}/access/update", {"access_grants": []}, None, OWNER),
     ("DELETE", "/api/v1/calendars/{id}/delete", None, None, OWNER),
     ("POST", "/api/v1/calendars/events/create", _new_event, None, WRITE),
     ("GET", "/api/v1/calendars/events/{event_id}", None, _event_in, READ),

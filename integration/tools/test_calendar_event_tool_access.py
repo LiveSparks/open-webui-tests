@@ -56,7 +56,9 @@ def _event_by(author, calendar_id: str) -> str:
 
 def _withdraw_grants(owner, calendar_id: str) -> None:
     with owner.client() as client:
-        updated = client.post(f"/api/v1/calendars/{calendar_id}/update", json={"access_grants": []})
+        updated = client.post(
+            f"/api/v1/calendars/{calendar_id}/access/update", json={"access_grants": []}
+        )
     assert updated.status_code == 200, updated.text
 
 
@@ -135,7 +137,7 @@ def test_a_reader_cannot_change_or_delete_an_event_in_the_shared_calendar(
     reader = make_user()
     with owner.client() as client:
         client.post(
-            f"/api/v1/calendars/{calendar_id}/update",
+            f"/api/v1/calendars/{calendar_id}/access/update",
             json={"access_grants": [grant("user", reader.id, "read")]},
         ).raise_for_status()
     event_id = _event_by(owner, calendar_id)

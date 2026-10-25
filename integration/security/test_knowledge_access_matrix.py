@@ -185,10 +185,10 @@ def test_a_public_grant_without_the_permission_is_dropped(knowledge_allowed, mak
             f"/api/v1/knowledge/{knowledge_id}/access/update",
             json={"access_grants": [EVERYONE_READS]},
         )
-    assert reshared.status_code == 200, reshared.text
+    # creating still drops the grant silently; the access route refuses it outright
+    assert reshared.status_code == 403, reshared.text
 
     assert created.json()["access_grants"] == []
-    assert reshared.json()["access_grants"] == []
     with stranger.client() as client:
         assert client.get(f"/api/v1/knowledge/{knowledge_id}").status_code == 401
         listed = client.get("/api/v1/knowledge/").json()["items"]

@@ -141,8 +141,8 @@ def test_authorship_does_not_stand_in_for_revoked_write_access(
     with admin.client() as client:
         revoked = _grants((author.id, "read"), *_read_write(member))
         client.post(
-            f"/api/v1/channels/{standard_channel}/update",
-            json={"name": "standard-room", "access_grants": revoked},
+            f"/api/v1/channels/{standard_channel}/access/update",
+            json={"access_grants": revoked},
         ).raise_for_status()
 
     refused = action(author, standard_channel, message_id)

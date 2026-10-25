@@ -2,7 +2,8 @@
 
 Every save that changes a prompt adds a history entry holding a snapshot of it and makes that
 entry the active version; a save that changes nothing adds none, and changing who the prompt is
-shared with adds one. Restoring an earlier entry copies its snapshot back into the prompt.
+shared with, now a separate access route, adds none. Restoring an earlier entry copies its
+snapshot back into the prompt.
 Deleting an entry takes write access to the prompt: an account the prompt is shared with for
 reading is refused and the entry stays, the owner, a writer and the admin may delete it. The
 active version cannot be deleted. Two versions are compared line by line for anyone who may read
@@ -116,27 +117,32 @@ def test_a_save_adds_a_history_entry_and_makes_it_active(author):
     assert saved["version_id"] == latest["id"]
 
 
-def test_an_unchanged_save_adds_no_version_and_a_new_share_does(author, make_user):
-    """#32709, fix 312d113fd: every save from the editor, which sends the grants, added one."""
+def _share(client: httpx.Client, prompt_id: str, grants: list[dict]) -> None:
+    shared = client.post(
+        f"/api/v1/prompts/id/{prompt_id}/access/update", json={"access_grants": grants}
+    )
+    assert shared.status_code == 200, shared.text
+
+
+def test_an_unchanged_save_adds_no_version_and_sharing_adds_none(author, make_user):
+    """#32709, fix 312d113fd: every save from the editor, which sent the grants, added one.
+
+    Sharing now goes through the access route, which keeps no prompt version of its own.
+    """
     reader = make_user()
     share = [{"principal_type": "user", "principal_id": reader.id, "permission": "read"}]
     with author.client() as client:
         prompt = _create_prompt(client, "first draft")
-        unchanged = _save(client, prompt, "first draft", access_grants=[])
+        unchanged = _save(client, prompt, "first draft")
         after_unchanged = _history(client, prompt["id"])
-        _save(client, prompt, "first draft", access_grants=share)
+        _share(client, prompt["id"], share)
         after_share = _history(client, prompt["id"])
-        _save(client, prompt, "first draft", access_grants=share)
-        after_same_share = _history(client, prompt["id"])
 
     assert len(after_unchanged) == 1, (
         f"saving the prompt unchanged added a version: {len(after_unchanged)} entries"
     )
     assert unchanged["version_id"] == prompt["version_id"]
-    assert len(after_share) == 2, f"sharing the prompt added no version: {after_share}"
-    assert len(after_same_share) == 2, (
-        f"saving the same share again added a version: {len(after_same_share)} entries"
-    )
+    assert len(after_share) == 1, f"sharing the prompt added a version: {after_share}"
 
 
 def test_restoring_an_earlier_version_brings_its_content_back(author):

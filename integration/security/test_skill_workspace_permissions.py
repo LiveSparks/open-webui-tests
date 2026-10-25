@@ -333,7 +333,7 @@ def test_a_public_grant_needs_the_public_sharing_permission(route, admin, make_u
             if route == "create":
                 answer = client.post(f"{SKILLS}/create", json={**body, "access_grants": public})
             else:
-                created = client.post(f"{SKILLS}/create", json=body).json()
+                client.post(f"{SKILLS}/create", json=body).raise_for_status()
                 if route == "update":
                     answer = client.post(
                         f"{SKILLS}/id/{body['id']}/update",
@@ -341,16 +341,25 @@ def test_a_public_grant_needs_the_public_sharing_permission(route, admin, make_u
                     )
                 else:
                     answer = client.post(
-                        f"{SKILLS}/id/{created['id']}/access/update",
+                        f"{SKILLS}/id/{body['id']}/access/update",
                         json={"access_grants": public},
                     )
-            assert answer.status_code == 200, answer.text
+            # the access route refuses a public grant the account may not make; the others
+            # keep 200, create dropping it silently and update ignoring grants altogether
+            expected_status = 403 if (route == "access" and name == "plain") else 200
+            assert answer.status_code == expected_status, answer.text
             stored = client.get(f"{SKILLS}/id/{body['id']}").json()
         kept[name] = [
             (entry["principal_id"], entry["permission"]) for entry in stored["access_grants"]
         ]
 
-    assert kept == {"plain": [], "sharer": [("*", "read")]}
+    shared = [("*", "read")]
+    expected = {
+        "create": {"plain": [], "sharer": shared},
+        "update": {"plain": [], "sharer": []},
+        "access": {"plain": [], "sharer": shared},
+    }
+    assert kept == expected[route]
 
 
 def test_a_copy_and_an_import_of_a_public_skill_start_private(admin, make_user):

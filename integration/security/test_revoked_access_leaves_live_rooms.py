@@ -81,13 +81,9 @@ def _join_channels(session: SocketSession, account) -> None:
 
 def _set_channel_readers(admin, channel_id: str, *readers) -> None:
     with admin.client() as client:
-        channel = client.get(f"/api/v1/channels/{channel_id}").json()
         updated = client.post(
-            f"/api/v1/channels/{channel_id}/update",
-            json={
-                "name": channel["name"],
-                "access_grants": [_grant(reader) for reader in readers],
-            },
+            f"/api/v1/channels/{channel_id}/access/update",
+            json={"access_grants": [_grant(reader) for reader in readers]},
         )
     assert updated.status_code == 200, updated.text
 
@@ -153,34 +149,13 @@ def _share_note(owner, note_id: str, *readers) -> None:
     assert shared.status_code == 200, shared.text
 
 
-def _revoke_through_access_route(owner, note_id: str, *kept) -> None:
-    _share_note(owner, note_id, *kept)
-
-
-def _revoke_through_note_update(owner, note_id: str, *kept) -> None:
-    with owner.client() as client:
-        updated = client.post(
-            f"/api/v1/notes/{note_id}/update",
-            json={"title": "shared", "access_grants": [_grant(reader) for reader in kept]},
-        )
-    assert updated.status_code == 200, updated.text
-
-
-REVOKE_ROUTES = pytest.mark.parametrize(
-    "revoke",
-    [_revoke_through_access_route, _revoke_through_note_update],
-    ids=["access-update", "note-update"],
-)
-
-
 def _follow_note(session: SocketSession, account, note_id: str) -> None:
     """Open the note the way the note page does: follow its edits and its live document."""
     session.call("join-note", {"auth": {"token": account.token}, "note_id": note_id})
     session.join_note(note_id)
 
 
-@REVOKE_ROUTES
-def test_a_reader_removed_from_a_note_stops_getting_its_edits(make_user, revoke):
+def test_a_reader_removed_from_a_note_stops_getting_its_edits(make_user):
     owner, removed, kept = make_user(), make_user(), make_user()
     note_id = _create_note(owner)
     _share_note(owner, note_id, removed, kept)
@@ -188,7 +163,7 @@ def test_a_reader_removed_from_a_note_stops_getting_its_edits(make_user, revoke)
     with connected(removed) as removed_tab, connected(kept) as kept_tab:
         _follow_note(removed_tab, removed, note_id)
         _follow_note(kept_tab, kept, note_id)
-        revoke(owner, note_id, kept)
+        _share_note(owner, note_id, kept)
         title = f"renamed {uuid.uuid4().hex[:6]}"
         to_removed = _arrivals(removed_tab, "events:note", title)
         to_kept = _arrivals(kept_tab, "events:note", title)
@@ -206,8 +181,7 @@ def test_a_reader_removed_from_a_note_stops_getting_its_edits(make_user, revoke)
     )
 
 
-@REVOKE_ROUTES
-def test_a_reader_removed_from_a_note_stops_getting_live_typing(make_user, revoke):
+def test_a_reader_removed_from_a_note_stops_getting_live_typing(make_user):
     owner, removed, kept = make_user(), make_user(), make_user()
     note_id = _create_note(owner)
     _share_note(owner, note_id, removed, kept)
@@ -220,7 +194,7 @@ def test_a_reader_removed_from_a_note_stops_getting_live_typing(make_user, revok
         owners_tab.join_note(note_id)
         removed_tab.join_note(note_id)
         kept_tab.join_note(note_id)
-        revoke(owner, note_id, kept)
+        _share_note(owner, note_id, kept)
         owners_tab.edit_note(note_id, "typed after the change")
         kept_update = kept_tab.note_update(note_id, timeout=ARRIVAL_TIMEOUT)
         time.sleep(QUIET_PERIOD)
