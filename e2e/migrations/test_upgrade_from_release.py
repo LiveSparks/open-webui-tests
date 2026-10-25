@@ -41,7 +41,7 @@ from utils.cached_chat import attach_from_menu, calling, turn_on_tool
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, replies, send
 from utils.sidebar_chats import chat_menu, chat_row
 from utils.sidebar_folders import folder_row
-from utils.user_menu import user_menu_trigger
+from utils.user_menu import open_settings
 
 pytestmark = [
     pytest.mark.journey,
@@ -111,8 +111,7 @@ def _folder_with_its_chats(sidebar: Locator, folder_id: str) -> Locator:
 
 
 def _open_settings_tab(page: Page, tab: str) -> Locator:
-    user_menu_trigger(page).click()
-    page.get_by_role("menu").get_by_role("button", name="Settings").click()
+    open_settings(page)
     settings = page.get_by_role("dialog")
     settings.get_by_role("tab", name=tab).click()
     return settings

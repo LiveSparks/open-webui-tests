@@ -30,6 +30,7 @@ from harness.listener import json_answer
 from harness.terminal_server import FakeTerminalServer, serving_terminal
 from utils.chat_ui import chat_input
 from utils.tooltips import tooltip_button
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -132,8 +133,7 @@ def test_a_key_typed_with_a_trailing_space_is_saved_trimmed(
     direct_integrations(True)
     account = make_user(role="admin")
     page = page_for(account)
-    page.get_by_role("button", name="User menu").first.click()
-    page.get_by_role("menu").get_by_role("button", name="Settings").click()
+    open_settings(page)
     settings = page.get_by_role("dialog")
     # the personal tab comes before the admin tab of the same name
     settings.get_by_role("tab", name="Integrations").first.click()

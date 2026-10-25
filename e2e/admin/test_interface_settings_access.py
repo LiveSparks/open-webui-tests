@@ -13,6 +13,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from utils.chat_ui import chat_input
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -29,11 +30,10 @@ def save_default_permission(page: Page, switch: str, turn_on: bool) -> None:
     expect(page.get_by_text("Default permissions updated successfully")).to_be_visible()
 
 
-def open_settings(page: Page) -> Page:
+def open_settings_dialog(page: Page) -> Page:
     page.goto("/")
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     expect(page.get_by_role("tab", name="General", exact=True).first).to_be_visible()
     return page
 
@@ -49,9 +49,9 @@ def test_switching_interface_settings_access_off_removes_the_tab_for_accounts_on
     admin_page = page_for(admin)
     save_default_permission(admin_page, "Interface Settings Access", turn_on=False)
 
-    account_page = open_settings(page_for(make_user()))
+    account_page = open_settings_dialog(page_for(make_user()))
     expect(account_page.get_by_role("tab", name="General", exact=True).first).to_be_visible()
     expect(interface_tabs(account_page)).to_have_count(0)
 
-    open_settings(admin_page)
+    open_settings_dialog(admin_page)
     expect(interface_tabs(admin_page).first).to_be_visible()

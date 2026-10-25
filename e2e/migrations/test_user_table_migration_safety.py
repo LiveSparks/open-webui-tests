@@ -28,6 +28,7 @@ from harness.legacy_accounts import LEGACY_PASSWORD, legacy_email, legacy_id, se
 from harness.oidc_provider import shared_provider, sso_env
 from harness.prepared_data import RunningBackend, serving
 from utils.chat_ui import chat_input
+from utils.user_menu import open_settings
 
 pytestmark = [
     pytest.mark.regression,
@@ -96,8 +97,7 @@ def signed_in_page(new_page, upgraded) -> Callable[[str], Page]:
 
 def test_a_setting_saved_before_the_upgrade_is_still_on(signed_in_page):
     page = signed_in_page("alice")
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Interface").click()
 
     switch = page.get_by_role("switch", name="Widescreen Mode")

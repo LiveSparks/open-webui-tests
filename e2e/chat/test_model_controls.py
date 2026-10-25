@@ -46,6 +46,7 @@ from harness.model_controls import LENGTH, THINKING, pick, preset_with_controls
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import REPLY_TIMEOUT_MS, chat_input, expect_reply, replies, send
 from utils.setting_rows import setting_button
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -357,8 +358,7 @@ def test_without_the_permissions_the_controls_are_still_picked_and_sent(
 
 
 def _open_general_settings(page: Page) -> Locator:
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="General").click()
     return page.get_by_role("dialog")
 

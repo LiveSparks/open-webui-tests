@@ -95,7 +95,7 @@ def test_signing_out_in_one_browser_ends_its_session_and_leaves_the_other(
     staying_session = _sign_in(staying, account)
 
     leaving.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    leaving.get_by_role("button", name="Sign Out").click()
+    leaving.get_by_role("menuitem", name="Sign Out").click()
 
     expect(leaving).to_have_url(SIGN_IN_URL)
     expect(leaving.get_by_role("button", name="Sign in", exact=True)).to_be_visible()

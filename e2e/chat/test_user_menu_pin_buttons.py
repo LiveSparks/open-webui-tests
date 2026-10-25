@@ -24,6 +24,8 @@ import time
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from utils.user_menu import settings_item
+
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 PIN = "Pin to Sidebar"
@@ -36,7 +38,7 @@ TOOLTIP_OF = "(button) => button.parentElement._tippy?.props.content"
 def page(page_for, make_user) -> Page:
     page = page_for(make_user(role="admin"))
     page.get_by_role("button", name="User menu").first.click()
-    expect(page.get_by_role("menu").get_by_role("button", name="Settings")).to_be_visible()
+    expect(settings_item(page)).to_be_visible()
     return page
 
 
@@ -45,7 +47,8 @@ def _notes_row(page: Page) -> Locator:
 
 
 def _pin_buttons(page: Page) -> Locator:
-    return page.get_by_role("menu").locator(".user-menu-row").get_by_role("button")
+    # the row's main entry is a menuitem link; the pin toggle is the row's only button element
+    return page.get_by_role("menu").locator(".user-menu-row").locator("button")
 
 
 def _tooltip_becomes(button: Locator, expected: str, timeout: float = 5.0) -> None:
@@ -81,7 +84,7 @@ def test_pin_buttons_hide_when_the_window_loses_focus_while_shift_is_held(page):
 
 def test_a_clicked_pin_button_switches_its_icon_and_tooltip_at_once(page):
     page.keyboard.down("Shift")
-    button = _notes_row(page).get_by_role("button")
+    button = _notes_row(page).locator("button")
     expect(button).to_be_visible()
     first_tooltip = button.evaluate(TOOLTIP_OF)
     first_icon = button.inner_html()

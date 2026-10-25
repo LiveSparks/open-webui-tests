@@ -16,3 +16,14 @@ def user_menu_trigger(page: Page) -> Locator:
     return page.get_by_role("navigation", name="Chat history").get_by_label(
         "Open User Profile Menu"
     )
+
+
+def settings_item(page: Page) -> Locator:
+    """The Settings entry inside the open user menu, a menuitem rather than a plain button now."""
+    return page.get_by_role("menu").get_by_role("menuitem", name="Settings")
+
+
+def open_settings(page: Page) -> None:
+    """Open the user menu and click Settings, in the expanded sidebar or the collapsed rail."""
+    user_menu_trigger(page).click()
+    settings_item(page).click()

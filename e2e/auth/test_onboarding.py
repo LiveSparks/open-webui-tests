@@ -96,7 +96,7 @@ def test_the_owner_signs_back_in_on_a_plain_sign_in_page(visitor, fresh_install)
     visitor.reload()
     expect(chat_input(visitor)).to_be_visible(timeout=PAGE_TIMEOUT_MS)
     visitor.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    visitor.get_by_role("button", name="Sign Out").click()
+    visitor.get_by_role("menuitem", name="Sign Out").click()
 
     expect(visitor).to_have_url(re.compile(r"/auth"))
     expect(visitor.get_by_text("Sign in to Open WebUI")).to_be_visible(timeout=PAGE_TIMEOUT_MS)

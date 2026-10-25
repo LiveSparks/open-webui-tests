@@ -20,6 +20,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from utils.chat_ui import chat_input
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -67,8 +68,7 @@ def test_an_admin_finds_the_admin_tabs_in_named_groups(page_for, make_user):
 def test_a_person_without_the_admin_role_sees_no_admin_tabs(page_for, make_user):
     page = page_for(make_user())
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     dialog = settings_dialog(page)
 
     expect(dialog.get_by_role("tablist", name="Admin")).to_have_count(0)

@@ -17,6 +17,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
 from utils.setting_rows import setting_button
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -39,8 +40,7 @@ def account_owner(admin, make_user, preserve) -> Actor:
 
 
 def _account_settings(page: Page) -> Locator:
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Account").click()
     return page.get_by_role("dialog")
 

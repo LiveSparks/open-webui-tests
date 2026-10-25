@@ -58,6 +58,7 @@ from harness.mfa import (
 from harness.oidc_provider import shared_provider, sso_env
 from utils.chat_ui import chat_input
 from utils.setting_rows import setting_button
+from utils.user_menu import open_settings
 
 pytestmark = [
     pytest.mark.journey,
@@ -178,7 +179,7 @@ def sign_out(page: Page, secured) -> None:
     page.reload()
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Sign Out").click()
+    page.get_by_role("menuitem", name="Sign Out").click()
 
 
 def test_a_later_sign_in_refuses_a_wrong_code_and_takes_a_current_one(secured, open_page):
@@ -243,8 +244,7 @@ def test_an_sso_sign_in_sets_up_an_authenticator_and_asks_for_it_next_time(secur
 
 def open_account_settings(page: Page) -> None:
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Account").click()
 
 

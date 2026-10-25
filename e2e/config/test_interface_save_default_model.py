@@ -20,6 +20,7 @@ from playwright.sync_api import Page, expect
 from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -55,8 +56,7 @@ def account_with(make_user, **ui):
 
 def save_interface_tab(page: Page) -> None:
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Interface").click()
     with page.expect_response(lambda response: "/user/settings/update" in response.url):
         page.locator("#tab-interface").get_by_role("button", name="Save").click()

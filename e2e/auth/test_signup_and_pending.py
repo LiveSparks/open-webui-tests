@@ -206,7 +206,7 @@ def test_with_the_admin_default_role_a_newcomer_is_offered_the_admin_panel(page,
     page.reload()
 
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("link", name="Admin Panel").click()
+    page.get_by_role("menuitem", name="Admin Panel").click()
     expect(page.get_by_role("main").get_by_role("button", name="Add User")).to_be_visible()
     expect(page.get_by_text("Account Activation Pending")).to_be_hidden()
 

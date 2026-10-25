@@ -42,6 +42,7 @@ from harness.listener import Listener, json_answer
 from harness.web_retrieval import LOCAL_WEB_FETCH
 from utils.chat_ui import expect_reply, send
 from utils.tooltips import tooltip_button
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -124,8 +125,7 @@ def _wait_for(condition, timeout: float = DELIVERY_TIMEOUT) -> bool:
 
 
 def _open_notifications(page: Page):
-    page.get_by_role("button", name="User menu").first.click()
-    page.get_by_role("menu").get_by_role("button", name="Settings").click()
+    open_settings(page)
     settings = page.get_by_role("dialog")
     settings.get_by_role("tab", name="Notifications").click()
     expect(settings.get_by_text("Browser Notifications", exact=True)).to_be_visible()

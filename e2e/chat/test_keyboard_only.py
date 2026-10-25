@@ -37,6 +37,7 @@ from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, conversation, expect_reply
 from utils.model_selector import model_search
+from utils.user_menu import settings_item
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -208,7 +209,7 @@ def open_settings_from_the_user_menu(page: Page) -> Locator:
     page.keyboard.press("Enter")
     menu = page.get_by_role("menu")
     expect_focus_inside(page, menu)
-    press_until_focused(page, "Tab", menu.get_by_role("button", name="Settings"), limit=10)
+    press_until_focused(page, "Tab", settings_item(page), limit=10)
     page.keyboard.press("Enter")
     settings = page.get_by_role("dialog")
     expect(settings.get_by_role("button", name="Back", exact=True)).to_be_focused()

@@ -25,6 +25,7 @@ from playwright.sync_api import Page, expect
 from harness import upstream as reply
 from utils.chat_ui import chat_input, conversation, expect_reply, send
 from utils.search_dialog import no_matches, open_search_from_sidebar, search
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -131,8 +132,7 @@ def test_temporary_chat_by_default_starts_new_chats_temporary(page_for, make_use
     expect(chat_input(page)).to_be_visible()
     expect(temporary_label(page)).to_have_count(0)
 
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("menu").get_by_role("button", name="Settings").click()
+    open_settings(page)
     settings = page.get_by_role("dialog")
     settings.get_by_role("tab", name="Interface").click()
     with page.expect_response(lambda response: "/user/settings/update" in response.url):

@@ -16,12 +16,13 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from utils.user_menu import open_settings
+
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 
 def _widescreen_switch(page: Page):
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Interface").click()
     return page.get_by_role("switch", name="Widescreen Mode")
 

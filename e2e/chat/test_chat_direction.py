@@ -20,6 +20,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness import upstream as reply
 from utils.chat_ui import conversation, expect_reply, last_reply, send
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -34,8 +35,7 @@ def chat_page(page_for, make_user, upstream):
 
 
 def _open_direction_button(page: Page) -> Locator:
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Interface").click()
     return page.get_by_role("button", name="Chat direction")
 

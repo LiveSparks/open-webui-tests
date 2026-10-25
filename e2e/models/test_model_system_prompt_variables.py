@@ -29,6 +29,7 @@ from harness.python_tools import EVERYONE_READS
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input
 from utils.model_editor import open_chat_on, open_editor, save, sent_request
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -128,8 +129,7 @@ def test_the_groups_of_the_person_chatting_fill_the_system_prompt(
 def save_user_variable(page: Page, key: str, value: str) -> None:
     """Add a user variable under Settings > Account and save the tab."""
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Account").click()
     settings = page.get_by_role("dialog").first
     settings.get_by_role("button", name="Add", exact=True).click()

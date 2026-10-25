@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from harness.access import make_group
+from utils.user_menu import settings_item
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -38,7 +39,7 @@ def _list_row(page: Page, name: str):
 
 def _open_user_menu(page: Page) -> None:
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    expect(page.get_by_role("button", name="Settings")).to_be_visible()
+    expect(settings_item(page)).to_be_visible()
 
 
 def test_an_automation_is_listed_with_its_schedule_and_opens_from_the_list(
@@ -144,7 +145,7 @@ def test_deleting_from_the_list_menu_takes_it_off_the_list(page_for, scheduler, 
 def test_a_user_without_the_permission_sees_no_automations(page_for, make_user):
     page = page_for(make_user())
     _open_user_menu(page)
-    expect(page.get_by_role("link", name="Automations")).to_have_count(0)
+    expect(page.get_by_role("menu").get_by_role("menuitem", name="Automations")).to_have_count(0)
 
     page.goto("/automations")
     expect(page).to_have_url(re.compile(r"/$"))
@@ -156,7 +157,7 @@ def test_a_group_permission_opens_automations_to_a_user(page_for, make_user, adm
     page = page_for(member)
 
     _open_user_menu(page)
-    page.get_by_role("link", name="Automations").click()
+    page.get_by_role("menu").get_by_role("menuitem", name="Automations").click()
 
     expect(page).to_have_url(re.compile(r"/automations$"))
     expect(page.get_by_text("No automations found")).to_be_visible()
@@ -175,6 +176,6 @@ def test_the_admin_switch_takes_automations_away_from_an_admin(
     page = page_for(make_user(role="admin"))
 
     _open_user_menu(page)
-    expect(page.get_by_role("link", name="Automations")).to_have_count(0)
+    expect(page.get_by_role("menu").get_by_role("menuitem", name="Automations")).to_have_count(0)
     page.goto("/automations")
     expect(page).to_have_url(re.compile(r"/$"))

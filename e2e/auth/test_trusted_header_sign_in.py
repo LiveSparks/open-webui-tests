@@ -115,7 +115,7 @@ def test_a_user_role_header_lands_in_the_chat_under_the_forwarded_name(behind_pr
 
     expect(chat_input(page)).to_be_visible(timeout=PAGE_TIMEOUT_MS)
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    expect(page.get_by_role("button", name="Harbour Pilot")).to_be_visible()
+    expect(page.get_by_role("menuitem", name="Harbour Pilot")).to_be_visible()
 
 
 def test_a_page_reached_without_the_email_header_says_so_and_offers_no_chat(behind_proxy):
@@ -141,5 +141,5 @@ def test_when_the_proxy_names_another_person_the_next_page_load_is_that_person(b
 
     expect(chat_input(page)).to_be_visible(timeout=PAGE_TIMEOUT_MS)
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    expect(page.get_by_role("button", name="Second Watch")).to_be_visible()
+    expect(page.get_by_role("menuitem", name="Second Watch")).to_be_visible()
     assert _signed_in_name(page) == "Second Watch"

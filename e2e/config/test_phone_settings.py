@@ -29,7 +29,7 @@ from utils.phone import (
     send_by_tapping,
     tap_on_screen,
 )
-from utils.user_menu import user_menu_trigger
+from utils.user_menu import settings_item, user_menu_trigger
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -58,7 +58,7 @@ def phone(page_for, make_user) -> Page:
 def open_settings(page: Page) -> Locator:
     tap_on_screen(page.get_by_role("button", name="Open Sidebar").last)
     tap_on_screen(user_menu_trigger(page))
-    tap_on_screen(page.get_by_role("menu").get_by_role("button", name="Settings"))
+    tap_on_screen(settings_item(page))
     settings = page.get_by_role("dialog")
     expect_on_screen(settings.get_by_role("tab", name="General"))
     return settings

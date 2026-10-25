@@ -5,12 +5,12 @@ from __future__ import annotations
 from playwright.sync_api import Locator, Page, expect
 
 from utils.chat_ui import chat_input
+from utils.user_menu import open_settings
 
 
 def open_personal_connections(page: Page) -> Locator:
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Connections").click()
     tab = page.locator("#tab-connections")
     expect(tab.get_by_role("button", name="Add Connection")).to_be_visible()

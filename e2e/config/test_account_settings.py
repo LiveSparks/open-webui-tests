@@ -30,6 +30,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
 from utils.setting_rows import setting_button
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -57,8 +58,7 @@ def _set_api_keys_switch(admin: Actor, enabled: bool) -> None:
 
 
 def _account_settings(page: Page) -> Locator:
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Account").click()
     dialog = page.get_by_role("dialog")
     expect(dialog.get_by_role("textbox", name="Name")).not_to_have_value("")
@@ -105,7 +105,7 @@ def test_a_changed_name_shows_in_the_user_menu_and_the_admin_user_list_after_a_r
     page.reload()
 
     page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    expect(page.get_by_role("button", name=new_name)).to_be_visible()
+    expect(page.get_by_role("menuitem", name=new_name)).to_be_visible()
     expect(_user_row(page_for(make_user(role="admin")), account)).to_contain_text(new_name)
 
 

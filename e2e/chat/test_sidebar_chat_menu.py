@@ -22,7 +22,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from utils.sidebar_chats import chat_menu, chat_row
 from utils.sidebar_folders import folder_row
-from utils.user_menu import user_menu_trigger
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -118,8 +118,7 @@ def test_an_archived_chat_leaves_the_sidebar_for_the_archive(sidebar):
 
     page = _reloaded(sidebar).page
     expect(chat_row(sidebar, TITLE)).to_have_count(0)
-    user_menu_trigger(page).click()
-    page.get_by_role("menu").get_by_role("button", name="Settings").click()
+    open_settings(page)
     settings = page.get_by_role("dialog")
     settings.get_by_role("tab", name="Archived Chats").click()
     expect(settings.get_by_text(TITLE)).to_be_visible()

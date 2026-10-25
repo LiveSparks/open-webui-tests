@@ -35,6 +35,7 @@ from harness.browser_provider import serve
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, send, stop_button
 from utils.model_selector import model_options, select_model
 from utils.personal_connections import add_connection_form, open_personal_connections
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -111,8 +112,7 @@ def test_the_connections_tab_and_saved_models_are_gone_while_the_admin_switch_is
     page = page_for(account)
     expect(chat_input(page)).to_be_visible()
 
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     expect(page.get_by_role("tab", name="General")).to_be_visible()
     expect(page.get_by_role("tab", name="Connections")).to_have_count(0)
     page.get_by_role("dialog").get_by_role("button", name="Back").click()

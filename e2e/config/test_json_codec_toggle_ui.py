@@ -36,6 +36,7 @@ from harness.python_tools import python_tool
 from harness.upstream import MOCK_MODEL_ID
 from utils.cached_chat import turn_on_tool
 from utils.chat_ui import conversation, expect_reply, send
+from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -270,8 +271,7 @@ LONG_RUSSIAN = (MIXED_TEXT["russian"] + ". ") * 330
 def test_long_non_ascii_user_variables_save_from_the_account_settings(page_for, pair, codec):
     person = create_user(pair[codec])
     page = page_for(person)
-    page.get_by_role("navigation", name="Chat history").get_by_label("User menu").click()
-    page.get_by_role("button", name="Settings").click()
+    open_settings(page)
     page.get_by_role("tab", name="Account").click()
     settings = page.get_by_role("dialog").first
 

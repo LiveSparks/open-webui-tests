@@ -20,6 +20,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness.channel_quotes import ADMIN_CONFIG, enable_channels, group_channel, post_message
 from utils.chat_ui import chat_input
 from utils.tooltips import tooltip_button
+from utils.user_menu import settings_item
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -41,7 +42,7 @@ def _open_user_menu(page: Page) -> None:
 
 def _set_status(page: Page, message: str) -> None:
     _open_user_menu(page)
-    page.get_by_role("button", name="Update your status").click()
+    page.get_by_role("menuitem", name="Update your status").click()
     dialog = page.get_by_role("dialog")
     # the emoji picker button has no name; it is the dialog's second button after Close
     dialog.get_by_role("button").nth(1).click()
@@ -124,11 +125,11 @@ def test_clearing_the_status_removes_it_for_everyone(people, page_for):
     _set_status(person_page, STATUS)
 
     _open_user_menu(person_page)
-    tooltip_button(person_page.get_by_role("menu"), "Clear status").click()
+    tooltip_button(person_page.get_by_role("menu"), "Clear status", role="menuitem").click()
     expect(person_page.get_by_text("Status cleared successfully")).to_be_visible()
 
     _open_user_menu(person_page)
-    expect(person_page.get_by_role("button", name="Update your status")).to_be_visible()
+    expect(person_page.get_by_role("menuitem", name="Update your status")).to_be_visible()
     assert _stored_status(person) == ("", "")
     viewer_page = page_for(viewer)
     expect(_direct_message_entry(viewer_page, person.name)).to_be_visible()
@@ -144,5 +145,5 @@ def test_the_user_menu_offers_no_status_while_user_status_is_off(admin, people, 
 
     _open_user_menu(page)
 
-    expect(page.get_by_role("menu").get_by_role("button", name="Settings")).to_be_visible()
-    expect(page.get_by_role("button", name="Update your status")).to_have_count(0)
+    expect(settings_item(page)).to_be_visible()
+    expect(page.get_by_role("menuitem", name="Update your status")).to_have_count(0)

@@ -30,7 +30,7 @@ LOAD_TIMEOUT_MS = 10_000
 
 def open_settings(page: Page, user_menu: str = "User menu", settings: str = "Settings") -> Locator:
     page.get_by_role("button", name=user_menu).first.click()
-    page.get_by_role("menu").get_by_role("button", name=settings).click()
+    page.get_by_role("menu").get_by_role("menuitem", name=settings).click()
     return page.get_by_role("dialog")
 
 

@@ -44,6 +44,7 @@ from harness.actors import Actor
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input
 from utils.model_selector import model_options, select_model
+from utils.user_menu import settings_item
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -151,8 +152,8 @@ def user_menu_entry(page: Page, name: str) -> Locator:
     """The user menu's link `name`; the menu stays open, so it follows changes as they land."""
     ready(page).get_by_role("button", name="User menu").first.click()
     menu = page.get_by_role("menu")
-    expect(menu.get_by_role("button", name="Settings")).to_be_visible()
-    return menu.get_by_role("link", name=name, exact=True)
+    expect(settings_item(page)).to_be_visible()
+    return menu.get_by_role("menuitem", name=name, exact=True)
 
 
 # each section of the Permissions tab reaches the group's members only

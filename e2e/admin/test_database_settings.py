@@ -25,6 +25,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import backends
 from utils.chat_ui import chat_input
 from utils.setting_rows import setting_button
+from utils.user_menu import settings_item
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -56,8 +57,8 @@ def notes_link(page: Page) -> Locator:
     expect(chat_input(page)).to_be_visible()
     page.get_by_role("button", name="User menu").first.click()
     menu = page.get_by_role("menu")
-    expect(menu.get_by_role("button", name="Settings")).to_be_visible()
-    return menu.get_by_role("link", name="Notes", exact=True)
+    expect(settings_item(page)).to_be_visible()
+    return menu.get_by_role("menuitem", name="Notes", exact=True)
 
 
 def test_export_config_downloads_what_the_admin_saved(page_for, admin, preserve):
