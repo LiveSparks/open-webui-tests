@@ -36,6 +36,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.actors import Actor
 from utils.chat_ui import chat_input
+from utils.workspace_list import item_rows
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -95,7 +96,7 @@ def _list_rows(page: Page, query: str, search_label: str = "Search Skills") -> L
         lambda response: "query=" in response.url and "/skills/" in response.url
     ):
         search.fill(query)
-    return page.get_by_role("main").get_by_role("button")
+    return item_rows(page)
 
 
 def _dollar_menu(page: Page, typed: str) -> Locator:

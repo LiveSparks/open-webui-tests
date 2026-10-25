@@ -77,7 +77,7 @@ def test_a_file_removed_before_sending_never_reaches_the_model(page_for, make_us
     removed = page.get_by_role("button").filter(has_text="removed.txt")
     expect(removed).to_be_visible()
     removed.hover()
-    removed.get_by_role("button", name="Remove File").click()
+    removed.locator("xpath=..").get_by_role("button", name="Remove File").click()
     expect(page.get_by_text("removed.txt")).to_have_count(0)
 
     question = _question()

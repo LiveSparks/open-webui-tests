@@ -57,6 +57,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from harness.backends import wait_until
 from harness.upstream import MOCK_MODEL_ID
+from utils.automations_page import automation_row
 from utils.chat_ui import chat_input, conversation, expect_reply
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -190,7 +191,7 @@ def test_each_schedule_kind_is_saved_as_chosen_and_described(page_for, scheduler
     expect(detail(page, "Schedule")).to_contain_text(described)
     page.goto("/automations")
     page.get_by_role("textbox", name="Search Automations").fill(title)
-    row = page.get_by_role("button", name="Open automation").filter(has_text=title)
+    row = automation_row(page, title)
     expect(row).to_contain_text(described)
 
 

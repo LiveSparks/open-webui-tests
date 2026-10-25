@@ -285,7 +285,7 @@ def test_unticking_terminal_takes_the_terminal_out_of_the_chat(
     page = page_for(builder)
     open_chat_on(page, preset)
     tooltip_button(page.get_by_role("main"), "Terminal").click()
-    page.get_by_role("menu").get_by_role("button", name=TERMINAL_NAME).click()
+    page.get_by_role("menu").get_by_role("menuitemradio", name=TERMINAL_NAME).click()
     expect(page.get_by_role("region", name="File browser")).to_be_visible()
     assert "run_command" in offered_tool_names(sent_request(page, upstream, "list the berths"))
 

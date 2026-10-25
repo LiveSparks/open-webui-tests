@@ -26,6 +26,7 @@ from harness import upstream as reply
 from harness.actors import Actor
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.notes_page import note_row
 from utils.tooltips import tooltip_button
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -139,7 +140,7 @@ def _is_pinned(actor: Actor, note_id: str) -> bool:
 
 def _pin_from_notes_page(page: Page, title: str) -> None:
     page.goto("/notes")
-    card = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    card = note_row(page, title)
     card.get_by_role("button", name="Note Menu").first.click()
     page.get_by_role("menu").get_by_role("button", name="Pin to Sidebar").click()
 

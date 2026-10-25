@@ -52,6 +52,7 @@ from harness.skill_files import (
 )
 from utils.chat_ui import chat_input, expect_reply
 from utils.skill_editor import code_editor, open_row
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -112,7 +113,7 @@ def _skills_page_menu(page: Page, item: str) -> None:
 def _row_menu(page: Page, name: str, item: str) -> None:
     page.goto("/workspace/skills")
     page.get_by_role("textbox", name="Search Skills").fill(name)
-    row = page.get_by_role("main").get_by_role("button").filter(has_text=name)
+    row = item_row(page, name)
     expect(row).to_be_visible()
     row.hover()
     row.get_by_role("button", name="Skill Menu").last.click()

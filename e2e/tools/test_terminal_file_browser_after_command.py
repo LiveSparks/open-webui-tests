@@ -90,7 +90,7 @@ def terminal(admin, preserve):
 def _open_terminal_browser(page: Page):
     expect(chat_input(page)).to_be_visible()
     tooltip_button(page.get_by_role("main"), "Terminal").click()
-    page.get_by_role("menu").get_by_role("button", name=NAME).click()
+    page.get_by_role("menu").get_by_role("menuitemradio", name=NAME).click()
     browser = page.get_by_role("region", name="File browser")
     expect(browser.get_by_text("readme.md")).to_be_visible()
     return browser

@@ -74,7 +74,7 @@ def test_the_page_reads_the_personal_terminals_agents_md_for_the_model(
     page.reload()
     expect(chat_input(page)).to_be_visible()
     tooltip_button(page.get_by_role("main"), "Terminal").click()
-    page.get_by_role("menu").get_by_role("button", name=NAME).click()
+    page.get_by_role("menu").get_by_role("menuitemradio", name=NAME).click()
 
     question = f"lint and commit {uuid.uuid4().hex[:6]}"
     upstream.queue(reply.text("Linted.", match=reply.answering(question)))

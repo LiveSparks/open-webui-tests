@@ -23,6 +23,8 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
+from utils.notes_page import note_row
+
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
 TITLE = "Grocery list"
@@ -43,7 +45,7 @@ def _wait_until_stored(author, note_id: str, text: str, timeout: float = 15.0) -
 
 
 def _note_card(page: Page, title: str):
-    return page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    return note_row(page, title)
 
 
 def test_a_written_note_survives_a_reload_and_a_deleted_one_is_gone(page_for, make_user):

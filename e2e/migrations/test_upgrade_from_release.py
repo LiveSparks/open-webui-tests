@@ -39,6 +39,7 @@ from harness.instance import resolve_backend, resolve_frontend_build
 from harness.upgraded_release import Upgraded, data_set_params, upgraded_release
 from utils.cached_chat import attach_from_menu, calling, turn_on_tool
 from utils.chat_ui import chat_input, conversation, expect_reply, last_reply, replies, send
+from utils.notes_page import note_rows
 from utils.sidebar_chats import chat_menu, chat_row
 from utils.sidebar_folders import folder_row
 from utils.user_menu import open_settings
@@ -190,7 +191,7 @@ def test_the_pinned_chat_sits_in_its_nested_folder_once_unpinned(open_as, upgrad
     _open_folder(sidebar, folders["parent"]["name"])
     expect(child_folder).to_be_visible()
 
-    chat_menu(sidebar, branched["title"]).get_by_role("button", name="Unpin").click()
+    chat_menu(sidebar, branched["title"]).get_by_role("menuitem", name="Unpin").click()
 
     expect(sidebar.get_by_role("button", name="Pinned", exact=True)).to_have_count(0)
     _open_folder(sidebar, folders["child"]["name"])
@@ -239,7 +240,7 @@ def test_an_old_chat_continues_and_keeps_the_new_turn(open_as, upgraded, provide
 def test_the_shared_note_opens_with_its_text_for_the_account_it_was_shared_with(open_as, upgraded):
     note = upgraded.manifest["note"]
     page = open_as("bob", "/notes")
-    listed = page.get_by_role("main").get_by_role("button", name="Open note")
+    listed = note_rows(page)
 
     listed.filter(has_text=note["title"]).click()
 

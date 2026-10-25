@@ -196,7 +196,7 @@ def test_a_reader_opens_the_notes_file_but_cannot_detach_it(note_with_file, page
 
     chip = file_chip(page, FILE_NAME)
     chip.hover()
-    expect(chip.get_by_role("button", name="Remove File")).to_have_count(0)
+    expect(chip.locator("xpath=..").get_by_role("button", name="Remove File")).to_have_count(0)
     chip.click()
     dialog = page.get_by_role("dialog").filter(has_text=FILE_NAME)
     expect(dialog.get_by_text(FILE_TEXT)).to_be_visible()
@@ -242,7 +242,7 @@ def test_a_writer_detaches_the_file_for_everyone(note_with_file, page_for):
 
     chip = file_chip(page, FILE_NAME)
     chip.hover()
-    chip.get_by_role("button", name="Remove File").click()
+    chip.locator("xpath=..").get_by_role("button", name="Remove File").click()
 
     expect(page.get_by_role("main").get_by_text(FILE_NAME)).to_have_count(0)
     eventually(lambda: stored_file_names(note_with_file.owner, note_with_file.note_id), [])

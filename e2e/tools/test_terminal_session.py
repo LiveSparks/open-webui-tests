@@ -86,7 +86,7 @@ def test_a_connected_terminal_opens_a_shell_from_the_chat(
     page.goto("/")
     expect(chat_input(page)).to_be_visible()
     tooltip_button(page.get_by_role("main"), "Terminal").click()
-    page.get_by_role("menu").get_by_role("button", name=NAME).click()
+    page.get_by_role("menu").get_by_role("menuitemradio", name=NAME).click()
     browser = page.get_by_role("region", name="File browser")
     browser.get_by_role("button", name="Expand terminal").click()
     expect(browser.get_by_role("tab", name="Shell")).to_be_visible()

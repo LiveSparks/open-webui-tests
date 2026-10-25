@@ -25,6 +25,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from harness.actors import Actor
+from utils.notes_page import note_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -85,7 +86,7 @@ def test_new_note_is_listed_on_the_notes_page(page_for, make_user):
     _open_new_note(page, f"?title={TITLE}")
 
     page.goto("/notes")
-    card = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=TITLE)
+    card = note_row(page, TITLE)
     expect(card).to_have_count(1)
 
 

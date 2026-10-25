@@ -33,6 +33,7 @@ from harness.actors import Actor
 from harness.upstream import MOCK_MODEL_ID
 from utils.chat_ui import chat_input
 from utils.model_selector import model_options
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -95,7 +96,7 @@ def _new_tool(account: Actor) -> dict:
 def _row(page: Page, section: str, name: str) -> Locator:
     page.goto(f"/workspace/{section}")
     page.get_by_role("textbox", name=f"Search {section.title()}").fill(name)
-    row = page.get_by_role("main").get_by_role("button").filter(has_text=name)
+    row = item_row(page, name)
     expect(row).to_be_visible()
     return row
 
@@ -230,8 +231,8 @@ def test_a_deleted_prompt_leaves_the_list_and_the_slash_menu(page_for, builder):
 
     page.reload()
     page.get_by_role("textbox", name="Search Prompts").fill(prefix)
-    expect(page.get_by_role("main").get_by_role("button").filter(has_text=kept)).to_be_visible()
-    expect(page.get_by_role("main").get_by_role("button").filter(has_text=deleted)).to_have_count(0)
+    expect(item_row(page, kept)).to_be_visible()
+    expect(item_row(page, deleted)).to_have_count(0)
     menu = _slash_menu(page, prefix)
     expect(menu.get_by_role("button", name=kept)).to_be_visible()
     expect(menu.get_by_role("button", name=deleted)).to_have_count(0)
@@ -295,12 +296,8 @@ def test_a_deleted_tool_leaves_the_list_and_the_integrations_menu(page_for, buil
 
     page.reload()
     page.get_by_role("textbox", name="Search Tools").fill("Menu tool")
-    expect(
-        page.get_by_role("main").get_by_role("button").filter(has_text=kept["name"])
-    ).to_be_visible()
-    expect(
-        page.get_by_role("main").get_by_role("button").filter(has_text=deleted["name"])
-    ).to_have_count(0)
+    expect(item_row(page, kept["name"])).to_be_visible()
+    expect(item_row(page, deleted["name"])).to_have_count(0)
     tools = _integration_tools(page)
     expect(tools.filter(has_text=kept["name"])).to_be_visible()
     expect(tools.filter(has_text=deleted["name"])).to_have_count(0)

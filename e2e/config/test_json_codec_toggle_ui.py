@@ -36,6 +36,7 @@ from harness.python_tools import python_tool
 from harness.upstream import MOCK_MODEL_ID
 from utils.cached_chat import turn_on_tool
 from utils.chat_ui import conversation, expect_reply, send
+from utils.notes_page import note_row
 from utils.user_menu import open_settings
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -192,7 +193,7 @@ def test_a_note_with_mixed_text_opens_and_shows_it(page_for, pair, writer, reade
     assert created.status_code == 200, created.text
 
     page = page_for(_viewer(person, pair, reader), path="/notes")
-    page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title).click()
+    note_row(page, title).click()
 
     expect(page).to_have_url(re.compile(r"/notes/[0-9a-f-]+$"))
     expect(page.get_by_role("main").get_by_role("textbox", name="Title")).to_have_value(title)

@@ -72,6 +72,7 @@ from harness.knowledge_bases import add_text_file
 from harness.listener import listening, text_answer
 from harness.web_retrieval import LOCAL_WEB_FETCH, RETRIEVAL_CONFIG
 from utils.member_picker import pick_member
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -187,7 +188,7 @@ def _search_list(page: Page, name: str) -> None:
 def _list_row(page: Page, name: str) -> Locator:
     """The base's row in the list, once the list stopped loading further pages of matches."""
     _search_list(page, name)
-    row = page.get_by_role("main").get_by_role("button").filter(has_text=name)
+    row = item_row(page, name)
     expect(row).to_be_visible()
     # a next page loading re-renders the rows, which closes an open menu
     expect(page.get_by_text("Loading...")).to_have_count(0)

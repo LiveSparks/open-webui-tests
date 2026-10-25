@@ -40,6 +40,7 @@ from harness import upstream as reply
 from harness.access import grant, make_group
 from harness.actors import Actor
 from utils.chat_ui import chat_input, expect_reply, send
+from utils.notes_page import note_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -91,7 +92,7 @@ def _open_note(page: Page, note_id: str, text: str) -> Locator:
 
 
 def _note_card(page: Page, title: str) -> Locator:
-    return page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    return note_row(page, title)
 
 
 # ---------------------------------------------------------------- the note's chat

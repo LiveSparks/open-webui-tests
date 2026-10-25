@@ -28,6 +28,7 @@ from playwright.sync_api import Page, expect
 from pypdf import PdfReader
 
 from harness.actors import Actor
+from utils.notes_page import note_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -94,7 +95,7 @@ def _write_note(page: Page, author: Actor, title: str, with_image: bool) -> str:
 
 def _download_pdf(page: Page, title: str) -> tuple[str, Image.Image]:
     page.goto("/notes")
-    card = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    card = note_row(page, title)
     card.get_by_role("button", name="Note Menu").first.click()
     menu = page.get_by_role("menu")
     menu.get_by_role("button", name="Download").hover()

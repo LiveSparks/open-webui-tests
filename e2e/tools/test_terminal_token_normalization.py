@@ -75,7 +75,7 @@ def open_terminal_dock(page: Page) -> None:
     page.reload()
     expect(chat_input(page)).to_be_visible()
     tooltip_button(page.get_by_role("main"), "Terminal").click()
-    page.get_by_role("menu").get_by_role("button", name=NAME).click()
+    page.get_by_role("menu").get_by_role("menuitemradio", name=NAME).click()
     files = page.get_by_role("region", name="File browser")
     files.get_by_role("button", name="Expand terminal").click()
 

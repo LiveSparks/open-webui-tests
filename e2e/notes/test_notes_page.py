@@ -32,6 +32,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import grant
 from harness.actors import Actor
+from utils.notes_page import note_row, note_rows
 from utils.search_dialog import open_actions, open_search_from_sidebar, search
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -77,7 +78,7 @@ def _stored_notes(owner: Actor) -> dict[str, str]:
 
 
 def _list_row(page: Page, title: str) -> Locator:
-    return page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    return note_row(page, title)
 
 
 def _grid_title(page: Page, title: str) -> Locator:
@@ -263,7 +264,7 @@ def test_the_title_column_sorts_the_list_both_ways(page_for, make_user):
         _create_note(author, f"{fruit} {tag}", fruit.lower())
     page = page_for(author)
     _open_notes_page(page, f"Apple {tag}")
-    rows = page.get_by_role("main").get_by_role("button", name="Open note")
+    rows = note_rows(page)
     newest_first = [f"Apple {tag}", f"Zucchini {tag}", f"Mango {tag}"]
     expect(rows).to_have_text([re.compile(title) for title in newest_first])
 

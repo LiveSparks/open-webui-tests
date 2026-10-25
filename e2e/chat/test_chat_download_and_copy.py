@@ -75,11 +75,14 @@ def _sidebar_menu(page: Page) -> Locator:
     return page.get_by_role("menu")
 
 
-def _download(page: Page, menu: Locator, entry: str, tmp_path: Path) -> Path:
-    """Choose `entry` under the menu's Download and return the file the browser saved."""
-    menu.get_by_role("button", name="Download").hover()
+def _download(page: Page, menu: Locator, entry: str, tmp_path: Path, role: str = "button") -> Path:
+    """Choose `entry` under the menu's Download and return the file the browser saved.
+
+    The header menu's entries are plain buttons; the sidebar chat menu's are menu items.
+    """
+    menu.get_by_role(role, name="Download").hover()
     with page.expect_download() as download_info:
-        page.get_by_role("menu").get_by_role("button", name=entry).click()
+        page.get_by_role("menu").get_by_role(role, name=entry).click()
     download = download_info.value
     saved = tmp_path / download.suggested_filename
     download.save_as(saved)
@@ -100,7 +103,7 @@ def test_the_sidebar_text_download_holds_every_message_under_its_role(
     page_for, owner, chat_id, tmp_path
 ):
     page = page_for(owner)
-    saved = _download(page, _sidebar_menu(page), "Plain text (.txt)", tmp_path)
+    saved = _download(page, _sidebar_menu(page), "Plain text (.txt)", tmp_path, role="menuitem")
 
     assert saved.name == f"chat-{TITLE}.txt"
     assert saved.read_text() == CHAT_TEXT
@@ -125,7 +128,7 @@ def test_the_header_json_export_is_the_stored_chat(page_for, owner, chat_id, tmp
 
 def test_the_sidebar_json_export_is_the_stored_chat(page_for, owner, chat_id, tmp_path):
     page = page_for(owner)
-    saved = _download(page, _sidebar_menu(page), "Export chat (.json)", tmp_path)
+    saved = _download(page, _sidebar_menu(page), "Export chat (.json)", tmp_path, role="menuitem")
 
     exported = _exported_chat(saved)
     assert exported["id"] == chat_id

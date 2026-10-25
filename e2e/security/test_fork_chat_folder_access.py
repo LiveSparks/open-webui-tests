@@ -82,7 +82,7 @@ def _clone_from_the_chat_menu(folder: Locator) -> str:
     row.get_by_role("button", name="Chat Menu").first.click()
     page = folder.page
     with page.expect_response(lambda response: response.url.endswith("/clone")) as cloned:
-        page.get_by_role("menu").get_by_role("button", name="Clone").click()
+        page.get_by_role("menu").get_by_role("menuitem", name="Clone").click()
     assert cloned.value.ok, cloned.value.text()
     return cloned.value.json()["id"]
 

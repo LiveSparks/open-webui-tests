@@ -7,8 +7,8 @@ from playwright.sync_api import Locator
 
 def visibility(dialog: Locator) -> Locator:
     """The button that shows the current visibility (Private, Public or Open) and opens the menu."""
-    # the menu's trigger wrapper takes the button's name too, so pick the labelled button itself
-    return dialog.get_by_label("Visibility", exact=True)
+    # its name now reads "Visibility" then the current choice, so match the word it starts with
+    return dialog.get_by_role("button", name="Visibility")
 
 
 def choose_visibility(dialog: Locator, label: str) -> None:

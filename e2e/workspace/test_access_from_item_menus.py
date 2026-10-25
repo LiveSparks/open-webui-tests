@@ -31,6 +31,8 @@ from harness.access import make_group
 from harness.actors import Actor
 from utils.access_control import access_row, remove_access
 from utils.member_picker import pick_member
+from utils.notes_page import note_row
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -140,7 +142,7 @@ def _read_note(account: Actor, note_id: str) -> int:
 def _list_row(page: Page, section: str, name: str) -> Locator:
     page.goto(f"/workspace/{section}")
     page.get_by_role("textbox", name=f"Search {section.title()}").fill(name)
-    row = page.get_by_role("main").get_by_role("button").filter(has_text=name)
+    row = item_row(page, name)
     expect(row).to_be_visible()
     return row
 
@@ -160,7 +162,7 @@ def _open_access(page: Page, row: Locator, trigger: str) -> Locator:
 
 def _note_row(page: Page, title: str) -> Locator:
     page.goto("/notes")
-    row = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    row = note_row(page, title)
     expect(row).to_be_visible()
     return row
 
@@ -187,7 +189,7 @@ def _remove_row(page: Page, dialog: Locator, name: str) -> None:
 
 
 def _choose_visibility(page: Page, dialog: Locator, option: str) -> None:
-    dialog.get_by_label("Visibility").click()
+    dialog.get_by_role("button", name="Visibility").click()
     page.get_by_role("menuitemradio", name=option).click()
 
 
@@ -297,7 +299,7 @@ def test_without_the_public_sharing_permission_visibility_has_no_public_choice(
 
     dialog = _open_access(page, _list_row(page, "skills", skill["name"]), "Skill Menu")
 
-    dialog.get_by_label("Visibility").click()
+    dialog.get_by_role("button", name="Visibility").click()
     expect(page.get_by_role("menuitemradio", name="Private")).to_be_visible()
     expect(page.get_by_role("menuitemradio", name="Public")).to_have_count(0)
     with sharer.client() as client:

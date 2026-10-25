@@ -38,6 +38,7 @@ from harness.group_tree import move_group
 from harness.python_tools import EVERYONE_READS
 from utils.chat_ui import chat_input
 from utils.member_picker import pick_member
+from utils.notes_page import note_rows
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -119,7 +120,7 @@ def _read_only_note(page: Page, title: str, listed: str | None = None) -> Locato
     main.get_by_role("button", name="Write", exact=True).click()
     page.get_by_role("button", name="Read Only", exact=True).click()
     expect(main.get_by_role("button", name="Read Only", exact=True)).to_be_visible()
-    notes = main.get_by_role("button", name="Open note")
+    notes = note_rows(page)
     if listed:
         expect(notes.filter(has_text=listed)).to_be_visible()
     return notes.filter(has_text=title)

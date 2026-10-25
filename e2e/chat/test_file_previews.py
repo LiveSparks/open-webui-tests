@@ -283,7 +283,7 @@ def test_a_files_mode_switch_shows_its_own_mode_after_another_file_is_removed(pa
 
     removed = file_chip(page.locator("form"), "castles.txt")
     removed.hover()
-    removed.get_by_role("button", name="Remove File").click()
+    removed.locator("xpath=..").get_by_role("button", name="Remove File").click()
     expect(page.locator("form").get_by_text("castles.txt")).to_have_count(0)
 
     dialog = open_file(page, file_chip(page.locator("form"), "rivers.txt"), "rivers.txt")

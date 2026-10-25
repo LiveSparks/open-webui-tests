@@ -31,6 +31,7 @@ from harness.access import grant, make_group
 from harness.actors import Actor
 from utils.chat_ui import chat_input
 from utils.member_picker import pick_member
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -138,7 +139,7 @@ def test_a_switched_off_prompt_leaves_the_slash_menu_until_switched_on(page_for,
     def flip(expected: str) -> None:
         page.goto("/workspace/prompts")
         page.get_by_role("textbox", name="Search Prompts").fill(switched)
-        row = page.get_by_role("main").get_by_role("button").filter(has_text=f"Prompt {switched}")
+        row = item_row(page, f"Prompt {switched}")
         row.get_by_role("switch").click()
         expect(row.get_by_role("switch")).to_have_attribute("aria-checked", expected)
 

@@ -192,7 +192,7 @@ def _note_access_dialog(page: Page, owner: Actor) -> Locator:
 
 
 def _visibility_choices(dialog: Locator) -> Locator:
-    dialog.locator("button[aria-label='Visibility']").click()
+    dialog.get_by_role("button", name="Visibility").click()
     return dialog.page.get_by_role("menuitemradio")
 
 

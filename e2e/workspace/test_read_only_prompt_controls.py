@@ -18,6 +18,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from harness.access import grant, make_group
 from harness.actors import Actor
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.regression, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -53,7 +54,7 @@ def shared_prompt(admin, make_user) -> tuple[str, Actor, Actor]:
 
 def _prompt_row(page: Page, name: str) -> Locator:
     page.goto("/workspace/prompts")
-    row = page.get_by_role("main").get_by_role("button").filter(has_text=name)
+    row = item_row(page, name)
     expect(row).to_be_visible()
     return row
 

@@ -80,7 +80,7 @@ def test_a_terminal_switched_off_mid_chat_offers_no_tools(page_for, cached_insta
         page = page_for(member)
         expect(chat_input(page)).to_be_visible()
         tooltip_button(page.get_by_role("main"), "Terminal").click()
-        page.get_by_role("menu").get_by_role("button", name=NAME).click()
+        page.get_by_role("menu").get_by_role("menuitemradio", name=NAME).click()
         expect(page.get_by_role("region", name="File browser")).to_be_visible()
 
         with cached_instance.client() as client:

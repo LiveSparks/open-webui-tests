@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from harness.access import make_group
+from utils.automations_page import automation_row
 from utils.user_menu import settings_item
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
@@ -34,7 +35,7 @@ def _open(page: Page, automation: dict) -> None:
 def _list_row(page: Page, name: str):
     page.goto("/automations")
     page.get_by_role("textbox", name="Search Automations").fill(name)
-    return page.get_by_role("button", name="Open automation").filter(has_text=name)
+    return automation_row(page, name)
 
 
 def _open_user_menu(page: Page) -> None:

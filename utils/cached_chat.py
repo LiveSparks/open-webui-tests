@@ -67,7 +67,7 @@ def calling_together(*calls: tuple[str, dict]) -> Reply:
 def pick_terminal(page: Page, name: str) -> None:
     expect(chat_input(page)).to_be_visible()
     tooltip_button(page.get_by_role("main"), "Terminal").click()
-    page.get_by_role("menu").get_by_role("button", name=name).click()
+    page.get_by_role("menu").get_by_role("menuitemradio", name=name).click()
     expect(page.get_by_role("region", name="File browser")).to_be_visible()
 
 

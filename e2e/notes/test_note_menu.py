@@ -47,6 +47,7 @@ from harness.actors import Actor
 from utils.access_control import choose_visibility
 from utils.chat_ui import chat_input
 from utils.member_picker import pick_member
+from utils.notes_page import note_row, note_rows
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -139,7 +140,7 @@ def test_copy_link_on_the_notes_page_copies_the_notes_address(page_for, make_use
     title = _unique("Listed")
     note_id = _create_note(author, title, "in the list")
     page = page_for(author, path="/notes", permissions=CLIPBOARD)
-    row = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    row = note_row(page, title)
 
     row.get_by_label("Note Menu").click()
     _share_submenu(page, page.get_by_role("menu"))
@@ -273,7 +274,7 @@ def test_the_close_button_on_a_notes_file_detaches_it(page_for, make_user):
 
     chip = page.get_by_role("main").get_by_role("button", name=re.compile("itinerary.txt"))
     chip.hover()
-    chip.get_by_role("button", name="Remove File").click()
+    chip.locator("xpath=..").get_by_role("button", name="Remove File").click()
 
     expect(chip).to_have_count(0)
     _eventually(lambda: _stored_file_names(author, note_id), [])
@@ -299,7 +300,7 @@ def test_delete_in_the_editor_removes_the_note_from_the_list_and_the_server(page
 
     expect(page.get_by_text("Note deleted successfully")).to_be_visible()
     expect(page).to_have_url(re.compile(r"/notes$"))
-    cards = page.get_by_role("main").get_by_role("button", name="Open note")
+    cards = note_rows(page)
     expect(cards.filter(has_text=kept)).to_have_count(1)
     expect(cards.filter(has_text=doomed)).to_have_count(0)
     with author.client() as client:
@@ -460,7 +461,7 @@ def test_without_the_sharing_permission_the_note_offers_no_access(
     expect(access).to_have_count(0)
 
     page.goto("/notes")
-    row = page.get_by_role("main").get_by_role("button", name="Open note").filter(has_text=title)
+    row = note_row(page, title)
     row.get_by_label("Note Menu").click()
     menu = page.get_by_role("menu")
     expect(menu.get_by_role("button", name="Download")).to_be_visible()

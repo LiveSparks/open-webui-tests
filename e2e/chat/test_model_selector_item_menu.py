@@ -129,10 +129,13 @@ def click_menu_item(page: Page, name: str, item: str) -> None:
 
 
 def edit_and_save(editor: Locator) -> None:
+    # the description toggle now names itself "Description" then its mode, with aria-pressed
+    toggle = editor.get_by_role("button", name="Description")
     # the first click in the editor must count, not just close the selector
-    editor.get_by_role("button", name="Custom description enabled").click()
-    expect(editor.get_by_role("button", name="Default description enabled")).to_be_visible()
-    editor.get_by_role("button", name="Default description enabled").click()
+    toggle.click()
+    if toggle.get_attribute("aria-pressed") != "true":
+        toggle.click()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
     editor.get_by_placeholder("Add a short description about what this model does").fill(
         NEW_DESCRIPTION
     )

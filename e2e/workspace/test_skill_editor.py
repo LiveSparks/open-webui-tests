@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 from harness import upstream as reply
 from utils.chat_ui import chat_input, expect_reply
 from utils.skill_editor import code_editor, replace_text
+from utils.workspace_list import item_row
 
 pytestmark = [pytest.mark.journey, pytest.mark.requires_browser, pytest.mark.requires_source]
 
@@ -53,7 +54,7 @@ def _write_skill(page: Page, name: str, instructions: str) -> None:
 def _skill_row(page: Page, name: str) -> Locator:
     page.goto("/workspace/skills")
     page.get_by_role("textbox", name="Search Skills").fill(name)
-    row = page.get_by_role("main").get_by_role("button").filter(has_text=name)
+    row = item_row(page, name)
     expect(row).to_be_visible()
     return row
 
@@ -127,7 +128,7 @@ def test_a_deleted_skill_leaves_the_list_and_the_dollar_picker(page_for, skill_w
 
     _skill_menu_item(page, deleted, "Delete")
     page.get_by_role("dialog", name="Delete skill?").get_by_role("button", name="Confirm").click()
-    expect(page.get_by_role("main").get_by_role("button").filter(has_text=deleted)).to_have_count(0)
+    expect(item_row(page, deleted)).to_have_count(0)
 
     picker = _dollar_picker(page, tag)
     expect(picker.filter(has_text=kept)).to_be_visible()
