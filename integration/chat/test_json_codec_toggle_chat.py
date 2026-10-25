@@ -11,8 +11,8 @@ archived, tagged, cloned, shared, exported and imported through the other and co
 whichever value wrote it. A workspace tool returning mixed text, numbers, booleans and nulls, a
 builtin tool and a tool emitting a citation leave the same tool messages and sources, a file
 attached to the chat is cited the same, and a tab receives the same final message over the socket.
-Since 6cfd6987e a chat read back names the author of each user message, and a cloned or imported
-chat names its account on every message, so the expected history carries those fields.
+Since d1776b18a (#32872) creating, updating or importing a chat records every message under the
+signed-in user, naming the author on each user message, so the expected history carries them.
 
 Discriminates: passes on dev 62f70a844. In backend copies of dev 176d31d1d, the orjson codec
 decoding its output as Latin-1 turns the orjson side of every test red except the completions
@@ -227,15 +227,14 @@ def stored_chat_content(title: str = MIXED_TEXT["german"]) -> dict:
     }
 
 
-def as_read(history: dict, author: Actor, *, copied: bool = False) -> dict:
-    """The history as a read returns it: each user message names its author."""
+def as_read(history: dict, author: Actor) -> dict:
+    """The history as a read returns it: every message recorded under its author, a user
+    message also naming it."""
     expected = json.loads(json.dumps(history))
     for message in expected["messages"].values():
+        message["user_id"] = author.id
         if message["role"] == "user":
-            message["user_id"] = author.id
             message["user"] = {"id": author.id, "name": author.name}
-        elif copied:
-            message["user_id"] = author.id
     return expected
 
 
@@ -491,7 +490,7 @@ def test_a_cloned_and_a_shared_chat_read_back_equal(pair, owner, writer, reader)
         listed = through_reader.get("/api/v1/chats/shared").json()
 
     assert clone["title"] == MIXED_TEXT["french"]
-    assert clone["chat"]["history"] == as_read(content["history"], owner, copied=True)
+    assert clone["chat"]["history"] == as_read(content["history"], owner)
     assert copy.json()["chat"]["history"] == as_read(content["history"], owner)
     assert copy.json()["title"] == MIXED_TEXT["german"]
     assert chat_id in [entry["id"] for entry in listed]
@@ -513,8 +512,8 @@ def test_an_exported_chat_imports_back_equal(pair, owner, writer, reader):
     with on(pair, owner, writer).client() as through_writer:
         read = read_chat(through_writer, imported.json()[0]["id"])
 
-    assert exported["chat"]["history"] == content["history"]
-    assert read["chat"]["history"] == as_read(content["history"], owner, copied=True)
+    assert exported["chat"]["history"] == as_read(content["history"], owner)
+    assert read["chat"]["history"] == as_read(content["history"], owner)
     assert read["chat"]["files"] == content["files"]
     assert read["title"] == MIXED_TEXT["german"]
     assert read["pinned"] is True

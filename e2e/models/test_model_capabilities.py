@@ -11,7 +11,9 @@ provider is asked to report token counts (e2e/chat/test_reply_usage.py shows the
 Generation the chat's Image switch is gone although the admin has image generation on. Without
 Memory a stored memory no longer reaches the model, as context or through the memory tools.
 Without Terminal the chat offers no terminal and one picked before is not handed to the model. An
-unticked capability is no longer offered under Default Features. File Upload, Web Search, Builtin
+unticked capability is no longer offered under Default Features, which since 98f23b17a (#32963)
+lists only a capability whose global feature is on, so the test turns web search and image
+generation on first. File Upload, Web Search, Builtin
 Tools and the Time category are covered in e2e/models/test_model_editor.py, Status Updates in
 e2e/chat/test_status_updates.py; the Code Interpreter is legacy and left out.
 
@@ -45,6 +47,7 @@ from harness.listener import json_answer
 from harness.python_tools import EVERYONE_READS
 from harness.terminal_server import TERMINAL_SERVERS_CONFIG, configure_terminals, serving_terminal
 from harness.upstream import MOCK_MODEL_ID
+from harness.web_retrieval import RETRIEVAL_CONFIG, save_web_settings
 from utils.cached_chat import attach
 from utils.chat_ui import conversation, expect_reply, last_reply, send
 from utils.model_editor import (
@@ -294,7 +297,19 @@ def test_unticking_terminal_takes_the_terminal_out_of_the_chat(
     assert terminal_buttons(page) == 0, "the chat still offers a terminal"
 
 
-def test_an_unticked_capability_is_not_offered_as_a_default_feature(page_for, builder, preset):
+@pytest.fixture
+def default_feature_capabilities_on(admin, preserve):
+    """Web search and image generation on globally, so since 98f23b17a (#32963) their default
+    feature toggles show: a default feature lists only a capability whose global feature is on."""
+    preserve(IMAGES_CONFIG, RETRIEVAL_CONFIG)
+    with admin.client() as client:
+        save_image_settings(client, ENABLE_IMAGE_GENERATION=True)
+        save_web_settings(client, ENABLE_WEB_SEARCH=True)
+
+
+def test_an_unticked_capability_is_not_offered_as_a_default_feature(
+    page_for, builder, preset, default_feature_capabilities_on
+):
     page = page_for(builder)
     editor = open_editor(page, preset)
     defaults = section(editor, "Default Features")

@@ -65,10 +65,12 @@ def client(owner):
 
 
 def authored(message: dict, account: Actor) -> dict:
-    """A user message as a read returns it since 6cfd6987e: naming its author."""
-    if message["role"] != "user":
-        return message
-    return {**message, "user_id": account.id, "user": {"id": account.id, "name": account.name}}
+    """A message as a read returns it since d1776b18a: recorded under its author, a user
+    message also naming it."""
+    recorded = {**message, "user_id": account.id}
+    if message["role"] == "user":
+        recorded["user"] = {"id": account.id, "name": account.name}
+    return recorded
 
 
 def test_reading_a_chat_lists_a_reply_under_its_parent(client):

@@ -18,7 +18,8 @@ Discriminates: passes on the dev 176d31d1d build; in a frontend copy, a read alo
 the user's saved voice turns the voice test red, a finished reply that never presses its speak
 button turns the auto-playback test red, a recording that is never transcribed turns the
 dictation test red, a transcript that is not submitted turns the auto-send test red, and the
-speech-to-text controls staying on the page for the Web API turn the hide test red. The Kokoro
+speech-to-text controls or the chat's call button staying on the page for the Web API turn the
+hide test red. The Kokoro
 call test passes on dev c31423955 and turns red in a build of it whose call plays its audio only
 for a server speech engine, as before 78613d86f (the reply goes to speechSynthesis, no Kokoro
 audio plays).
@@ -222,10 +223,9 @@ def test_the_web_api_engines_hide_their_controls_for_the_admin_and_the_user(
     expect(tab.get_by_text("Allow non-local voices")).to_be_visible()
     page.goto("/")
     expect(chat_input(page)).to_be_visible()
-    page.get_by_role("button", name="Voice mode").click()
-    expect(
-        page.get_by_text("Call feature is not supported when using Web STT engine")
-    ).to_be_visible()
+    # a call needs server speech-to-text, so the Web STT engine hides the call button (#32970)
+    expect(page.get_by_role("button", name="Send message")).to_be_visible()
+    expect(page.get_by_role("button", name="Voice mode")).to_have_count(0)
 
 
 # Kokoro.js runs in a worker that downloads its model; this one answers at once with silence
