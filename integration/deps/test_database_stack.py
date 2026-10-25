@@ -143,10 +143,12 @@ NESTED_CHAT = {
 
 
 def authored(message: dict, account: Actor) -> dict:
-    """A user message as a read returns it since 6cfd6987e: naming its author."""
-    if message["role"] != "user":
-        return message
-    return {**message, "user_id": account.id, "user": {"id": account.id, "name": account.name}}
+    """A message as a read returns it since d1776b18a (#32872): recorded under its author, a
+    user message also naming it."""
+    recorded = {**message, "user_id": account.id}
+    if message["role"] == "user":
+        recorded["user"] = {"id": account.id, "name": account.name}
+    return recorded
 
 
 def test_a_chat_keeps_its_nested_json_exactly(author):
