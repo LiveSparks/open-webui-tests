@@ -124,6 +124,28 @@ class MockUpstream:
         return None
 
 
+def task_reply_for(body: dict | None) -> Reply | None:
+    """The scripted JSON a background task prompt asks for.
+
+    Title, tags, and follow-up templates demand a raw JSON object; the plain
+    "ok" fallback cannot parse, so those tasks would silently land nothing.
+    Only the three task markers trigger this; ordinary prompts stay untouched.
+    """
+    if not isinstance(body, dict):
+        return None
+    users = [entry for entry in body.get("messages", []) if entry.get("role") == "user"]
+    if not users:
+        return None
+    prompt = str(users[-1].get("content"))
+    if 'JSON format: { "title":' in prompt:
+        return text('{"title": "Title Bridge"}')
+    if 'JSON format: { "tags":' in prompt:
+        return text('{"tags": ["general", "bridge"]}')
+    if '"follow_ups": [' in prompt:
+        return text('{"follow_ups": ["What comes next?", "Tell me more"]}')
+    return None
+
+
 def serve() -> tuple[MockUpstream, Callable[[], None]]:
     """Start the provider on a daemon thread; returns it with its shutdown function."""
     upstream = MockUpstream(base_url="", behaviour={"mode": "ok"})
@@ -201,6 +223,8 @@ def _handler(upstream: MockUpstream):
                 self._send_json(500, {"error": {"message": "upstream failed"}})
             elif mode == "stream":
                 self._stream_repeated(behaviour["chunks"], behaviour["chunk_text"])
+            elif task_reply_for(body or {}):
+                self._answer(task_reply_for(body), bool((body or {}).get("stream")))
             else:
                 reply = text(behaviour.get("text", "ok"))
                 self._answer(reply, bool((body or {}).get("stream")))

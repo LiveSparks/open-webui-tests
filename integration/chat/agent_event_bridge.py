@@ -18,8 +18,9 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
+import httpx
 import pytest
 
 from harness.chat import ChatTurn, ask, send_message, wait_for_reply
@@ -174,22 +175,95 @@ def test_stop_flushes_a_done_frame_with_partial_content(admin, agent_model, watc
     assert message_text(stored).startswith("chunk"), f"partial content not preserved: {stored}"
 
 
-def test_tool_roundtrip_carries_status_pills_and_function_call_items(admin, agent_model, watcher):
-    """A scripted tool call rides the bridge as function_call items plus status
-    pill events, and the sidecar-executed result reaches the reply (issue 6)."""
-    turn = send_message(admin.client(), "TOOL_ECHO parity", model=agent_model)
-    stored = wait_for_reply(admin.client(), turn)
-    assert "tool said:" in stored.get("content", "")
+def _stored_chat_json(client: Any, chat_id: str) -> dict:
+    return client.get(f"/api/v1/chats/{chat_id}").json()["chat"]
+
+
+def _wait_for_pending_call(client: Any, turn: ChatTurn, timeout: float = 20.0) -> tuple[str, dict]:
+    """The stored assistant message with its approval-gated function call."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        metadata = _stored_chat_json(client, turn.chat_id)["history"]["messages"]
+        message = metadata.get(turn.assistant_message_id, {})
+        call = next(
+            (
+                item
+                for item in message.get("output") or []
+                if item.get("type") == "function_call" and item.get("status") == "pending"
+            ),
+            None,
+        )
+        if call:
+            return call.get("call_id") or call.get("id") or "", message
+        time.sleep(0.2)
+    raise AssertionError(f"no pending approval card landed: {message}")
+
+
+def _resolve(client: Any, turn: ChatTurn, call_id: str, action: str) -> dict:
+    resolved = client.post(
+        f"/api/v1/chats/{turn.chat_id}/messages/{turn.assistant_message_id}/resolve",
+        json={"call_id": call_id, "action": action},
+    )
+    assert resolved.status_code == 200, resolved.text
+    return resolved.json()
+
+
+def test_tool_call_gates_on_the_approval_card_and_the_approve_verdict_resumes(admin, agent_model, watcher):
+    """A scripted tool call raises the approval card, the browser's approve
+    reaches the sidecar interaction route, and the run resumes with the tool
+    result as the answer (issue 6)."""
+    client = admin.client()
+    turn = send_message(client, "TOOL_ECHO parity", model=agent_model)
+
+    # The pending card lands while the run waits on the gate; nothing errors.
+    call_id, message = _wait_for_pending_call(client, turn)
+    errors = [
+        frame
+        for frame in events_for(watcher, turn.assistant_message_id)
+        if frame.get("type") == "chat:message:error"
+    ]
+    assert not errors, f"the gated run errored while pending: {errors}"
+    pending_frames = [
+        frame
+        for frame in events_for(watcher, turn.assistant_message_id)
+        if frame.get("type") == "chat:completion"
+        and any(
+            item.get("type") == "function_call" and item.get("status") == "pending"
+            for item in frame.get("data", {}).get("output", [])
+        )
+    ]
+    assert pending_frames, "the pending card never reached the user room"
+
+    _resolve(client, turn, call_id, "approve")
+    stored = wait_for_reply(client, turn)
+    assert "tool said:" in stored.get("content", ""), f"approve did not resume the run: {stored}"
 
     items = stored.get("output") or []
-    types = [item.get("type") for item in items]
-    assert "function_call" in types and "function_call_output" in types, f"no tool-call cards in {types}"
+    calls = [item for item in items if item.get("type") == "function_call"]
+    outputs = [item for item in items if item.get("type") == "function_call_output"]
+    assert calls and outputs, f"no tool-call cards in {items}"
+    assert any((item.get("call_id") or item.get("id")) == call_id for item in outputs), (
+        f"the executed call lost its result item: {call_id}"
+    )
 
-    statuses = stored.get("statusHistory") or []
+    statuses = message.get("statusHistory") or stored.get("statusHistory") or []
     assert any("echo" in json.dumps(status) for status in statuses), f"no status pill persisted: {statuses}"
-
     pills = [frame for frame in events_for(watcher, turn.assistant_message_id) if frame.get("type") == "status"]
     assert pills, "no status pill events reached the user room"
+
+
+def test_the_deny_verdict_reaches_the_sidecar_and_lands_a_rejected_card(admin, agent_model):
+    """Deny rides the same resolve route: the sidecar skips the tool, the run
+    answers with the rejected verdict, and the card lands rejected."""
+    client = admin.client()
+    turn = send_message(client, "TOOL_ECHO deny parity", model=agent_model)
+    call_id, _ = _wait_for_pending_call(client, turn)
+    _resolve(client, turn, call_id, "reject")
+    stored = wait_for_reply(client, turn)
+    assert "Tool call rejected by the user." in stored.get("content", ""), f"deny did not reach the run: {stored}"
+
+    calls = [item for item in stored.get("output") or [] if item.get("type") == "function_call"]
+    assert any(item.get("status") == "rejected" for item in calls), f"no rejected card: {calls}"
 
 
 def test_send_during_generation_steers_instead_of_interrupting(admin, agent_model, watcher):
@@ -249,6 +323,120 @@ def test_edit_resend_forks_the_session(admin, agent_model):
     )
     stored = wait_for_reply(admin.client(), edited, 30.0)
     assert "history: 2" in stored.get("content", ""), f"fork did not restore history: {stored}"
+
+
+@pytest.fixture(scope="module")
+def tasks_instance(instance_with, sidecar) -> LaunchedInstance:
+    """A second scratch instance with title, tags, and follow-ups enabled."""
+    return instance_with(
+        {
+            "AGENT_SIDECAR_PORT": str(sidecar["port"]),
+            "AGENT_LOOP_MODEL_IDS": AGENT_MODEL_ID,
+            "ENABLE_TITLE_GENERATION": "true",
+            "ENABLE_TAGS_GENERATION": "true",
+            "ENABLE_FOLLOW_UP_GENERATION": "true",
+        }
+    )
+
+
+@pytest.fixture(scope="module")
+def tasks_model(tasks_instance: LaunchedInstance) -> str:
+    """The agent-loop model registered on the tasks instance too."""
+    from harness.actors import admin_of
+
+    admin = admin_of(tasks_instance)
+    with admin.client() as client:
+        created = client.post(
+            "/api/v1/models/create",
+            json={
+                "id": AGENT_MODEL_ID,
+                "name": "Agent Loop Test",
+                "base_model_id": MOCK_MODEL_ID,
+                "meta": {},
+                "params": {},
+            },
+        )
+        if created.status_code != 200 and "already registered" not in created.text:
+            assert created.status_code == 200, created.text
+        grant = {"principal_type": "user", "principal_id": "*", "permission": "read"}
+        shared = client.post(
+            "/api/v1/models/model/access/update",
+            json={"id": AGENT_MODEL_ID, "name": "Agent Loop Test", "access_grants": [grant]},
+        )
+        assert shared.status_code == 200, shared.text
+        client.get("/api/models", params={"refresh": "true"}).raise_for_status()
+    return AGENT_MODEL_ID
+
+
+def _sidecar_session_turns(port: int, chat_id: str) -> int:
+    """User turns the sidecar session hosts, straight from its registry."""
+    response = httpx.post(f"http://127.0.0.1:{port}/sessions", json={"chatId": chat_id}, timeout=5.0)
+    response.raise_for_status()
+    return response.json().get("userTurns", 0)
+
+
+def test_tasks_keep_their_python_path_and_the_session_its_history(tasks_instance, tasks_model, sidecar):
+    """Title, tags, and follow-ups arrive through the unchanged background
+    path, the sidecar session keeps its turns (a task call never forks it to
+    zero), and the next turn holds its context (fix round 1, lane 8)."""
+    from harness.actors import admin_of
+
+    admin = admin_of(tasks_instance)
+    client = admin.client()
+    """Title, tags, and follow-ups arrive through the unchanged background
+    path, the sidecar session keeps its turns (a task call never forks it to
+    zero), and the next turn holds its context (fix round 1, lane 8)."""
+    client = admin.client()
+    tasks = {"title_generation": True, "tags_generation": True, "follow_up_generation": True}
+    turn = send_message(client, "COUNT_HISTORY", model=tasks_model, background_tasks=tasks)
+    stored = wait_for_reply(client, turn)
+    assert "history: 1" in stored.get("content", "")
+
+    deadline = time.monotonic() + 45.0
+    while time.monotonic() < deadline:
+        record = client.get(f"/api/v1/chats/{turn.chat_id}").json()
+        metadata = record["chat"]
+        message = metadata["history"]["messages"].get(turn.assistant_message_id, {})
+        if metadata.get("title") and (record.get("meta") or {}).get("tags") and message.get("followUps"):
+            break
+        time.sleep(0.4)
+    assert metadata.get("title"), f"no title arrived: {metadata.get('title')}"
+    assert (record.get("meta") or {}).get("tags"), f"no tags arrived: {(record.get('meta') or {}).get('tags')}"
+    assert message.get("followUps"), "no follow-ups arrived"
+
+    # The background calls ran with the task model set to the agent-loop
+    # model — exactly the payload that used to fork the session to zero.
+    assert _sidecar_session_turns(sidecar["port"], turn.chat_id) == 1, (
+        "a background task call touched the sidecar session"
+    )
+
+    _, second = ask(
+        client,
+        "COUNT_HISTORY",
+        model=tasks_model,
+        chat_id=turn.chat_id,
+        parent_id=turn.user_message_id,
+        history=[
+            {"role": "user", "content": "COUNT_HISTORY"},
+            {"role": "assistant", "content": stored.get("content", "")},
+        ],
+    )
+    assert "history: 2" in second.get("content", ""), f"the next turn lost its context: {second}"
+
+
+def test_the_bridge_refuses_an_empty_chat_id_with_a_clean_400(admin, agent_model):
+    """Empty metadata.chat_id reaches nothing: the bridge answers 400 before
+    the session lookup (fix round 1, the `chatId: ""` 500 guard)."""
+    rejected = admin.client().post(
+        "/api/chat/completions",
+        json={
+            "model": agent_model,
+            "messages": [{"role": "user", "content": "ECHO: orphan"}],
+            "stream": True,
+            "metadata": {"chat_id": ""},
+        },
+    )
+    assert rejected.status_code == 400, rejected.text
 
 
 def test_dead_provider_lands_as_chat_message_error_with_a_done_state(admin, agent_model, watcher):
