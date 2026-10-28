@@ -470,9 +470,6 @@ def test_key_route_refuses_an_unbound_caller(handoff_instance: LaunchedInstance)
 
 def test_handoff_resolution_rules(handoff_instance: LaunchedInstance):
     """The pure resolution rules: effort mapping and the attribution override."""
-    print('DBG secret env:', repr(os.environ.get('WEBUI_SECRET_KEY')))
-    import sys
-    print('DBG open_webui already imported:', 'open_webui' in sys.modules)
     from open_webui.routers.agent_runtime import _map_thinking_level, openrouter_attribution_override
 
     assert _map_thinking_level('none') == 'off'
