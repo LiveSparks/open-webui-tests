@@ -74,6 +74,17 @@ def sidecar() -> Iterator[dict]:
     subprocess.run([str(boot), "stop"], check=False, env=_lane_env())
 
 
+def _fake_connection(port: int) -> dict:
+    """PR6 resolves every turn's provider from OWUI's own connection, so the
+    connection must name the same scripted fake the sidecar's models.json
+    points at (the boot recipe derives its port from the sidecar port)."""
+    fake_port = 18930 + (port - 8930)
+    return {
+        "OPENAI_API_BASE_URLS": f"http://127.0.0.1:{fake_port}/v1",
+        "OPENAI_API_KEYS": "sk-lane",
+    }
+
+
 @pytest.fixture(scope="module")
 def agent_instance(instance_with, sidecar) -> LaunchedInstance:
     """A scratch instance on the post-7bdf76d default gate: AGENT_TOOL_APPROVAL_MODE
@@ -82,6 +93,7 @@ def agent_instance(instance_with, sidecar) -> LaunchedInstance:
         {
             "AGENT_SIDECAR_PORT": str(sidecar["port"]),
             "AGENT_LOOP_MODEL_IDS": AGENT_MODEL_ID,
+            **_fake_connection(sidecar["port"]),
         }
     )
 
@@ -95,6 +107,7 @@ def ask_instance(instance_with, sidecar) -> LaunchedInstance:
             "AGENT_SIDECAR_PORT": str(sidecar["port"]),
             "AGENT_LOOP_MODEL_IDS": AGENT_MODEL_ID,
             "AGENT_TOOL_APPROVAL_MODE": "ask",
+            **_fake_connection(sidecar["port"]),
         }
     )
 
@@ -106,9 +119,9 @@ def _publish_agent_loop_model(client: Any) -> str:
         json={
             "id": AGENT_MODEL_ID,
             "name": "Agent Loop Test",
-            # A preset over the harness mock: only presets appear in the
-            # model registry as standalone entries.
-            "base_model_id": MOCK_MODEL_ID,
+            # A preset over the connection's fake: only presets appear in
+            # the model registry as standalone entries.
+            "base_model_id": "fake-model",
             "meta": {},
             "params": {},
         },
@@ -116,6 +129,11 @@ def _publish_agent_loop_model(client: Any) -> str:
     if created.status_code != 200 and "already registered" not in created.text:
         assert created.status_code == 200, created.text
     grant = {"principal_type": "user", "principal_id": "*", "permission": "read"}
+    base_shared = client.post(
+        "/api/v1/models/model/access/update",
+        json={"id": "fake-model", "name": "fake-model", "access_grants": [grant]},
+    )
+    assert base_shared.status_code == 200, base_shared.text
     shared = client.post(
         "/api/v1/models/model/access/update",
         json={"id": AGENT_MODEL_ID, "name": "Agent Loop Test", "access_grants": [grant]},
@@ -395,6 +413,7 @@ def tasks_instance(instance_with, sidecar) -> LaunchedInstance:
         {
             "AGENT_SIDECAR_PORT": str(sidecar["port"]),
             "AGENT_LOOP_MODEL_IDS": AGENT_MODEL_ID,
+            **_fake_connection(sidecar["port"]),
             "ENABLE_TITLE_GENERATION": "true",
             "ENABLE_TAGS_GENERATION": "true",
             "ENABLE_FOLLOW_UP_GENERATION": "true",

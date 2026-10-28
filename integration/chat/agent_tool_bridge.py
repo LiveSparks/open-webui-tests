@@ -169,10 +169,16 @@ def apis():
 
 @pytest.fixture(scope="module")
 def bridge_instance(instance_with, apis, sidecar) -> LaunchedInstance:
+    # PR6 resolves every turn's provider from OWUI's own connection, so the
+    # connection must name the same scripted fake the sidecar's models.json
+    # points at (the boot recipe derives its port from the sidecar port).
+    fake_port = 18930 + (sidecar["port"] - 8930)
     return instance_with(
         {
             "AGENT_SIDECAR_PORT": str(sidecar["port"]),
             "AGENT_LOOP_MODEL_IDS": AGENT_MODEL_ID,
+            "OPENAI_API_BASE_URLS": f"http://127.0.0.1:{fake_port}/v1",
+            "OPENAI_API_KEYS": "sk-lane",
             **search_apis_env(apis),
         }
     )
@@ -191,13 +197,15 @@ def kernel():
 
 def _publish_agent_loop_model(client: httpx.Client) -> str:
     """The agent-loop preset with file context off, so attached chat files are
-    tool-shaped (the file family bridges) instead of pre-injected."""
+    tool-shaped (the file family bridges) instead of pre-injected. The base
+    model is the connection's fake, shared like the harness shares
+    MOCK_MODEL_ID, so non-admin callers resolve the preset's base."""
     created = client.post(
         "/api/v1/models/create",
         json={
             "id": AGENT_MODEL_ID,
             "name": "Agent Loop Test",
-            "base_model_id": MOCK_MODEL_ID,
+            "base_model_id": "fake-model",
             "meta": {"capabilities": {"file_context": False}},
             "params": {},
         },
@@ -205,6 +213,11 @@ def _publish_agent_loop_model(client: httpx.Client) -> str:
     if created.status_code != 200 and "already registered" not in created.text:
         assert created.status_code == 200, created.text
     grant = {"principal_type": "user", "principal_id": "*", "permission": "read"}
+    base_shared = client.post(
+        "/api/v1/models/model/access/update",
+        json={"id": "fake-model", "name": "fake-model", "access_grants": [grant]},
+    )
+    assert base_shared.status_code == 200, base_shared.text
     shared = client.post(
         "/api/v1/models/model/access/update",
         json={"id": AGENT_MODEL_ID, "name": "Agent Loop Test", "access_grants": [grant]},
