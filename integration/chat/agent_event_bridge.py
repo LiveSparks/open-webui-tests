@@ -76,7 +76,8 @@ def sidecar() -> Iterator[dict]:
 
 @pytest.fixture(scope="module")
 def agent_instance(instance_with, sidecar) -> LaunchedInstance:
-    """A scratch instance whose AGENT_LOOP_MODEL_IDS routes the model to the sidecar."""
+    """A scratch instance on the post-7bdf76d default gate: AGENT_TOOL_APPROVAL_MODE
+    unset means 'full', so tool calls run ungated with no approval card."""
     return instance_with(
         {
             "AGENT_SIDECAR_PORT": str(sidecar["port"]),
@@ -86,49 +87,87 @@ def agent_instance(instance_with, sidecar) -> LaunchedInstance:
 
 
 @pytest.fixture(scope="module")
+def ask_instance(instance_with, sidecar) -> LaunchedInstance:
+    """The ask-gated twin: AGENT_TOOL_APPROVAL_MODE=ask opts this deployment into
+    the approval card on every tool call (the post-7bdf76d opt-in)."""
+    return instance_with(
+        {
+            "AGENT_SIDECAR_PORT": str(sidecar["port"]),
+            "AGENT_LOOP_MODEL_IDS": AGENT_MODEL_ID,
+            "AGENT_TOOL_APPROVAL_MODE": "ask",
+        }
+    )
+
+
+def _publish_agent_loop_model(client: Any) -> str:
+    """Register the agent-loop preset on one instance's model registry."""
+    created = client.post(
+        "/api/v1/models/create",
+        json={
+            "id": AGENT_MODEL_ID,
+            "name": "Agent Loop Test",
+            # A preset over the harness mock: only presets appear in the
+            # model registry as standalone entries.
+            "base_model_id": MOCK_MODEL_ID,
+            "meta": {},
+            "params": {},
+        },
+    )
+    if created.status_code != 200 and "already registered" not in created.text:
+        assert created.status_code == 200, created.text
+    grant = {"principal_type": "user", "principal_id": "*", "permission": "read"}
+    shared = client.post(
+        "/api/v1/models/model/access/update",
+        json={"id": AGENT_MODEL_ID, "name": "Agent Loop Test", "access_grants": [grant]},
+    )
+    assert shared.status_code == 200, shared.text
+    listed = client.get("/api/models", params={"refresh": "true"})
+    listed.raise_for_status()
+    body = listed.json()
+    models = body.get("data") if isinstance(body, dict) else body
+    assert any(model["id"] == AGENT_MODEL_ID for model in models), (
+        f"{AGENT_MODEL_ID} missing from the refreshed registry: {[m.get('id') for m in models]}"
+    )
+    return AGENT_MODEL_ID
+
+
+@pytest.fixture(scope="module")
 def admin(agent_instance: LaunchedInstance):
     """The admin of the agent-loop instance, not the shared regression instance."""
     return admin_of(agent_instance)
+
+
+@pytest.fixture(scope="module")
+def ask_admin(ask_instance: LaunchedInstance):
+    """The admin of the ask-gated instance."""
+    return admin_of(ask_instance)
 
 
 @pytest.fixture
 def agent_model(admin, agent_instance: LaunchedInstance) -> str:
     """Publish the workspace model routed to the agent loop."""
     with agent_instance.client() as client:
-        created = client.post(
-            "/api/v1/models/create",
-            json={
-                "id": AGENT_MODEL_ID,
-                "name": "Agent Loop Test",
-                # A preset over the harness mock: only presets appear in the
-                # model registry as standalone entries.
-                "base_model_id": MOCK_MODEL_ID,
-                "meta": {},
-                "params": {},
-            },
-        )
-        if created.status_code != 200 and "already registered" not in created.text:
-            assert created.status_code == 200, created.text
-        grant = {"principal_type": "user", "principal_id": "*", "permission": "read"}
-        shared = client.post(
-            "/api/v1/models/model/access/update",
-            json={"id": AGENT_MODEL_ID, "name": "Agent Loop Test", "access_grants": [grant]},
-        )
-        assert shared.status_code == 200, shared.text
-        listed = client.get("/api/models", params={"refresh": "true"})
-        listed.raise_for_status()
-        body = listed.json()
-        models = body.get("data") if isinstance(body, dict) else body
-        assert any(model["id"] == AGENT_MODEL_ID for model in models), (
-            f"{AGENT_MODEL_ID} missing from the refreshed registry: {[m.get('id') for m in models]}"
-        )
-    return AGENT_MODEL_ID
+        return _publish_agent_loop_model(client)
+
+
+@pytest.fixture
+def ask_model(ask_admin, ask_instance: LaunchedInstance) -> str:
+    """The agent-loop model registered on the ask-gated instance too."""
+    with ask_instance.client() as client:
+        return _publish_agent_loop_model(client)
 
 
 @pytest.fixture
 def watcher(admin) -> Iterator[SocketSession]:
-    """A signed-in socket tab that records the envelope the way a browser does."""
+    """A signed-in socket tab on the default-gate instance."""
     with connected(admin) as session:
+        yield session
+
+
+@pytest.fixture
+def ask_watcher(ask_admin) -> Iterator[SocketSession]:
+    """A signed-in socket tab on the ask-gated instance."""
+    with connected(ask_admin) as session:
         yield session
 
 
@@ -216,24 +255,39 @@ def _resolve(client: Any, turn: ChatTurn, call_id: str, action: str) -> dict:
     return resolved.json()
 
 
-def test_tool_call_gates_on_the_approval_card_and_the_approve_verdict_resumes(admin, agent_model, watcher):
+def test_default_full_runs_the_tool_silently_with_no_card(admin, agent_model):
+    """The default gate is 'full' (post-7bdf76d): a scripted tool call runs
+    ungated — the call lands completed, the answer arrives, and no pending
+    card ever exists for a browser to resolve."""
+    client = admin.client()
+    turn = send_message(client, "TOOL_ECHO ungated default", model=agent_model)
+    stored = wait_for_reply(client, turn)
+    assert "tool said:" in stored.get("content", ""), f"the ungated run did not answer: {stored}"
+
+    calls = [item for item in stored.get("output") or [] if item.get("type") == "function_call"]
+    assert calls and all(item.get("status") == "completed" for item in calls), (
+        f"the default 'full' gate leaked a non-completed call: {stored}"
+    )
+
+
+def test_tool_call_gates_on_the_approval_card_and_the_approve_verdict_resumes(ask_admin, ask_model, ask_watcher):
     """A scripted tool call raises the approval card, the browser's approve
     reaches the sidecar interaction route, and the run resumes with the tool
-    result as the answer (issue 6)."""
-    client = admin.client()
-    turn = send_message(client, "TOOL_ECHO parity", model=agent_model)
+    result as the answer (issue 6, the AGENT_TOOL_APPROVAL_MODE=ask opt-in)."""
+    client = ask_admin.client()
+    turn = send_message(client, "TOOL_ECHO parity", model=ask_model)
 
     # The pending card lands while the run waits on the gate; nothing errors.
     call_id, message = _wait_for_pending_call(client, turn)
     errors = [
         frame
-        for frame in events_for(watcher, turn.assistant_message_id)
+        for frame in events_for(ask_watcher, turn.assistant_message_id)
         if frame.get("type") == "chat:message:error"
     ]
     assert not errors, f"the gated run errored while pending: {errors}"
     pending_frames = [
         frame
-        for frame in events_for(watcher, turn.assistant_message_id)
+        for frame in events_for(ask_watcher, turn.assistant_message_id)
         if frame.get("type") == "chat:completion"
         and any(
             item.get("type") == "function_call" and item.get("status") == "pending"
@@ -256,15 +310,16 @@ def test_tool_call_gates_on_the_approval_card_and_the_approve_verdict_resumes(ad
 
     statuses = message.get("statusHistory") or stored.get("statusHistory") or []
     assert any("echo" in json.dumps(status) for status in statuses), f"no status pill persisted: {statuses}"
-    pills = [frame for frame in events_for(watcher, turn.assistant_message_id) if frame.get("type") == "status"]
+    pills = [frame for frame in events_for(ask_watcher, turn.assistant_message_id) if frame.get("type") == "status"]
     assert pills, "no status pill events reached the user room"
 
 
-def test_the_deny_verdict_reaches_the_sidecar_and_lands_a_rejected_card(admin, agent_model):
+def test_the_deny_verdict_reaches_the_sidecar_and_lands_a_rejected_card(ask_admin, ask_model):
     """Deny rides the same resolve route: the sidecar skips the tool, the run
-    answers with the rejected verdict, and the card lands rejected."""
-    client = admin.client()
-    turn = send_message(client, "TOOL_ECHO deny parity", model=agent_model)
+    answers with the rejected verdict, and the card lands rejected (issue 6,
+    the AGENT_TOOL_APPROVAL_MODE=ask opt-in)."""
+    client = ask_admin.client()
+    turn = send_message(client, "TOOL_ECHO deny parity", model=ask_model)
     call_id, _ = _wait_for_pending_call(client, turn)
     _resolve(client, turn, call_id, "reject")
     stored = wait_for_reply(client, turn)
@@ -457,7 +512,9 @@ def test_dead_provider_lands_as_chat_message_error_with_a_done_state(admin, agen
         turn = send_message(admin.client(), "ECHO: nobody home", model=agent_model)
         stored = wait_for_reply(admin.client(), turn, 60.0)
         assert stored["done"] is True
-        assert stored.get("error"), f"no error persisted on a dead provider: {stored}"
+        assert stored.get("error") == {"content": {"content": "The agent run failed."}}, (
+            f"no terminal error persisted on a dead provider: {stored.get('error')}"
+        )
 
         errors = [frame for frame in events_for(watcher, turn.assistant_message_id) if frame.get("type") == "chat:message:error"]
         assert errors, "no chat:message:error frame reached the user room"

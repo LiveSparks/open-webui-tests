@@ -31,13 +31,27 @@ case "${1:-}" in
 start)
   CHECKOUT=$(cd "$2" && pwd)
   mkdir -p "$LANE_DIR"
+  # Fail fast when the port is already taken: a stale fake squatting the port
+  # would make the fresh fake die on bind (fake.pid would point at a dead
+  # process) while the lane silently talks to the stale copy — reset ("kill
+  # the dead provider" tests) then kills nothing and the provider looks alive.
+  if curl -fsS "http://127.0.0.1:$FAKE_PORT/v1/models" >/dev/null 2>&1; then
+    echo "fake port $FAKE_PORT already serves a fake: kill the stale process first (ss -ltnp | grep $FAKE_PORT)" >&2
+    exit 1
+  fi
   python3 "$HERE/openai_fake.py" --port "$FAKE_PORT" > "$LANE_DIR/fake.log" 2>&1 &
   echo $! > "$LANE_DIR/fake.pid"
-
+  # Prove the pid on file is the process actually listening on the port.
   for i in $(seq 1 50); do
+    if ! kill -0 "$(cat "$LANE_DIR/fake.pid")" 2>/dev/null; then
+      echo "fake died on startup (port bind or crash?): last lines:" >&2; tail -5 "$LANE_DIR/fake.log" >&2; exit 1
+    fi
     node -e "fetch('http://127.0.0.1:$FAKE_PORT/v1/models').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" && break
     sleep 0.2
   done
+  if ! node -e "fetch('http://127.0.0.1:$FAKE_PORT/v1/models').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+    echo "fake did not answer /v1/models (port $FAKE_PORT)" >&2; tail -5 "$LANE_DIR/fake.log" >&2; exit 1
+  fi
 
   if [ ! -x "$CHECKOUT/sidecar/dist/index.js" ]; then
     (cd "$CHECKOUT/sidecar" && npm ci && npm run build)
