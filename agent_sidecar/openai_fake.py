@@ -6,6 +6,14 @@ through `models.json`. The reply is keyed on the prompt text, so a lane
 asserts the roundtrip it scripted rather than a canned constant:
 
 - `ECHO: <rest>` streams `echoed: <rest>` in three chunks
+- `TOOL: <name> :: <json>` makes the fake call the declared tool `<name>` with
+  those arguments (the loopback bridge's tool calls use the pi name,
+  `mcp__owui__<tool>`); a tool result in the request then answers
+  `tool said: <content>`
+- `TOOL_CHAIN: <name> :: <json> -> <name2> :: <json2>` calls the tools in
+  order, one per tool result that came back, and answers
+  `chained: <last content>` after the last one lands (tool_search discovery
+  before a deferred bridge tool)
 - `TOOL_ECHO ...` makes the fake call the `echo` tool when one is declared
 - a tool result in the request answers `tool said: <content>`
 - `COUNT_HISTORY` answers `history: <n> user messages`
@@ -18,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -33,12 +42,27 @@ def _text(content: object) -> str:
     return json.dumps(content)
 
 
+def _tool_call(name: str, arguments: str) -> dict:
+    return {
+        "index": 0,
+        "id": f"call_{name}",
+        "type": "function",
+        "function": {"name": name, "arguments": arguments or "{}"},
+    }
+
+
+def _declared(declared: list[str | None], name: str) -> bool:
+    return any(candidate == name for candidate in declared)
+
+
 def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
     """The scripted reply as (delta, finish_reason) pairs."""
     messages = body.get("messages") or []
     declared = [tool.get("function", {}).get("name") for tool in body.get("tools") or []]
     last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
-    prompt = _text(last_user.get("content"))
+    # A browser composer turns straight quotes into curly ones; the scripted
+    # JSON arguments need the straight form back.
+    prompt = _text(last_user.get("content")).replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'").replace("\u2192", "->")
 
     if "COUNT_HISTORY" in prompt:
         users = [m for m in messages if m.get("role") == "user"]
@@ -54,10 +78,46 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
         frames += [({"content": ""}, "stop")]
         return frames
 
+    # The chat prompt head injects an <attached_files> block ahead of the
+    # user's text; anchor the scripted markers wherever they sit.
+    if "TOOL_CHAIN:" in prompt:
+        prompt = prompt[prompt.index("TOOL_CHAIN:"):]
+    if "TOOL:" in prompt and not prompt.startswith("TOOL"):
+        prompt = prompt[prompt.index("TOOL:"):]
+    if prompt.startswith("TOOL_CHAIN:"):
+        steps = [
+            (name.strip(), arguments.strip())
+            for step in prompt.removeprefix("TOOL_CHAIN:").split("->")
+            for name, _, arguments in [step.partition("::")]
+        ]
+        # Tool results that came back after the latest user message are the
+        # steps already run; the next step is the one not answered yet.
+        last_user = max(i for i, m in enumerate(messages) if m.get("role") == "user")
+        done = len([m for m in messages[last_user:] if m.get("role") == "tool"])
+        if done >= len(steps):
+            trailing = messages[last_user:]
+            last_content = _text(trailing[-1].get("content")) if trailing else ""
+            return [({"role": "assistant"}, None), ({"content": f"chained: {last_content}"}, "stop")]
+        name, arguments = steps[done]
+        if _declared(declared, name):
+            return [
+                ({"role": "assistant"}, None),
+                ({"tool_calls": [_tool_call(name, arguments)]}, "tool_calls"),
+            ]
+        return [({"role": "assistant"}, None), ({"content": f"tool {name} was not offered"}, "stop")]
     tool_result = next((m for m in messages if m.get("role") == "tool"), None)
     if tool_result is not None:
         content = f"tool said: {_text(tool_result.get('content'))}"
         return [({"role": "assistant"}, None), ({"content": content}, "stop")]
+    if prompt.startswith("TOOL:"):
+        name, _, arguments = prompt.removeprefix("TOOL:").partition("::")
+        name = name.strip()
+        if _declared(declared, name):
+            return [
+                ({"role": "assistant"}, None),
+                ({"tool_calls": [_tool_call(name, arguments.strip())]}, "tool_calls"),
+            ]
+        return [({"role": "assistant"}, None), ({"content": f"tool {name} was not offered"}, "stop")]
     if "echo" in declared and "TOOL_ECHO" in prompt:
         call = {
             "index": 0,
@@ -96,6 +156,10 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         body = json.loads(raw) if raw else {}
+        if os.environ.get("OPENAI_FAKE_LOG"):
+            with open(os.environ["OPENAI_FAKE_LOG"], "a") as log:
+                names = [t.get("function", {}).get("name") for t in body.get("tools") or []]
+                log.write(json.dumps({"tools": names, "last_user": _text(next((m for m in reversed(body.get("messages") or []) if m.get("role") == "user"), {}).get("content")), "roles": [m.get("role") for m in body.get("messages") or []]}) + "\n")
         if not self.path.endswith("/chat/completions"):
             self._json(404, {"error": "not found"})
             return
