@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import Iterator
 
@@ -190,6 +191,14 @@ def agent_model(machines_admin) -> str:
         )
         if created.status_code != 200 and "already registered" not in created.text:
             assert created.status_code == 200, created.text
+        grant = {"principal_type": "user", "principal_id": "*", "permission": "read"}
+        shared = client.post(
+            "/api/v1/models/model/access/update",
+            json={"id": AGENT_MODEL_ID, "name": "Machine Binding Test", "access_grants": [grant]},
+        )
+        assert shared.status_code == 200, shared.text
+        listed = client.get("/api/models", params={"refresh": "true"})
+        listed.raise_for_status()
         return AGENT_MODEL_ID
 
 
@@ -212,7 +221,8 @@ def test_a_machine_bound_bash_call_runs_on_the_selected_machine(machines_admin, 
     """A scripted bash call lands on the selected machine and the output
     reaches the model: the loopback executor route, end to end."""
     with serving_terminal() as server, machines_admin.client() as client:
-        machine = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
+        machine = _machine(server, machine_name, "lighthouse-4")
         configure_terminals(client, machine)
         turn = send_message(
             client,
@@ -223,7 +233,7 @@ def test_a_machine_bound_bash_call_runs_on_the_selected_machine(machines_admin, 
         stored = wait_for_reply(client, turn)
         assert "lighthouse-4" in message_text(stored), stored
 
-        [sent] = server.requests_to("/execute")[-1:]
+        [sent] = server.requests_to(f"/{machine_name}/execute")[-1:]
         assert json.loads(sent.body)["command"] == "hostname", sent.body
         assert sent.headers.get("x-session-id") == turn.chat_id, sent.headers
 
@@ -232,7 +242,8 @@ def test_a_file_roundtrip_runs_through_the_machine(machines_admin, agent_model):
     """write then read reach the machine's file operations, and the read-back
     content the model sees is what the machine recorded."""
     with serving_terminal() as server, machines_admin.client() as client:
-        machine = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
+        machine = _machine(server, machine_name, "lighthouse-4")
         configure_terminals(client, machine)
         written = send_message(
             client,
@@ -244,7 +255,7 @@ def test_a_file_roundtrip_runs_through_the_machine(machines_admin, agent_model):
 
         read_back = send_message(
             client,
-            'TOOL: read :: {"path": "ferry.txt"}',
+            'TOOL_CHAIN: read :: {"path": "ferry.txt"}',
             model=agent_model,
             terminal_id=machine["id"],
             chat_id=written.chat_id,
@@ -253,8 +264,8 @@ def test_a_file_roundtrip_runs_through_the_machine(machines_admin, agent_model):
         stored = wait_for_reply(client, read_back)
         assert "content of lighthouse-4" in message_text(stored), stored
 
-        assert server.requests_to("/files/write"), "the machine never got the write"
-        [read] = server.requests_to("/files/read")[-1:]
+        assert server.requests_to(f"/{machine_name}/files/write"), "the machine never got the write"
+        [read] = server.requests_to(f"/{machine_name}/files/read")[-1:]
         assert "ferry.txt" in read.path, read.path
 
 
@@ -262,7 +273,8 @@ def test_no_machine_lists_no_local_tools(machines_admin, agent_model):
     """The same chat without a machine selection binds no local tools: the
     scripted bash prompt is declined as not offered, not errored."""
     with serving_terminal() as server, machines_admin.client() as client:
-        configure_terminals(client, _machine(server, "pier-a", "lighthouse-4"))
+        machine_name = "pier-a"
+        configure_terminals(client, _machine(server, machine_name, "lighthouse-4"))
         turn = send_message(client, 'TOOL: bash :: {"command": "hostname"}', model=agent_model)
         stored = wait_for_reply(client, turn)
         assert "tool bash was not offered" in message_text(stored), stored
@@ -274,6 +286,7 @@ def test_a_machine_switch_is_the_next_turns_machine(machines_admin, agent_model)
     between turns moves the binding, and the new machine serves the call."""
     with serving_terminal() as server, machines_admin.client() as client:
         pier_a = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
         pier_b = _machine(server, "pier-b", "wavebreaker-9")
         configure_terminals(client, pier_a, pier_b)
         first = send_message(
@@ -286,7 +299,7 @@ def test_a_machine_switch_is_the_next_turns_machine(machines_admin, agent_model)
 
         second = send_message(
             client,
-            'TOOL: bash :: {"command": "hostname"}',
+            'TOOL_CHAIN: bash :: {"command": "hostname"}',
             model=agent_model,
             terminal_id=pier_b["id"],
             chat_id=first.chat_id,
@@ -300,7 +313,8 @@ def test_a_gone_machine_fails_the_turn_with_a_clear_status(machines_admin, agent
     """Fail closed: a selection whose machine vanished between turns refuses
     the turn with a clear status, never a silent fallback or another machine."""
     with serving_terminal() as server, machines_admin.client() as client:
-        machine = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
+        machine = _machine(server, machine_name, "lighthouse-4")
         configure_terminals(client, machine)
         first = send_message(
             client,
@@ -311,12 +325,23 @@ def test_a_gone_machine_fails_the_turn_with_a_clear_status(machines_admin, agent
         wait_for_reply(client, first)
 
         configure_terminals(client)  # the machine is gone
+        user_message_id, assistant_message_id = str(uuid.uuid4()), str(uuid.uuid4())
         refused = client.post(
             "/api/chat/completions",
             json={
                 "model": agent_model,
                 "messages": [{"role": "user", "content": "run hostname again"}],
                 "stream": True,
+                "id": assistant_message_id,
+                "user_message": {
+                    "id": user_message_id,
+                    "parentId": first.assistant_message_id,
+                    "childrenIds": [assistant_message_id],
+                    "role": "user",
+                    "content": "run hostname again",
+                    "models": [agent_model],
+                    "timestamp": int(time.time()),
+                },
                 "chat_id": first.chat_id,
                 "terminal_id": machine["id"],
             },
@@ -330,7 +355,8 @@ def test_the_per_chat_cwd_key_survives_turns_and_splits_chats(machines_admin, ag
     one chat carry the same X-Session-Id (and chat context id), a second chat
     carries its own."""
     with serving_terminal() as server, machines_admin.client() as client:
-        machine = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
+        machine = _machine(server, machine_name, "lighthouse-4")
         configure_terminals(client, machine)
         first = send_message(
             client,
@@ -341,7 +367,7 @@ def test_the_per_chat_cwd_key_survives_turns_and_splits_chats(machines_admin, ag
         wait_for_reply(client, first)
         next_turn = send_message(
             client,
-            'TOOL: bash :: {"command": "ls"}',
+            'TOOL_CHAIN: bash :: {"command": "ls"}',
             model=agent_model,
             terminal_id=machine["id"],
             chat_id=first.chat_id,
@@ -356,12 +382,12 @@ def test_the_per_chat_cwd_key_survives_turns_and_splits_chats(machines_admin, ag
         )
         wait_for_reply(client, other)
 
-        sessions = [request.headers.get("x-session-id") for request in server.requests_to("/execute")]
+        sessions = [request.headers.get("x-session-id") for request in server.requests_to(f"/{machine_name}/execute")]
         assert sessions[0] == sessions[1] == first.chat_id, sessions
         assert sessions[2] not in (None, first.chat_id), sessions
         # A plain (non-orchestrator) connection keys the per-chat cwd by
         # X-Session-Id alone; an orchestrator adds X-Terminal-Context-Id on top.
-        contexts = {request.headers.get("x-terminal-context-id") for request in server.requests_to("/execute")}
+        contexts = {request.headers.get("x-terminal-context-id") for request in server.requests_to(f"/{machine_name}/execute")}
         assert contexts == {None}, contexts
 
 
@@ -372,7 +398,8 @@ def test_the_executor_refuses_an_unbound_call_at_the_wire(machines_instance, mac
     with serving_terminal() as server, machines_admin.client() as client, httpx.Client(
         timeout=60, base_url=machines_instance.base_url
     ) as raw:
-        configure_terminals(client, _machine(server, "pier-a", "lighthouse-4"))
+        machine_name = "pier-a"
+        configure_terminals(client, _machine(server, machine_name, "lighthouse-4"))
 
         no_token = raw.post("/loopback/machines", json={"op": "bash", "command": "hostname"})
         assert no_token.status_code == 401, no_token.text
@@ -388,7 +415,8 @@ def test_the_executor_refuses_an_unbound_call_at_the_wire(machines_instance, mac
         })
         assert gone.status_code == 404, gone.text
 
-        machine = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
+        machine = _machine(server, machine_name, "lighthouse-4")
         configure_terminals(client, machine)
         claims["terminal_id"] = machine["id"]
         executed = raw.post("/loopback/machines", json={"op": "bash", "command": "hostname"}, headers={
@@ -404,7 +432,8 @@ def test_the_sidecar_never_learns_a_machine_url(machines_admin, agent_model):
     carries points at the backend's own loopback surface, never at the
     machine — the machine URL and key live only in the backend."""
     with serving_terminal() as server, machines_admin.client() as client:
-        machine = _machine(server, "pier-a", "lighthouse-4")
+        machine_name = "pier-a"
+        machine = _machine(server, machine_name, "lighthouse-4")
         configure_terminals(client, machine)
         turn = send_message(
             client,
