@@ -315,6 +315,46 @@ def test_memory_writes_and_reads_back_through_the_bridge(bridge_admin, agent_mod
         assert marker in message_text(stored_read), stored_read
 
 
+def test_a_plain_turn_does_not_poison_the_next_turns_bridge_call(
+    bridge_admin, agent_model, apis, bridge_instance
+):
+    """The lane A blocker: the binding is minted fresh every turn, so the
+    bridge re-registers between turns. A mid-run re-register hid the bridge
+    tools while the run already held its snapshot and the next tool call died
+    with "Tool mcp__owui__... not found". The sidecar now applies the fresh
+    binding before the run starts; this sequence proves the swap actually ran,
+    because the tool only exists under the second turn's claims (Web Search
+    toggles on after a plain first turn)."""
+    with bridge_admin.client() as client, web_settings_restored(client):
+        save_web_settings(
+            client,
+            ENABLE_WEB_SEARCH=True,
+            WEB_SEARCH_ENGINE="brave",
+            WEB_SEARCH_RESULT_COUNT=5,
+            BRAVE_SEARCH_API_KEY=API_KEY,
+        )
+        ENGINES_BY_NAME["brave"].serve(apis, [HARBOUR])
+        plain = send_message(client, "ECHO: plain turn one", model=agent_model)
+        stored_plain = wait_for_reply(client, plain)
+        assert "echoed: plain turn one" in message_text(stored_plain), stored_plain
+
+        turn = send_message(
+            client,
+            'TOOL: mcp__owui__search_web :: {"query": "ferry harbour"}',
+            model=agent_model,
+            chat_id=plain.chat_id,
+            parent_id=plain.assistant_message_id,
+            features={"web_search": True},
+        )
+        stored = wait_for_reply(client, turn)
+        reply_text = message_text(stored)
+        assert "Ferry times" in reply_text, stored
+        assert "harbour.example" in reply_text, stored
+
+        [sent] = ENGINES_BY_NAME["brave"].searches(apis)[-1:]
+        assert carries(sent, "ferry harbour"), f"engine never got the query: {sent}"
+
+
 # ---------------------------------------------------------------------------
 # The deferred families, reached through tool_search first.
 # ---------------------------------------------------------------------------
