@@ -9,14 +9,22 @@ provider lands as `chat:message:error` with a usable done state.
 
 Every reply is scripted by `agent_sidecar/openai_fake.py`, so each test
 asserts the roundtrip it scripted rather than a canned constant.
+
+The steer race (issue 32) is staged, not timed: the bridge's running check
+and its steer post are two calls, so a run can end in between and the
+sidecar steer route answers 409. Those tests make the first check answer
+stale and let everything downstream — the 409, the recheck, the prompt
+path — hit the real sidecar.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -456,3 +464,109 @@ def test_dead_provider_lands_as_chat_message_error_with_a_done_state(admin, agen
     finally:
         subprocess.run([str(TESTS_REPO / "agent_sidecar" / "boot_sidecar.sh"), "stop"], check=False, env=_lane_env())
         _boot_sidecar()
+
+
+def _run_bridge_turn(agent_bridge, form_data: dict) -> tuple[Any, str]:
+    """Drive `generate_agent_chat_completion` directly and read its stream.
+
+    Returns the response (for its headers) plus the collected SSE body, so a
+    test asserts what a client would actually receive.
+    """
+
+    async def run():
+        response = await agent_bridge.generate_agent_chat_completion(request=None, form_data=form_data, user=None)
+        body = "".join([chunk async for chunk in response.body_iterator])
+        return response, body
+
+    return asyncio.run(run())
+
+
+def test_steer_meeting_run_end_falls_through_to_a_new_turn(sidecar, monkeypatch):
+    """A steer whose run ends between the bridge's running check and the
+    steer post meets a 409 from the sidecar (issue 32): the bridge re-reads
+    the session, sees the run ended, and answers the send as a normal new
+    turn instead of failing it."""
+    from open_webui.routers import agent as agent_bridge
+
+    monkeypatch.setenv("AGENT_SIDECAR_PORT", str(sidecar["port"]))
+    chat_id = f"steer-race-{uuid.uuid4().hex[:8]}"
+    real_ensure = agent_bridge.ensure_session
+    real_steer = agent_bridge.steer_session
+    steer_attempts: list[dict] = []
+
+    async def stale_then_real(client, checked_chat_id, system):
+        info = await real_ensure(client, checked_chat_id, system)
+        if not steer_attempts:
+            # The stale answer: the check ran before the run ended.
+            return {**info, "running": True}
+        return info
+
+    async def recorded_steer(client, steered_chat_id, message):
+        try:
+            disposition = await real_steer(client, steered_chat_id, message)
+            steer_attempts.append({"status": 200})
+            return disposition
+        except httpx.HTTPStatusError as e:
+            steer_attempts.append({"status": e.response.status_code})
+            raise
+
+    monkeypatch.setattr(agent_bridge, "ensure_session", stale_then_real)
+    monkeypatch.setattr(agent_bridge, "steer_session", recorded_steer)
+
+    form_data = {
+        "messages": [{"role": "user", "content": "ECHO: after run end"}],
+        "metadata": {"chat_id": chat_id},
+    }
+    response, body = _run_bridge_turn(agent_bridge, form_data)
+
+    # The race really fired: the steer post hit the sidecar and drew the 409.
+    assert steer_attempts == [{"status": 409}], f"expected one 409 steer attempt: {steer_attempts}"
+    # The send was answered as a new turn — not a steer, not a failure.
+    assert response.headers.get("x-agent-steer") is None, dict(response.headers)
+    deltas = [
+        json.loads(frame[6:]).get("delta", "")
+        for frame in body.splitlines()
+        if frame.startswith("data: ") and "output_text.delta" in frame
+    ]
+    assert "".join(deltas) == "echoed: after run end", body
+    assert "data: [DONE]" in body, body
+
+
+def test_steer_409_with_the_session_running_again_retries_once(sidecar, monkeypatch):
+    """The narrow sibling of the run-end race: the recheck after the 409
+    finds the session running again, so the bridge retries the steer once
+    and the send still lands as a steer."""
+    from open_webui.routers import agent as agent_bridge
+
+    monkeypatch.setenv("AGENT_SIDECAR_PORT", str(sidecar["port"]))
+    chat_id = f"steer-retry-{uuid.uuid4().hex[:8]}"
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        if request.url.path.endswith("/steer") and calls.count(f"POST {request.url.path}") == 1:
+            return httpx.Response(409, json={"ok": False, "error": "run ended"})
+        if request.url.path == "/sessions":
+            return httpx.Response(200, json={"ok": True, "running": True, "userTurns": 1})
+        return httpx.Response(200, json={"ok": True, "disposition": "steered"})
+
+    monkeypatch.setattr(
+        agent_bridge,
+        "_client",
+        lambda: httpx.AsyncClient(base_url="http://sidecar.test", transport=httpx.MockTransport(handler)),
+    )
+
+    form_data = {
+        "messages": [{"role": "user", "content": "ECHO: retry"}],
+        "metadata": {"chat_id": chat_id},
+    }
+    response, body = _run_bridge_turn(agent_bridge, form_data)
+
+    assert [call.split(" ", 1)[1] for call in calls] == [
+        "/sessions",
+        f"/sessions/{chat_id}/steer",
+        "/sessions",
+        f"/sessions/{chat_id}/steer",
+    ], calls
+    assert response.headers.get("x-agent-steer") == "true", dict(response.headers)
+    assert "agent-steer" in body, body
