@@ -43,6 +43,11 @@ AGENT_MODEL_ID = "agent-loop.test"
 SIDECAR_PORT = 8942
 LANE_DIR = "/tmp/agent_event_bridge-lane"
 TESTS_REPO = Path(__file__).resolve().parents[2]
+# The steer tests import open_webui.routers.agent directly, and its settings
+# module hard-exits at import when authentication is enabled and the secret
+# is unset. The pytest process env is not the lane instance's env, so this
+# guard runs inside each lane and not in the instance boot.
+os.environ.setdefault("WEBUI_SECRET_KEY", "parity-lane-secret")
 
 
 def _lane_env() -> dict:
