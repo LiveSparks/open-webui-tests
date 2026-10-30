@@ -11,7 +11,8 @@ SELECTOR_BUTTON = re.compile("Select a model|Selected model")
 
 def model_search(page: Page) -> Locator:
     """The selector's search box, which announces the option the arrow keys are on."""
-    return page.get_by_role("combobox", name="Search In Models")
+    # a plain input with the label, so its role is textbox, not combobox
+    return page.get_by_role("textbox", name="Search In Models")
 
 
 def model_options(page: Page, name: str) -> Locator:
