@@ -105,9 +105,14 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
                 ({"tool_calls": [_tool_call(name, arguments)]}, "tool_calls"),
             ]
         return [({"role": "assistant"}, None), ({"content": f"tool {name} was not offered"}, "stop")]
-    # The prompt's own call comes before the stale replay: a chat that spans
-    # several turns carries earlier tool results, and the marker decides the
-    # leg, not the history.
+    # The after-call leg is the one carrying a tool result after the latest
+    # user message: earlier turns' results sit in the history of every
+    # request a multi-turn chat makes, and only the trailing one is pending.
+    last_user_index = max((i for i, m in enumerate(messages) if m.get("role") == "user"), default=-1)
+    trailing = [m for m in messages[last_user_index + 1:] if m.get("role") == "tool"]
+    if trailing:
+        content = f"tool said: {_text(trailing[-1].get('content'))}"
+        return [({"role": "assistant"}, None), ({"content": content}, "stop")]
     if prompt.startswith("TOOL:"):
         name, _, arguments = prompt.removeprefix("TOOL:").partition("::")
         name = name.strip()
@@ -117,10 +122,6 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
                 ({"tool_calls": [_tool_call(name, arguments.strip())]}, "tool_calls"),
             ]
         return [({"role": "assistant"}, None), ({"content": f"tool {name} was not offered"}, "stop")]
-    tool_result = next((m for m in messages if m.get("role") == "tool"), None)
-    if tool_result is not None:
-        content = f"tool said: {_text(tool_result.get('content'))}"
-        return [({"role": "assistant"}, None), ({"content": content}, "stop")]
     if "echo" in declared and "TOOL_ECHO" in prompt:
         call = {
             "index": 0,
