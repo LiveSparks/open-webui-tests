@@ -105,10 +105,9 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
                 ({"tool_calls": [_tool_call(name, arguments)]}, "tool_calls"),
             ]
         return [({"role": "assistant"}, None), ({"content": f"tool {name} was not offered"}, "stop")]
-    tool_result = next((m for m in messages if m.get("role") == "tool"), None)
-    if tool_result is not None:
-        content = f"tool said: {_text(tool_result.get('content'))}"
-        return [({"role": "assistant"}, None), ({"content": content}, "stop")]
+    # The prompt's own call comes before the stale replay: a chat that spans
+    # several turns carries earlier tool results, and the marker decides the
+    # leg, not the history.
     if prompt.startswith("TOOL:"):
         name, _, arguments = prompt.removeprefix("TOOL:").partition("::")
         name = name.strip()
@@ -118,6 +117,10 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
                 ({"tool_calls": [_tool_call(name, arguments.strip())]}, "tool_calls"),
             ]
         return [({"role": "assistant"}, None), ({"content": f"tool {name} was not offered"}, "stop")]
+    tool_result = next((m for m in messages if m.get("role") == "tool"), None)
+    if tool_result is not None:
+        content = f"tool said: {_text(tool_result.get('content'))}"
+        return [({"role": "assistant"}, None), ({"content": content}, "stop")]
     if "echo" in declared and "TOOL_ECHO" in prompt:
         call = {
             "index": 0,

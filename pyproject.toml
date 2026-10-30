@@ -46,6 +46,9 @@ dependencies = [
     "python-engineio",
     "python-socketio",
     "redis",
+    # The harness preload probe reads OpenBLAS thread counts through it; a
+    # missing install silently disables the fork fast boot and boots crawl.
+    "threadpoolctl>=3.0",
     "soundfile",
     "sqlalchemy",
     "tokenizers",
@@ -111,6 +114,8 @@ addopts = [
     "--tb=short",
     "--strict-markers",
     "--strict-config",
+    # Per-test seconds in the summary, so a crawl names itself.
+    "--durations=12",
 ]
 
 [tool.ruff]
