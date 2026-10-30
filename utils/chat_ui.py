@@ -44,8 +44,8 @@ def listed_source(page: Page, name: str) -> Locator:
     return conversation(page).get_by_role("button", name=label)
 
 
-def expect_reply(page: Page, text: str) -> None:
-    expect(last_reply(page)).to_contain_text(text, timeout=REPLY_TIMEOUT_MS)
+def expect_reply(page: Page, text: str, *, timeout: int | None = None) -> None:
+    expect(last_reply(page)).to_contain_text(text, timeout=timeout or REPLY_TIMEOUT_MS)
 
 
 def stop_button(page: Page) -> Locator:
