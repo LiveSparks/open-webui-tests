@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL_ID = "fake-model"
@@ -53,6 +54,36 @@ def _tool_call(name: str, arguments: str) -> dict:
 
 def _declared(declared: list[str | None], name: str) -> bool:
     return any(candidate == name for candidate in declared)
+
+
+def _split_steps(text: str) -> list[str]:
+    """Top-level `->` splits only: quotes and brackets nest, and a delegated
+    task carries its own TOOL_CHAIN through the arguments JSON."""
+    steps: list[str] = []
+    depth = 0
+    in_string = False
+    escaped = False
+    start = 0
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth = max(0, depth - 1)
+        elif depth == 0 and char == "-" and text[index : index + 2] == "->":
+            steps.append(text[start:index])
+            start = index + 2
+    steps.append(text[start:])
+    return [step.strip() for step in steps if step.strip()]
 
 
 def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
@@ -87,7 +118,7 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
     if prompt.startswith("TOOL_CHAIN:"):
         steps = [
             (name.strip(), arguments.strip())
-            for step in prompt.removeprefix("TOOL_CHAIN:").split("->")
+            for step in _split_steps(prompt.removeprefix("TOOL_CHAIN:"))
             for name, _, arguments in [step.partition("::")]
         ]
         # Tool results that came back after the latest user message are the
@@ -160,26 +191,39 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         body = json.loads(raw) if raw else {}
-        if os.environ.get("OPENAI_FAKE_LOG"):
-            with open(os.environ["OPENAI_FAKE_LOG"], "a") as log:
-                names = [t.get("function", {}).get("name") for t in body.get("tools") or []]
-                log.write(json.dumps({"tools": names, "last_user": _text(next((m for m in reversed(body.get("messages") or []) if m.get("role") == "user"), {}).get("content")), "roles": [m.get("role") for m in body.get("messages") or []]}) + "\n")
+        received = int(time.time() * 1000)
         if not self.path.endswith("/chat/completions"):
+            self._log_request(body, received, [])
             self._json(404, {"error": "not found"})
             return
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.end_headers()
-        for delta, finish in _script_reply(body):
-            chunk = {"object": "chat.completion.chunk", "model": MODEL_ID, "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
-            self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+        chunk_ts: list[int] = []
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for delta, finish in _script_reply(body):
+                chunk = {"object": "chat.completion.chunk", "model": MODEL_ID, "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+                self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+                self.wfile.flush()
+                chunk_ts.append(int(time.time() * 1000))
+                if CHUNK_DELAY:
+                    threading.Event().wait(CHUNK_DELAY)
+                if self.wfile.closed:
+                    return
+            self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
-            if CHUNK_DELAY:
-                threading.Event().wait(CHUNK_DELAY)
-            if self.wfile.closed:
-                return
-        self.wfile.write(b"data: [DONE]\n\n")
-        self.wfile.flush()
+        finally:
+            self._log_request(body, received, chunk_ts)
+
+    def _log_request(self, body: dict, received: int, chunk_ts: list[int]) -> None:
+        """One line per provider request: the declared tools, the last user
+        message, the role shape, the receipt time, and each chunk's send time
+        (the source side of the round's frame-latency probe)."""
+        if not os.environ.get("OPENAI_FAKE_LOG"):
+            return
+        with open(os.environ["OPENAI_FAKE_LOG"], "a") as log:
+            names = [t.get("function", {}).get("name") for t in body.get("tools") or []]
+            log.write(json.dumps({"tools": names, "last_user": _text(next((m for m in reversed(body.get("messages") or []) if m.get("role") == "user"), {}).get("content")), "roles": [m.get("role") for m in body.get("messages") or []], "ts": received, "chunk_ts": chunk_ts}) + "\n")
 
     def _json(self, status: int, payload: dict) -> None:
         encoded = json.dumps(payload).encode()
