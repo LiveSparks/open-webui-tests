@@ -75,7 +75,9 @@ def _checkout() -> Path:
 def sidecar() -> Iterator[dict]:
     boot = TESTS_REPO / "agent_sidecar" / "boot_sidecar.sh"
     assert boot.is_file(), f"boot recipe missing at {boot}"
-    LANE_DIR.mkdir(parents=True, exist_ok=True)
+    Path(LANE_DIR).mkdir(parents=True, exist_ok=True)
+    # Provider requests accumulate across runs; a fresh lane reads a fresh log.
+    FAKE_REQUEST_LOG.write_text("")
     env = {
         **os.environ,
         "AGENT_SIDECAR_LANE_DIR": LANE_DIR,
@@ -233,19 +235,31 @@ def run_delegation(client, task: str, context: str, model: str, **send_options):
     return turn, wait_for_reply(client, turn)
 
 
-def child_chat_record(client, task: str) -> tuple[str, dict]:
-    """The delegation record the run created, found by its task title."""
-    probe = f"Sub-agent: {task[:40]}"
-    listed = client.get("/api/v1/chats/")
-    listed.raise_for_status()
-    body = listed.json()
-    chats = body.get("data") if isinstance(body, dict) else body
-    for chat in chats:
-        if probe in (chat.get("title") or ""):
-            fetched = client.get(f"/api/v1/chats/{chat['id']}")
-            fetched.raise_for_status()
-            return chat["id"], fetched.json()
-    raise AssertionError(f"no sub-agent chat titled with {task[:40]!r}")
+def child_chat_record(client, service: dict, task: str, since: float) -> tuple[str, dict]:
+    """The delegation record the run created, named by its own sidecar session.
+
+    Delegation records stay out of the chat list (internal chats), so the scan
+    runs over the sessions root instead: the child's JSONL carries the bare
+task, and the chat behind that id must say it is a subagent record.
+    """
+    sessions = Path(service["env"]["AGENT_SIDECAR_LANE_DIR"]) / "agent_sessions"
+    # The session JSONL stores texts JSON-escaped, so the probe is a
+    # quote-free prefix; the subagent record check does the real naming.
+    probe = task.split("::")[0].strip() or task[:40]
+    for session_dir in sorted(sessions.iterdir()):
+        if not session_dir.is_dir() or session_dir.stat().st_mtime < since:
+            continue
+        texts = [f for f in session_dir.glob("*.jsonl") if f.stat().st_mtime >= since]
+        if not any(probe in f.read_text() for f in texts):
+            continue
+        fetched = client.get(f"/api/v1/chats/{session_dir.name}")
+        if fetched.status_code != 200:
+            continue
+        record = fetched.json()
+        meta = record.get("meta") or {}
+        if meta.get("type") == "subagent" and meta.get("internal") is True:
+            return session_dir.name, record
+    raise AssertionError(f"no sub-agent record carries the task {probe!r}")
 
 
 def chat_messages(record: dict) -> dict:
@@ -261,8 +275,19 @@ def child_session_file(service: dict, child_id: str) -> Path:
     return files[0]
 
 
+
+
 def internal_subagent_messages(messages: dict) -> list[dict]:
     return [m for m in messages.values() if (m.get("meta") or {}).get("internal") is True and (m.get("meta") or {}).get("type") == "subagent"]
+
+
+def message_content_or_error(message: dict) -> str:
+    """The message's text including the error body it reports on itself."""
+    text = message_text(message)
+    error = message.get("error")
+    if isinstance(error, dict) and isinstance(error.get("content"), str):
+        return f"{text}{error['content']}"
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -275,9 +300,10 @@ def test_a_foreground_delegation_spawns_the_child_session_and_the_parent_carries
 ):
     task = f"plain child work {uuid.uuid4().hex} - answer me"
     context = "parent-stage hint"
+    before = sidecar_health(sidecar)["loaded"]
+    since = time.time()
     with sub_admin.client() as client:
         subagents_on()
-        before = sidecar_health(sidecar)["loaded"]
 
         turn, stored = run_delegation(client, task, context, agent_model)
 
@@ -290,7 +316,7 @@ def test_a_foreground_delegation_spawns_the_child_session_and_the_parent_carries
         child = fake_requests(task)
         assert child, f"the child never reached the provider (task {task!r})"
         assert "system" in child[-1]["roles"], child[-1]
-        child_id, record = child_chat_record(client, task)
+        child_id, record = child_chat_record(client, sidecar, task, since)
         child_meta = record.get("meta") or {}
         assert child_meta.get("internal") is True and child_meta.get("type") == "subagent", child_meta
         assert child_meta.get("parent_chat_id") == turn.chat_id and child_meta.get("mode") == "foreground", child_meta
@@ -307,11 +333,12 @@ def test_a_foreground_delegation_spawns_the_child_session_and_the_parent_carries
 
 def test_the_admin_subagent_prompt_rides_the_spawn_head(sub_admin, agent_model, subagents_on, sidecar):
     task = f"prompt probes {uuid.uuid4().hex} - answer me"
+    since = time.time()
     with sub_admin.client() as client:
         subagents_on(SUBAGENTS_SYSTEM_PROMPT=ADMIN_HEAD)
         _, stored = run_delegation(client, task, "parent-stage hint", agent_model)
 
-        child_id, record = child_chat_record(client, task)
+        child_id, record = child_chat_record(client, sidecar, task, since)
         head = child_session_file(sidecar, child_id).read_text()
         assert ADMIN_HEAD in head, f"the admin head never rode the spawn: {head[:400]}"
         assert DEFAULT_HEAD_PROBE not in head, "the default head ran when the admin head was set"
@@ -323,9 +350,10 @@ def test_the_admin_subagent_prompt_rides_the_spawn_head(sub_admin, agent_model, 
 # ---------------------------------------------------------------------------
 
 
-def test_a_child_tool_set_drops_delegation_and_memory_writes(sub_admin, agent_model, subagents_on):
+def test_a_child_tool_set_drops_delegation_and_memory_writes(sub_admin, agent_model, subagents_on, sidecar):
     task = f"TOOL: mcp__owui__add_memory :: {{\"content\": \"quiet moorings {uuid.uuid4().hex}\"}}"
     context = "parent-stage hint"
+    since = time.time()
     with sub_admin.client() as client:
         subagents_on()
         _, stored = run_delegation(client, task, context, agent_model, features={"memory": True})
@@ -343,9 +371,9 @@ def test_a_child_tool_set_drops_delegation_and_memory_writes(sub_admin, agent_mo
 
         # The child's turn said the tool is absent, the parent's tool result
         # carried that, and no memory row landed anywhere.
-        child_id, record = child_chat_record(client, task)
+        child_id, record = child_chat_record(client, sidecar, task, since)
         child_finals = [m for m in chat_messages(record).values() if m.get("role") == "assistant" and m.get("done")]
-        assert any("was not offered" in message_text(m) and "add_memory" in message_text(m) for m in child_finals), child_finals
+        assert any("was not offered" in message_content_or_error(m) and "add_memory" in message_content_or_error(m) for m in child_finals), child_finals
         assert "was not offered" in message_text(stored), stored
         memories = client.get("/api/v1/memories/")
         memories.raise_for_status()
@@ -353,29 +381,35 @@ def test_a_child_tool_set_drops_delegation_and_memory_writes(sub_admin, agent_mo
         assert not any("quiet moorings" in content for content in contents), contents
 
 
-def test_a_child_never_delegates_recursively(sub_admin, agent_model, subagents_on):
-    inner_task = "recursive child work should never start"
-    task = f"TOOL: mcp__owui__delegate_task :: {{\"task\": \"{inner_task}\", \"context\": \"parent-stage hint\"}}"
+def test_a_child_never_delegates_recursively(sub_admin, agent_model, subagents_on, sidecar):
+    """A child chatting `delegate_task` fails closed: the tool is not on the
+    child surface, so the attempt answers as absent and no second delegation
+    record ever exists for the inner task."""
+    inner_task = f"recursive child work {uuid.uuid4().hex} should never start"
+    task = f"TOOL: mcp__owui__delegate_task :: {{\"task\": \"{inner_task}\", \"context\": \"none\"}}"
+    sessions = Path(sidecar["env"]["AGENT_SIDECAR_LANE_DIR"]) / "agent_sessions"
+    since = time.time()
     with sub_admin.client() as client:
         subagents_on()
-        begin = client.get("/api/v1/chats/")
-        begin.raise_for_status()
-        begin_body = begin.json()
-        begin_chats = begin_body.get("data") if isinstance(begin_body, dict) else begin_body
-        begin_ids = {(chat.get("id"), chat.get("title")) for chat in begin_chats}
-
         turn, stored = run_delegation(client, task, "parent-stage hint", agent_model)
 
         # The attempt answers as an absent tool, not as a fresh delegation.
         assert "delegate_task" in message_text(stored) and "was not offered" in message_text(stored), stored
-        after = client.get("/api/v1/chats/")
-        after.raise_for_status()
-        after_body = after.json()
-        after_chats = after_body.get("data") if isinstance(after_body, dict) else after_body
-        after_ids = {(chat.get("id"), chat.get("title")) for chat in after_chats}
-        fresh = after_ids - begin_ids
-        none_titled = [title for _, title in fresh if title and ('Sub-agent' in title)]
-        assert not none_titled, f"the child spawned a delegation anyway: {none_titled}"
+
+        # Exactly two session dirs carry the inner task: the parent's turn
+        # (its TOOL_CHAIN embeds it) and the attempt's own child. A fresh
+        # delegation under the child would show as a third carrier, an
+        # undelegated grandchild.
+        inner_probe = inner_task.split("::")[0].strip()
+        carrier = [
+            d.name
+            for d in sessions.iterdir()
+            if d.is_dir() and d.stat().st_mtime >= since and any(inner_probe in f.read_text() for f in d.glob("*.jsonl"))
+        ]
+        assert len(carrier) == 2, carrier
+        assert turn.chat_id in carrier, carrier
+        fetched = client.get(f"/api/v1/chats/{turn.chat_id}")
+        fetched.raise_for_status()
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +417,7 @@ def test_a_child_never_delegates_recursively(sub_admin, agent_model, subagents_o
 # ---------------------------------------------------------------------------
 
 
-def test_the_default_turn_budget_is_256(sub_admin):
+def test_the_default_turn_budget_is_256(sub_admin, subagents_on):
     with sub_admin.client() as client:
         subagents_on()
         current = client.get(SUBAGENTS_ROUTES[0]).json()
@@ -393,9 +427,10 @@ def test_the_default_turn_budget_is_256(sub_admin):
         assert after.get("SUBAGENTS_MAX_ITERATIONS") == 5, after
 
 
-def test_a_capped_child_reports_the_turn_budget_string(sub_admin, agent_model, subagents_on):
+def test_a_capped_child_reports_the_turn_budget_string(sub_admin, agent_model, subagents_on, sidecar):
     task = "TOOL: mcp__owui__search_memories :: {\"query\": \"harbour\"}"
     context = "parent-stage hint"
+    since = time.time()
     with sub_admin.client() as client:
         subagents_on(SUBAGENTS_MAX_ITERATIONS=1)
         _, stored = run_delegation(client, task, context, agent_model, features={"memory": True})
@@ -404,9 +439,9 @@ def test_a_capped_child_reports_the_turn_budget_string(sub_admin, agent_model, s
         # same budget string the native loop reports...
         assert "Tool-call limit reached (1 iterations)." in message_text(stored), stored
         # ...the child's own record carries it as the turn's error...
-        child_id, record = child_chat_record(client, task)
+        child_id, record = child_chat_record(client, sidecar, task, since)
         child_finals = [m for m in chat_messages(record).values() if m.get("role") == "assistant" and m.get("done")]
-        assert any("Tool-call limit reached (1 iterations)." in message_text(m) for m in child_finals), child_finals
+        assert any("Tool-call limit reached (1 iterations)." in message_content_or_error(m) for m in child_finals), child_finals
         # ...and the child's manifest still offered the tool it tried to use.
         child = fake_requests(task)
         assert child and any("search_memories" in name for name in child[-1]["tools"]), child[-1]
@@ -540,7 +575,12 @@ def test_a_killed_sidecar_takes_its_children_down_and_reports(sub_admin, agent_m
             if report is not None:
                 break
             time.sleep(0.5)
-        assert report is not None, "the crash never surfaced a failed background report on the parent"
+        fetched = client.get(f"/api/v1/chats/{turn.chat_id}")
+        fetched.raise_for_status()
+        messaged = chat_messages(fetched.json())
+        assert report is not None, (
+            f"the crash never surfaced a failed background report on the parent; messages: {json.dumps(messaged)[:1200]}"
+        )
 
     subprocess.run([str(sidecar["boot"]), "start", str(sidecar["checkout"]), str(SIDECAR_PORT)], check=True, env=sidecar["env"])
     health = sidecar_health(sidecar)
