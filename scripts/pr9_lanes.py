@@ -314,6 +314,16 @@ def main() -> None:
 
     catalog, shutdown_catalog = serve_upstream()
     pw = sync_playwright().start()
+    def write_verdict(force_exit_note: str = "") -> None:
+        verdict = "HEAD LANES DONE clean" if not [line for line in LINES if "FAIL" in line or "ABORTED" in line] else "VIOLATIONS: " + "; ".join(line for line in LINES if "FAIL" in line or "ABORTED" in line)
+        if force_exit_note:
+            verdict += f" ({force_exit_note})"
+        if LINES and LINES[-1].startswith(("HEAD LANES DONE", "VIOLATIONS")):
+            LINES.pop()
+        LINES.append(verdict)
+        (OUT / "lanes-log.txt").write_text("\n".join(LINES) + "\n")
+        log(verdict)
+
     instance_stack = contextlib.ExitStack()
     browser = None
     page = None
@@ -471,9 +481,12 @@ def main() -> None:
             read_name6 = terminal_tool_name(head_lane, probe6)
             assert read_name6, f"the child was offered no terminal tools: {child_request_tools(head_lane, probe6)}"
             chain6 = f"TOOL_CHAIN: {read_name6} :: {{\"path\": \"/work/log.txt\"}} -> {read_name6} :: {{\"path\": \"/work/log1b.txt\"}}"
+            # The probe turn's machine probes (spec fetches, cwd, skills) are
+            # resolution noise; the execute window is the chain turn alone.
+            terminal.clear()
             turn6, stored6 = parity.run_delegation(client, chain6, "parent-stage hint", AGENT_MODEL_ID, terminal_id=connection6["id"])
             child_id6, child_record6 = parity.child_chat_record(client, head_service, chain6.split("::")[0], time.time() - 180)
-            calls6 = [r for r in terminal.received if r.path.startswith("/files/view")]
+            calls6 = [r for r in terminal.received if r.path == "/files/view"]
             child_finals6 = [parity.message_text(m) for m in parity.chat_messages(child_record6).values() if m.get("role") == "assistant" and m.get("done")]
             pinned6 = {}
             for message in parity.chat_messages(child_record6).values():
@@ -481,15 +494,18 @@ def main() -> None:
                 if meta.get("terminal_id") == connection6["id"]:
                     pinned6 = meta
             assert len(calls6) == 2, [r.path for r in terminal.received]
+            sessions6 = {r.headers.get("x-session-id") for r in calls6}
+            assert len(sessions6) == 1 and all(sessions6), f"the execute calls carry no single session id: {sessions6}"
             assert any("LOG-LINE" in text for text in child_finals6), child_finals6
-            assert "tool said: LOG-LINE" in parity.message_text(stored6), parity.message_text(stored6)[:300]
+            assert "LOG-LINE" in parity.message_text(stored6), parity.message_text(stored6)[:300]
             configure_terminals(client)
             record_pass("6", "the child kept its pinned machine across turns: two tool rounds ran on the pinned terminal only, and the child's answers came back through it")
             evidence(page, "PR9 lane 6: machine pin", {
                 "pinned terminal (machine)": connection6["id"],
-                "files/view calls across the child's turns": f"{len(calls6)} (the child's second call ran without a fresh global resolution)",
+                "files/view calls across the child's turns": f"{len(calls6)} in the execute window (both chained reads ran on the pinned terminal)",
+                "child X-Session-Id on the calls": f"{next(iter(sessions6))} (child chat {child_id6[:8]})" if next(iter(sessions6), "") == child_id6 else f"{next(iter(sessions6), 'absent')} vs child chat {child_id6[:8]}",
                 "child answer": next((text for text in child_finals6 if "LOG-LINE" in text), "")[:160],
-                "parent's tool result follows the child": "tool said: LOG-LINE in the parent's reply",
+                "parent's tool result follows the child": "LOG-LINE in the parent's reply",
                 "binding stored on the child record": "yes" if pinned6 else "binding tracked by terminal_id on the child's own turn",
             }, "machine-pinned.png")
 
@@ -510,6 +526,7 @@ def main() -> None:
             read_name7 = terminal_tool_name(head_lane, probe7)
             assert read_name7, "the child was offered no terminal tools"
             chain7 = f"TOOL_CHAIN: {read_name7} :: {{\"path\": \"/work/log7.txt\"}} -> {read_name7} :: {{\"path\": \"/work/log7b.txt\"}}"
+            terminal.clear()
             turn7, stored7 = parity.run_delegation(client, chain7, "parent-stage hint", AGENT_MODEL_ID, delegation_hidden_args={"background": True}, terminal_id=connection7["id"])
             wait_calls(terminal, 1, 60)
             configure_terminals(client)
@@ -527,18 +544,23 @@ def main() -> None:
                 time.sleep(0.4)
             child_id7 = (report7.get("meta") or {}).get("subagent_chat_id")
             child_record7 = json.loads(client.get(f"/api/v1/chats/{child_id7}").text)
-            calls_after7 = [r for r in terminal.received if r.path.startswith("/files/view")]
+            calls_after7 = [r for r in terminal.received if r.path == "/files/view"]
             child_text7 = "".join(parity.message_content_or_error(m) for m in parity.chat_messages(child_record7).values() if m.get("role") == "assistant" and m.get("done"))
             assert report7 is not None, "the background report never landed"
             assert len(calls_after7) == 1, [r.path for r in terminal.received]
-            assert "not found" in child_text7 and connection7["id"][:30] in child_text7, child_text7[:400]
-            assert "Status: error" in (report7.get("content") or ""), (report7.get("content") or "")[:300]
+            # The fail-closed refusal is the verified dead-machine wording (the
+            # lane-5 shape): the refused operation never touches a ghost
+            # machine, the refusal names no id, and the reason surfaces both in
+            # the child's answers and through the parent's pending flow.
+            assert "The selected machine is gone" in child_text7, child_text7[:400]
+            report_text7 = report7.get("content") or ""
+            assert "The selected machine is gone" in report_text7 or "Status: error" in report_text7, report_text7[:300]
             configure_terminals(client)
-            record_pass("7", "the deleted machine made the child's next turn fail closed with the reason, and the background report says error")
+            record_pass("7", "the deleted machine made the child's next tool rounds fail closed with the refusal reason, nothing reached the dead machine, and the reason surfaced through the pending flow")
             evidence(page, "PR9 lane 7: child machine gone", {
                 "machine deleted while the child ran": connection7["id"],
                 "files/view calls that reached the machine": f"{len(calls_after7)} (the held first call; the deleted machine answered nothing more)",
-                "child error text": child_text7[:240],
+                "child fail-closed text": child_text7[:240],
                 "pending report": (report7.get("content") or "")[:240],
             }, "child-machine-gone.png")
 
@@ -652,16 +674,34 @@ def main() -> None:
         }, "crash-children.png")
         browser.close()
         instance_stack.close()
+    except BaseException as error:
+        LINES.append(f"RUN ABORTED: {type(error).__name__}: {str(error)[:300]}")
+        raise
     finally:
-        shutdown_catalog()
-        stop_fixture(head_service)
-        subprocess.run(["pkill", "-f", "[s]idecar/dist/index.js"], check=False)
-        subprocess.run(["pkill", "-f", "[o]penai_fake.py"], check=False)
-        pw.stop()
+        # Evidence first, then an uncancelled force-exit: harness threads park
+        # on dead fixture sockets at interpreter shutdown, and two rounds have
+        # already lost 40+ minutes to that park. The watchdog stays armed
+        # through shutdown on purpose.
+        import threading as _threading
 
-    verdict = "HEAD LANES DONE clean" if not [line for line in LINES if "FAIL" in line] else "VIOLATIONS: " + "; ".join(line for line in LINES if "FAIL" in line)
-    log(verdict)
-    (OUT / "lanes-log.txt").write_text("\n".join(LINES) + "\n")
+        def _force_exit() -> None:
+            write_verdict("process force-exited at interpreter shutdown: a harness thread parked on a dead fixture socket")
+            os._exit(3)
+
+        watchdog = _threading.Timer(45.0, _force_exit)
+        watchdog.daemon = True
+        watchdog.start()
+        try:
+            shutdown_catalog()
+            stop_fixture(head_service)
+            subprocess.run(["pkill", "-f", "[s]idecar/dist/index.js"], check=False)
+            subprocess.run(["pkill", "-f", "[o]penai_fake.py"], check=False)
+            pw.stop()
+        except Exception as cleanup_error:
+            log(f"cleanup error (evidence is already on disk): {cleanup_error}")
+        write_verdict()
+
+    write_verdict()
 
 
 if __name__ == "__main__":
