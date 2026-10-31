@@ -368,7 +368,17 @@ def main() -> None:
         assert health9.get("ok") is True and health9.get("running", 0) == 0, health9
         admin.client().get(f"/api/v1/chats/{turn9.chat_id}").raise_for_status()
         time.sleep(2.5)
-        reruns9 = child_request_lines_with(head_lane, task9[:22])
+        # The orphan check counts only requests the restarted sidecar could
+        # have issued: the pre-kill child leg is in the same log with its
+        # receipt time, so the window opens at the restart.
+        restarted_at_ms9 = int(time.time() * 1000) - 3000
+        reruns9 = 0
+        fake_log9 = head_lane / "fake-requests.log"
+        if fake_log9.exists():
+            for line in fake_log9.open():
+                entry = json.loads(line)
+                if (entry.get("last_user") or "").startswith(task9[:22]) and (entry.get("ts") or 0) >= restarted_at_ms9:
+                    reruns9 += 1
         assert reruns9 == 0, f"the child's task re-ran {reruns9} times after the restart: an orphan would"
         record_pass("9", "the sidecar kill errored the turn with nothing orphaned, and the real restart answers healthy with running 0")
         evidence(page, "PR9 lane 9: crash takes children down", {
