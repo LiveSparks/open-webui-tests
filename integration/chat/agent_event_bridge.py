@@ -536,7 +536,9 @@ def test_dead_provider_lands_as_chat_message_error_with_a_done_state(admin, agen
         turn = send_message(admin.client(), "ECHO: nobody home", model=agent_model)
         stored = wait_for_reply(admin.client(), turn, 60.0)
         assert stored["done"] is True
-        assert stored.get("error") == {"content": {"content": "The agent run failed."}}, (
+        # The store keeps one wrap: error.content carries the string itself
+        # (a nested dict would render wrong in the record and every reader).
+        assert stored.get("error") == {"content": "The agent run failed."}, (
             f"no terminal error persisted on a dead provider: {stored.get('error')}"
         )
 
