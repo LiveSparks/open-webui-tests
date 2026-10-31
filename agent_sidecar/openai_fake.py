@@ -32,7 +32,10 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL_ID = "fake-model"
-CHUNK_DELAY = 0.05
+# The inter-chunk pacing is harness environment, not provider behavior: the
+# perf probe runs unpaced (OPENAI_FAKE_CHUNK_DELAY=0) so the frame-lag rule
+# measures the pipeline and not the fake's own sleep.
+CHUNK_DELAY = float(os.environ.get("OPENAI_FAKE_CHUNK_DELAY", "0.05"))
 
 
 def _text(content: object) -> str:
