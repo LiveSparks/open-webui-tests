@@ -438,16 +438,23 @@ def main() -> None:
         parent_text10 = parity.message_text(stored10)
         child_finals10 = [parity.message_text(m) for m in parity.chat_messages(child_record10).values() if m.get("role") == "assistant" and m.get("done")]
         child_text10 = max(child_finals10, key=len)
-        assert "[output truncated]" in parent_text10, parent_text10[:300]
-        head10 = parent_text10.split("[output truncated]")[0]
-        assert len(head10.rstrip()) <= 128 + 2 and len(child_text10) > 128, (len(head10.rstrip()), len(child_text10))
-        assert "[output truncated]" not in child_text10, child_text10[-200:]
+        marker10 = "[output truncated]"
+        assert marker10 in parent_text10, parent_text10[:300]
+        # The parent's reply arrives wrapped in the fake's `chained: ` shell;
+        # the budget governs the child summary the product returned, so the
+        # visible prefix is measured without the scripted wrapper.
+        returned10 = parent_text10.split(marker10)[0]
+        wrapper10 = "chained: "
+        visible10 = returned10[len(wrapper10):] if returned10.startswith(wrapper10) else returned10
+        head10 = visible10.rstrip()
+        assert len(head10) <= 128 + 2 and len(child_text10) > 128, (len(head10), len(child_text10))
+        assert marker10 not in child_text10, child_text10[-200:]
         record_pass("10", "the returned copy truncates at the budget while the child record keeps the full text")
         evidence(page, "PR9 lane 10: child summary truncation", {
             "returned copy (the parent's result)": parent_text10[:180],
-            "returned head length": f"{len(head10.rstrip())} chars (budget 128)",
+            "returned head length": f"{len(head10)} chars (budget 128; the fake's chained: wrapper excluded)",
             "child record length": f"{len(child_text10)} chars (the full text kept)",
-            "child record carries the truncation marker": str("[output truncated]" in child_text10),
+            "child record carries the truncation marker": str(marker10 in child_text10),
         }, "child-truncated.png")
 
         socket_stack.close()
