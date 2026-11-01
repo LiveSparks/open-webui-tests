@@ -19,6 +19,11 @@ asserts the roundtrip it scripted rather than a canned constant:
 - `COUNT_HISTORY` answers `history: <n> user messages`
 - `SLOW` streams sixty chunks fifty milliseconds apart (abort mid-generation)
 - `LONG` streams two hundred numbered chunks (frame-loss checks)
+- `OWUI_LESSON_REFLECT` in the prompt (the self-learning reflect request,
+  PR11) answers the scripted JSON lesson it names: `lesson-topic-<slug>` in
+  the observed turn becomes that lesson's trigger and action, so a lane
+  scripts distinct lessons per mistake; without a topic the lesson is the
+  fixed deploy/retry one
 - anything else answers `echoed: <prompt>` in one chunk
 """
 
@@ -101,6 +106,26 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
     if "COUNT_HISTORY" in prompt:
         users = [m for m in messages if m.get("role") == "user"]
         return [({"role": "assistant"}, None), ({"content": f"history: {len(users)} user messages"}, "stop")]
+    if "OWUI_LESSON_REFLECT" in prompt:
+        import re
+
+        topic = None
+        # The full slug is the topic identity: lanes and the stored trigger
+        # both carry "lesson-topic-<slug>" verbatim, not the slug tail alone.
+        match = re.search(r"lesson-topic-[A-Za-z0-9-]+", prompt)
+        if match:
+            topic = match.group(0)
+        lesson = ({
+            "title": f"Deploy flag ordering on {topic}" if topic else "Deploy flag ordering",
+            "trigger": (f"deploying the wrong way for {topic}" if topic else "deploying with the wrong flag order"),
+        })
+        action = (
+            f"put the retry flag after the deploy flag when shipping {topic}"
+            if topic
+            else "put the retry flag after the deploy flag"
+        )
+        payload = json.dumps({"keep_base": False, **lesson, "action": action})
+        return [({"role": "assistant"}, None), ({"content": payload}, "stop")]
     if prompt.startswith("SLOW"):
         frames = [({"role": "assistant"}, None)]
         frames += [({"content": f"chunk{i}"}, None) for i in range(1, 61)]

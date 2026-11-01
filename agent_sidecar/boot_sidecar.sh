@@ -15,7 +15,12 @@ LANE_DIR=${AGENT_SIDECAR_LANE_DIR:-/tmp/agent_sidecar-lane}
 SIDECAR_PORT=${3:-8930}
 # Derive the fake's port from the sidecar port so concurrent lanes never collide
 # (lane 1's sidecar port 8931 used to fight the hardcoded fake port 8931).
-FAKE_PORT=$((18930 + (SIDECAR_PORT - 8930)))
+# AGENT_FAKE_PORT pins the fake explicitly (protocol: one port per lane owner).
+if [ -n "${AGENT_FAKE_PORT:-}" ]; then
+  FAKE_PORT=$AGENT_FAKE_PORT
+else
+  FAKE_PORT=$((18930 + (SIDECAR_PORT - 8930)))
+fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 # The sidecar /health body is {ok:true, version, pi, ...}. Asserting the shape
