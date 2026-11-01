@@ -45,7 +45,7 @@ from harness.chat import send_message, wait_for_reply
 from harness.instance import LaunchedInstance, WEBUI_SECRET_KEY as INSTANCE_SECRET
 from harness.listener import ReceivedRequest, json_answer
 from harness.listener import listening
-from harness.openapi_server import serve_openapi
+from harness.openapi_server import authorization, serve_openapi
 from harness.socket_client import connected
 
 pytestmark = [pytest.mark.regression, pytest.mark.api, pytest.mark.requires_source]
@@ -131,7 +131,9 @@ def relay_listing() -> dict:
     with listening() as listener:
 
         def harbour_report(request: ReceivedRequest):
-            if request.headers.get("authorization") != f"Bearer {BROWSER_KEY}":
+            # Case-insensitive the way a browser's fetch header lands: the
+            # recorded header carries whatever case the tab sent.
+            if authorization(request) != f"Bearer {BROWSER_KEY}":
                 return json_answer({"error": "missing or wrong key"}, 401)
             assert "harbour=ferry" in request.path, request.path
             return json_answer({"result": f"the {MARKER}"})
@@ -426,7 +428,7 @@ def test_the_relayed_call_never_came_from_the_backend(
             wait_for_reply(client, turn, timeout=90)
 
     [request] = relay_listing["listener"].requests_to("/harbour_report")[prior_calls:]
-    assert request.headers.get("authorization") == f"Bearer {BROWSER_KEY}", request.headers
+    assert authorization(request) == f"Bearer {BROWSER_KEY}", request.headers
 
 
 def test_a_refused_relay_fails_the_ordinary_way(bridge_admin, agent_model, sidecar, relay_listing, bridge_instance):
