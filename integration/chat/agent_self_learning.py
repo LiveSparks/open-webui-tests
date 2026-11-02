@@ -255,6 +255,29 @@ def lesson_row(actor: Actor, lesson_id: str) -> dict | None:
     return next((row for row in lessons_for(actor) if row["id"] == lesson_id), None)
 
 
+def lesson_saved_rows(actor: Actor, chat_id: str, message_id: str) -> list[dict]:
+    """Fix round 3: the saved-lesson rows a RELOAD sees — the chat record's
+    stored statusHistory for that assistant message, read from the server,
+    not the live socket stream."""
+    with actor.client() as client:
+        stored = client.get(f"/api/v1/chats/{chat_id}")
+        assert stored.status_code == 200, stored.text
+        message = stored.json()["chat"]["history"]["messages"].get(message_id, {})
+    return [row for row in (message.get("statusHistory") or []) if row.get("action") == "lesson_saved"]
+
+
+def wait_for_saved_row(actor: Actor, turn, timeout: float = 30.0) -> list[dict]:
+    """The reflect job runs after the turn: poll the store for its row."""
+    deadline = time.monotonic() + timeout
+    rows: list[dict] = []
+    while time.monotonic() < deadline:
+        rows = lesson_saved_rows(actor, turn.chat_id, turn.assistant_message_id)
+        if rows:
+            return rows
+        time.sleep(0.3)
+    pytest.fail(f"no lesson-saved row landed on {turn.assistant_message_id} after {timeout}s")
+
+
 def confirm(actor: Actor, lesson_id: str, times: int = 1) -> dict:
     """The review surface's confirmations; each one is a deterministic pulse."""
     with actor.client() as client:
@@ -349,6 +372,43 @@ def test_reflect_job_writes_one_shaped_lesson(learning_admin, agent_model):
     # and the fake's scripted lesson rides them.
     store_hits = [entry for entry in reflect_requests() if "lesson-topic-main" in entry["last_user"]]
     assert store_hits, "the reflection prompt never reached the cheap model"
+
+
+def test_the_saved_lesson_lays_a_row_that_survives_reload(learning_admin, agent_model):
+    """Fix round 3, the persistence proof: the write lays a PERSISTENT in-chat
+    row on the assistant turn, in the memory-save event style (EVENTS.LESSON_SAVED
+    with a data bag at publish, then the chat event surface's status machinery
+    records the row inside the chat record). The round-2 floating chip was
+    reload-gone; this row must read back from the stored record twice, with a
+    gap between the reads standing in for the reload."""
+    admin = learning_admin
+    turn = send_message(admin.client(), MISTAKE.format(topic=DEFAULT_TOPIC, secret=SEED_SECRET), model=agent_model)
+    wait_for_reply(admin.client(), turn)
+    lesson = wait_for_lesson(admin, "wrong way for lesson-topic-main")
+
+    rows = wait_for_saved_row(admin, turn)
+    row = rows[0]
+    assert len(rows) == 1, "one write laid more than one row"
+    assert row["done"] is True
+    assert not row.get("hidden"), "the row arrived hidden"
+    assert row.get("lessonId") == lesson["id"], "the row lost its lesson id"
+    assert isinstance(row.get("description"), str) and row["description"].startswith("Lesson saved: "), (
+        f"the row is not memory-row style: {row.get('description')!r}"
+    )
+    assert lesson["title"] in row["description"], "the row dropped the lesson's topic"
+
+    # Reload semantics: a fresh fetch after the live-sync window reads the
+    # same row from the stored chat record — the chip never did this.
+    time.sleep(2.0)
+    reloaded = lesson_saved_rows(admin, turn.chat_id, turn.assistant_message_id)
+    assert reloaded == rows, "the in-chat row did not survive a reload from the stored record"
+
+    # The row lives in the status surface, never the bubble: no tag anywhere.
+    with admin.client() as client:
+        stored = client.get(f"/api/v1/chats/{turn.chat_id}").json()
+    bubble = stored["chat"]["history"]["messages"][turn.assistant_message_id]
+    assert "lesson_hints" not in (bubble.get("content") or ""), "the tag leaked into the assistant bubble"
+    assert "lesson_hints" not in json.dumps(bubble.get("statusHistory") or []), "the tag leaked into the row"
 
 
 def test_quiet_turns_skip_the_reflection_budget(learning_admin, agent_model):
@@ -565,10 +625,21 @@ def test_switches_off_stop_observe_reflect_and_inject(learning_admin, dial, agen
     before_obs = len(observation_lines())
     before_reflect = len(reflect_requests())
     tag = f"switch-off-{uuid.uuid4().hex[:8]}"
-    send_turn(admin.client(), MISTAKE.format(topic="lesson-topic-switch", secret=SEED_SECRET) + f" {tag}", model=agent_model)
+    off_turn = send_message(
+        admin.client(),
+        MISTAKE.format(topic="lesson-topic-switch", secret=SEED_SECRET) + f" {tag}",
+        model=agent_model,
+    )
+    wait_for_reply(admin.client(), off_turn)
     assert len(observation_lines()) == before_obs, "observe kept running while learning was switched off"
     assert len(reflect_requests()) == before_reflect, "reflect kept running while learning was switched off"
     assert not injected_requests(tag), "inject kept running while learning was switched off"
+    # Fix round 3: silence is also a silent chat record — reflect never ran,
+    # so no lesson-saved row may appear on that turn.
+    time.sleep(3.0)
+    assert not lesson_saved_rows(admin, off_turn.chat_id, off_turn.assistant_message_id), (
+        "the switched-off write laid an in-chat row"
+    )
 
     dial(enabled=True)
     off_user = create_user(learning_instance, role="user")
@@ -576,14 +647,20 @@ def test_switches_off_stop_observe_reflect_and_inject(learning_admin, dial, agen
         client.post(f"{LESSON_ROUTE}/switch", json={"enabled": False}).raise_for_status()
     user_tag = f"user-switch-off-{uuid.uuid4().hex[:8]}"
     before_obs = len(observation_lines())
-    send_turn(
-        off_user.client(),
-        MISTAKE.format(topic="lesson-topic-user-switch", secret=SEED_SECRET) + f" {user_tag}",
-        model=agent_model,
-    )
+    with off_user.client() as client:
+        user_off_turn = send_message(
+            client,
+            MISTAKE.format(topic="lesson-topic-user-switch", secret=SEED_SECRET) + f" {user_tag}",
+            model=agent_model,
+        )
+        wait_for_reply(client, user_off_turn)
     assert len(observation_lines()) == before_obs, "the per-user switch left observe running"
     assert not injected_requests(user_tag), "the per-user switch left inject running"
     assert lessons_for(off_user) == [], "the switched-off user wrote a lesson"
+    time.sleep(3.0)
+    assert not lesson_saved_rows(off_user, user_off_turn.chat_id, user_off_turn.assistant_message_id), (
+        "the per-user switched-off write laid an in-chat row"
+    )
 
 
 def test_admin_summary_reports_the_aggregates(learning_admin):
