@@ -245,13 +245,29 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _log_request(self, body: dict, received: int, chunk_ts: list[int]) -> None:
         """One line per provider request: the declared tools, the last user
-        message, the role shape, the receipt time, and each chunk's send time
-        (the source side of the round's frame-latency probe)."""
+        message, the head (the last system message's rendered text — the
+        channel the prompt head and the PR11 lesson block ride, PR3/PR8/PR11),
+        the role shape, the receipt time, and each chunk's send time (the
+        source side of the round's frame-latency probe)."""
         if not os.environ.get("OPENAI_FAKE_LOG"):
             return
         with open(os.environ["OPENAI_FAKE_LOG"], "a") as log:
             names = [t.get("function", {}).get("name") for t in body.get("tools") or []]
-            log.write(json.dumps({"tools": names, "last_user": _text(next((m for m in reversed(body.get("messages") or []) if m.get("role") == "user"), {}).get("content")), "roles": [m.get("role") for m in body.get("messages") or []], "ts": received, "chunk_ts": chunk_ts}) + "\n")
+            messages = body.get("messages") or []
+            last_system = next((m for m in reversed(messages) if m.get("role") in ("system", "developer")), {})
+            log.write(
+                json.dumps(
+                    {
+                        "tools": names,
+                        "last_user": _text(next((m for m in reversed(messages) if m.get("role") == "user"), {}).get("content")),
+                        "last_system": _text(last_system.get("content")),
+                        "roles": [m.get("role") for m in messages],
+                        "ts": received,
+                        "chunk_ts": chunk_ts,
+                    }
+                )
+                + "\n"
+            )
 
     def _json(self, status: int, payload: dict) -> None:
         encoded = json.dumps(payload).encode()

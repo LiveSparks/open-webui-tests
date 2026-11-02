@@ -227,9 +227,14 @@ def reflect_requests() -> list[dict]:
 
 
 def injected_requests(fragment: str | None = None) -> list[dict]:
-    """Provider requests whose last user text rides a lesson_hints head."""
+    """Provider requests whose head carries a lesson_hints block: since fix
+    round 1 the block rides the head channel (the request's system message,
+    PR3/PR8) and never the user turn, so the tag asserts against the head."""
     return [
-        entry for entry in fake_requests("lesson_hints") if fragment is None or fragment in entry["last_user"]
+        entry
+        for entry in fake_requests()
+        if "lesson_hints" in (entry.get("last_system") or "")
+        and (fragment is None or fragment in (entry.get("last_user") or ""))
     ]
 
 
@@ -415,7 +420,8 @@ def test_injection_rides_a_related_turn_and_keeps_the_floor(learning_admin, agen
     send_turn(admin.client(), RELATED, model=agent_model)
     related = injected_requests(RELATED)
     assert related, "no related turn rode the lesson head"
-    head = related[-1]["last_user"]
+    assert "lesson_hints" not in (related[-1]["last_user"] or ""), "the lesson block rode the user turn"
+    head = related[-1]["last_system"]
     assert "lesson_hints" in head
     assert lesson["trigger"] in head, "the head carries the lesson body"
     assert "WHEN" in head and "THEN" in head, "the head is the composed WHEN/THEN shape"
@@ -432,7 +438,7 @@ def test_char_budget_cuts_the_head(learning_admin, dial, agent_model):
     send_turn(admin.client(), RELATED, model=agent_model)
     related = injected_requests(RELATED)
     assert related, "no related turn rode the lesson head"
-    head = related[-1]["last_user"]
+    head = related[-1]["last_system"]
     # The head sits inside the same provider request; the block it carries is
     # bounded by the dial — assert the composed block is under the lane's 2000
     # chars even though the raw store of lessons can exceed it.
@@ -483,8 +489,9 @@ def test_mature_lessons_stay_always_on(learning_admin, dial, agent_model):
     send_turn(admin.client(), UNRELATED, model=agent_model)
     related = injected_requests(UNRELATED)
     assert related, "the always-on set did not ride an unrelated turn"
-    head = related[-1]["last_user"]
+    head = related[-1]["last_system"]
     assert "lesson_hints" in head
+    assert "lesson_hints" not in (related[-1]["last_user"] or ""), "the always-on set rode the user turn"
     # The floor is beyond the graduated lesson's similarity; it rode anyway.
     with admin.client() as client:
         rows = client.get(LESSON_ROUTE).json()
