@@ -374,7 +374,7 @@ def test_reflect_job_writes_one_shaped_lesson(learning_admin, agent_model):
     assert store_hits, "the reflection prompt never reached the cheap model"
 
 
-def test_the_saved_lesson_lays_a_row_that_survives_reload(learning_admin, agent_model):
+def test_the_saved_lesson_lays_a_row_that_survives_reload(dial, learning_admin, agent_model):
     """Fix round 3, the persistence proof: the write lays a PERSISTENT in-chat
     row on the assistant turn, in the memory-save event style (EVENTS.LESSON_SAVED
     with a data bag at publish, then the chat event surface's status machinery
@@ -385,6 +385,11 @@ def test_the_saved_lesson_lays_a_row_that_survives_reload(learning_admin, agent_
     # module's default mistake, and the store's dedup absorb lays no NEW row
     # — only a fresh write owns the write moment this test films.
     topic = f"lesson-topic-row-{uuid.uuid4().hex[:8]}"
+    # The floor rides with the film: a fresh write's turn must not inject the
+    # module's older lessons, because every injected lesson eats the turn's
+    # own correction signal as a contradiction — poison for the gates the
+    # later graduation tests close. This lane films the row, not the ledger.
+    dial(injection_floor=0.99)
     admin = learning_admin
     turn = send_message(admin.client(), MISTAKE.format(topic=topic, secret=SEED_SECRET), model=agent_model)
     wait_for_reply(admin.client(), turn)
