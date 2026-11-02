@@ -381,10 +381,14 @@ def test_the_saved_lesson_lays_a_row_that_survives_reload(learning_admin, agent_
     records the row inside the chat record). The round-2 floating chip was
     reload-gone; this row must read back from the stored record twice, with a
     gap between the reads standing in for the reload."""
+    # A unique topic: this test runs after others that already reflected the
+    # module's default mistake, and the store's dedup absorb lays no NEW row
+    # — only a fresh write owns the write moment this test films.
+    topic = f"lesson-topic-row-{uuid.uuid4().hex[:8]}"
     admin = learning_admin
-    turn = send_message(admin.client(), MISTAKE.format(topic=DEFAULT_TOPIC, secret=SEED_SECRET), model=agent_model)
+    turn = send_message(admin.client(), MISTAKE.format(topic=topic, secret=SEED_SECRET), model=agent_model)
     wait_for_reply(admin.client(), turn)
-    lesson = wait_for_lesson(admin, "wrong way for lesson-topic-main")
+    lesson = wait_for_lesson(admin, topic)
 
     rows = wait_for_saved_row(admin, turn)
     row = rows[0]
