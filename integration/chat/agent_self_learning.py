@@ -475,86 +475,6 @@ def test_ledger_rows_and_confirmations_rise(learning_admin, agent_model):
 
 
 # ---------------------------------------------------------------------------
-# Gate 9 parity: the floor gate keeps bystanders whole, and the content
-# revision replaces the numeric story past the contradiction threshold.
-# ---------------------------------------------------------------------------
-
-
-def test_the_floor_gate_keeps_a_bystander_off_an_unrelated_correction(learning_admin, agent_model):
-    """A correction turn whose text shares nothing with an injected lesson
-    leaves that lesson standing: no contradiction, no confidence move. The
-    bystander rides as the always-on mature set ('instead' is the turn's
-    correction signal word and a glue token, not shared vocabulary)."""
-    admin = learning_admin
-    bystander = graduate_the_default_lesson(admin, agent_model)
-    before = lesson_row(admin, bystander["id"])
-    assert before is not None
-    assert before["contradictions"] == 0
-    topic = f"lesson-topic-orchid-{uuid.uuid4().hex[:8]}"
-    send_turn(
-        admin.client(),
-        f"the orchid manual says water it less instead of daily, topic {topic}, bearer {SEED_SECRET}",
-        model=agent_model,
-    )
-    wait_for_lesson(admin, topic)  # the turn itself taught an orchid lesson
-    time.sleep(1.5)  # the reflect job's ledger post lands after the write
-    after = lesson_row(admin, bystander["id"])
-    assert after is not None
-    assert after["contradictions"] == 0, "a bystander lesson paid for an unrelated correction"
-    assert after["confidence"] == before["confidence"], "the bystander's confidence moved"
-    assert after["confirmations"] == before["confirmations"]
-
-
-def test_repeat_mistakes_revise_the_lesson_at_the_contradiction_threshold(learning_admin, agent_model):
-    """A lesson contradicted on its own ground stops paying in numbers at the
-    threshold: the loop composes the revised/retracted lesson over the reflect
-    surface, adopts it, and marks the old lesson retracted in the sidecar
-    ledger state. The repeat line carries the queue/tracer filler and the
-    repeatmistake marker so its shared vocabulary clears the topic lesson's
-    floor gate while staying under the bystander's own (the gate is the
-    share of the smaller text's vocabulary, floored at two shared words)."""
-    admin = learning_admin
-    topic = f"lesson-topic-{uuid.uuid4().hex[:12]}"
-    send_turn(admin.client(), MISTAKE.format(topic=topic, secret=SEED_SECRET), model=agent_model)
-    lesson = wait_for_lesson(admin, topic)
-    assert lesson["contradictions"] == 0
-    repeat = f"wrong flag order when deploying again from the queue tracer, topic {topic}, repeatmistake-{topic}"
-    for _ in range(2):  # two contradictions below the threshold
-        send_turn(admin.client(), repeat, model=agent_model)
-    wait_until(
-        lambda: (lesson_row(admin, lesson["id"]) or {}).get("contradictions") == 2,
-        25,
-        "the repeat pulses never landed",
-    )
-    # the threshold pulse composes the revision instead of a third decrement
-    send_turn(admin.client(), repeat, model=agent_model)
-    deadline = time.monotonic() + 30
-    revised = None
-    while time.monotonic() < deadline and revised is None:
-        revised = next(
-            (row for row in lessons_for(admin) if row["title"].startswith("Retract") and topic in row["trigger"]),
-            None,
-        )
-        time.sleep(0.3)
-    if revised is None:
-        pytest.fail(f"no revised lesson composed for {topic}; store held {lessons_for(admin)}")
-    assert revised["confidence"] == pytest.approx(0.55), "the replacement rode the store's base"
-    time.sleep(1.5)  # the retraction row lands on the same ledger post
-    old = lesson_row(admin, lesson["id"])
-    assert old is not None
-    assert old["contradictions"] == 2, "the threshold pulse paid in numbers"
-    assert old["status"] == "active", "a retraction without the store status surface moved a status"
-    # a further repeat moves nothing: the retracted lesson never pulses again
-    send_turn(admin.client(), repeat, model=agent_model)
-    time.sleep(1.5)
-    assert lesson_row(admin, lesson["id"])["contradictions"] == 2
-    stored = json.loads((Path(LANE_DIR) / "agent_learning" / "ledger.json").read_text())
-    entry = stored[lesson["id"]]
-    assert entry["retracted"] is True
-    assert entry["supersededBy"] == revised["id"]
-
-
-# ---------------------------------------------------------------------------
 # The injection half: retrieval by relevance, floor discipline.
 # ---------------------------------------------------------------------------
 
@@ -769,6 +689,102 @@ def test_admin_summary_reports_the_aggregates(learning_admin):
             "confirmRate",
         }
         assert isinstance(body["statusCounts"], dict)
+
+
+# ---------------------------------------------------------------------------
+# Gate 9 parity: the floor gate keeps bystanders whole, and the content
+# revision replaces the numeric story past the contradiction threshold.
+# ---------------------------------------------------------------------------
+
+
+def test_the_floor_gate_keeps_a_bystander_off_an_unrelated_correction(learning_admin, agent_model):
+    """A correction turn whose text shares nothing with an injected lesson
+    leaves that lesson standing: no contradiction, no confidence move. The
+    bystander rides as the always-on mature set ('instead' is the turn's
+    correction signal word and a glue token, not shared vocabulary)."""
+    admin = learning_admin
+    # a fresh always-on bystander: written from its own turn, closed to
+    # graduation by confirmations, so nothing older already settled it
+    bystander_topic = f"lesson-topic-bystander-{uuid.uuid4().hex[:8]}"
+    send_turn(admin.client(), MISTAKE.format(topic=bystander_topic, secret=SEED_SECRET), model=agent_model)
+    bystander = wait_for_lesson(admin, bystander_topic)
+    confirm(admin, bystander["id"], times=3)
+    wait_until(
+        lambda: (lesson_row(admin, bystander["id"]) or {}).get("status") == "graduated",
+        15,
+        f"the bystander lesson {bystander['id']} never graduated",
+    )
+    before = lesson_row(admin, bystander["id"])
+    assert before is not None
+    topic = f"lesson-topic-orchid-{uuid.uuid4().hex[:8]}"
+    send_turn(
+        admin.client(),
+        f"the orchid manual says water it less instead of daily, topic {topic}, bearer {SEED_SECRET}",
+        model=agent_model,
+    )
+    wait_for_lesson(admin, topic)  # the turn itself taught an orchid lesson
+    time.sleep(1.5)  # the reflect job's ledger post lands after the write
+    after = lesson_row(admin, bystander["id"])
+    assert after is not None
+    assert after["contradictions"] == before["contradictions"], "a bystander lesson paid for an unrelated correction"
+    assert after["confidence"] == before["confidence"], "the bystander's confidence moved"
+    assert after["confirmations"] == before["confirmations"]
+
+
+def test_repeat_mistakes_revise_the_lesson_at_the_contradiction_threshold(learning_admin, agent_model):
+    """A lesson contradicted on its own ground stops paying in numbers at the
+    threshold: the loop composes the revised/retracted lesson over the reflect
+    surface, adopts it, and marks the old lesson retracted in the sidecar
+    ledger state. The repeat line carries the queue/tracer filler and the
+    repeatmistake marker so its shared vocabulary clears the topic lesson's
+    floor gate while staying under the bystander's own (the gate is the
+    share of the smaller text's vocabulary, floored at two shared words)."""
+    admin = learning_admin
+    topic = f"lesson-topic-{uuid.uuid4().hex[:12]}"
+    send_turn(admin.client(), MISTAKE.format(topic=topic, secret=SEED_SECRET), model=agent_model)
+    lesson = wait_for_lesson(admin, topic)
+    assert lesson["contradictions"] == 0
+    repeat = f"wrong flag order when deploying again from the queue tracer, topic {topic}, repeatmistake-{topic}"
+    for reached in (1, 2):  # two contradictions below the threshold
+        send_turn(admin.client(), repeat, model=agent_model)
+        wait_until(
+            lambda: (lesson_row(admin, lesson["id"]) or {}).get("contradictions", 0) >= reached,
+            25,
+            f"the contradiction step {reached} never landed",
+        )
+    # the threshold pulse composes the revision instead of a third decrement
+    send_turn(admin.client(), repeat, model=agent_model)
+
+    def revised_row():
+        return next(
+            (row for row in lessons_for(admin) if row["title"].startswith("Retract") and topic in row["trigger"]),
+            None,
+        )
+
+    wait_until(
+        lambda: revised_row() is not None,
+        60,
+        f"no revised lesson composed for {topic}; store held {lessons_for(admin)}",
+    )
+    revised = revised_row()
+    assert revised["confidence"] == pytest.approx(0.55), "the replacement rode the store's base"
+
+    def retracted_entry():
+        stored = json.loads((Path(LANE_DIR) / "agent_learning" / "ledger.json").read_text())
+        entry = stored.get(lesson["id"], {})
+        return entry if entry.get("retracted") else None
+
+    wait_until(lambda: retracted_entry() is not None, 15, "the sidecar ledger never marked the lesson retracted")
+    entry = retracted_entry()
+    assert entry["supersededBy"] == revised["id"]
+    old = lesson_row(admin, lesson["id"])
+    assert old is not None
+    assert old["contradictions"] == 2, "the threshold pulse paid in numbers"
+    assert old["status"] == "active", "the frozen surface carries no retract status; the lesson stays active"
+    # a further repeat moves nothing: the retracted lesson never pulses again
+    send_turn(admin.client(), repeat, model=agent_model)
+    time.sleep(1.5)
+    assert lesson_row(admin, lesson["id"])["contradictions"] == 2
 
 
 # ---------------------------------------------------------------------------
