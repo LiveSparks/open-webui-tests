@@ -109,6 +109,25 @@ def _script_reply(body: dict) -> list[tuple[dict, str | None]]:
     if "OWUI_LESSON_REFLECT" in prompt:
         import re
 
+        # Gate 9 parity lanes: the sidecar's composed revision call quotes the
+        # contradicting lesson and says 'retract'; the repeat-mistake lane
+        # marks its turns 'repeatmistake' and keeps the base so the pulses
+        # fall on the already-stored lesson instead of a fresh write.
+        if "retract" in prompt:
+            match = re.search(r"lesson-topic-[A-Za-z0-9-]+", prompt)
+            retracted_topic = match.group(0) if match else "lesson-topic-main"
+            payload = json.dumps(
+                {
+                    "keep_base": False,
+                    "title": f"Retract the {retracted_topic} rule",
+                    "trigger": f"the old {retracted_topic} rule proved wrong in repeats",
+                    "action": f"follow the revised {retracted_topic} order instead",
+                }
+            )
+            return [({"role": "assistant"}, None), ({"content": payload}, "stop")]
+        if "repeatmistake" in prompt:
+            return [({"role": "assistant"}, None), ({"content": "KEEP THE BASE"}, "stop")]
+
         topic = None
         # The full slug is the topic identity: lanes and the stored trigger
         # both carry "lesson-topic-<slug>" verbatim, not the slug tail alone.
