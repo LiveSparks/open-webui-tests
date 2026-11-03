@@ -20,6 +20,7 @@ import pytest
 from playwright.sync_api import Browser, BrowserContext, Page
 
 from conftest import AppConfig
+from harness import reset as shared_boot
 from harness.actors import Actor
 from harness.fixtures import TEST_USER_EMAIL, TEST_USER_PASSWORD
 from harness.instance import (
@@ -33,6 +34,35 @@ from harness.prepared_data import serving
 from harness.reply_gate import hold_new_chat_events
 
 ARTIFACTS_DIR = Path("test-results")
+
+# Modules that keep cached state on the session instance across function items go here with
+# the reason, or mark themselves `shared_boot_off`; both only carry weight under
+# `OWUI_SHARED_BOOT=1`, where the autouse reset below wipes state between items.
+OPT_OUT = ()
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    shared_boot.register_opt_out_marker(config)
+
+
+@pytest.fixture(autouse=True)
+def shared_boot_reset(request: pytest.FixtureRequest) -> Generator[None]:
+    """The shared-boot mode's explicit reset between function items.
+
+    Under `OWUI_SHARED_BOOT=1`, a browser item whose fixture closure reaches the session
+    instance gets per-test state wiped through the server's own admin surface afterwards
+    - after the page fixture has torn down - and the module's config snapshot restored;
+    `harness/reset.py` carries the exact contract. A module outside that reach, on the
+    opt-out list or marked `shared_boot_off` passes through untouched; mode-off never
+    reaches this body.
+    """
+    instance = shared_boot.target(request, OPT_OUT)
+    if instance is None:
+        yield
+        return
+    snapshot = shared_boot.snapshot_for(request.node.module.__name__, instance)
+    yield
+    shared_boot.run_after_item(instance, snapshot)
 
 
 @pytest.hookimpl(hookwrapper=True)
