@@ -55,9 +55,12 @@ def test_ocr_dependency_uses_the_installable_rapidocr_distribution(open_webui_ba
 
 
 def test_requirements_still_pin_the_rest_of_the_image_stack(open_webui_backend):
+    """The no-local-machine strip removed onnxruntime from the image on
+    purpose, so the guard pins only the preview stack and keeps it out."""
     pins = _requirement_names(_source(open_webui_backend, "requirements.txt"))
-    for package in ("pillow", "opencv-python-headless", "onnxruntime"):
+    for package in ("pillow", "opencv-python-headless"):
         assert package in pins, f"{package} missing from requirements"
+    assert "onnxruntime" not in pins, "onnxruntime crept back into requirements"
 
 
 # =============================================================================

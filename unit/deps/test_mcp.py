@@ -7,16 +7,17 @@ things stay here:
 
 - Two sweeps over the backend with `ast`: every name it imports from the SDK still resolves, and
   every call into such a name still binds its arguments. They catch an import or keyword
-  upstream adds the day it lands, which no request made today can.
-- The client's `list_resources()` and `read_resource()`, which no feature calls yet: their
-  session calls still bind and the result keeps the `resources` field the client reads.
+  upstream adds the day it lands, which no request made today can. The session calls behind
+  `list_resources()` and `read_resource()` run through this sweep: the calls themselves were
+  never pinned on a retired high-level `Client`, only on what the backend's client.py actually
+  imports and binds.
+- The `resources` field the client reads stays on the result's model_dump.
 
 Everything is offline: no server is spawned and no transport is opened. Uses the `depcheck`
 fixture from unit/deps/conftest.py; skips when mcp is not importable.
 
 Discriminates: in a backend copy importing a name the installed SDK lacks, the import inventory
-fails; calling `streamablehttp_client` with a keyword it does not take fails the call check; an SDK
-whose `read_resource` stops taking the URI positionally fails the session check.
+fails; calling `streamablehttp_client` with a keyword it does not take fails the call check.
 """
 
 from __future__ import annotations
@@ -31,15 +32,6 @@ import pytest
 pytestmark = pytest.mark.depcheck
 
 IMPORT_NAME = "mcp"
-
-# The client.py calls into mcp's high-level Client that no feature reaches yet: (method,
-# positional arguments, keyword arguments). Connecting, listing tools and calling one run end to
-# end over HTTP.
-SESSION_CALLS = [
-    ("list_resources", (), {"cursor": None}),
-    ("read_resource", ("file:///notes.txt",), {}),
-]
-
 
 def _is_mcp(module: str | None) -> bool:
     return module == IMPORT_NAME or (module or "").startswith(f"{IMPORT_NAME}.")
@@ -117,19 +109,6 @@ def test_every_call_into_an_imported_name_binds(depcheck, open_webui_backend):
                 where = f"{path.relative_to(open_webui_backend)}:{node.lineno}"
                 problems.append(f"{where} {ast.unparse(node.func)}(...): {problem}")
     assert not problems, f"backend calls the installed mcp no longer accepts: {problems}"
-
-
-@pytest.mark.parametrize(
-    ("method", "args", "kwargs"), SESSION_CALLS, ids=[call[0] for call in SESSION_CALLS]
-)
-def test_the_session_calls_client_py_makes_still_bind(depcheck, method, args, kwargs):
-    mod = depcheck.load(IMPORT_NAME)
-    client_method = getattr(mod.Client, method, None)
-    assert inspect.iscoroutinefunction(client_method), f"Client.{method} is not async"
-    try:
-        inspect.signature(client_method).bind(None, *args, **kwargs)
-    except TypeError as error:
-        pytest.fail(f"client.py's Client.{method}(...) call no longer binds: {error}")
 
 
 def test_list_resources_result_shape(depcheck):
