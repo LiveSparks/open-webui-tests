@@ -40,9 +40,13 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import uvicorn
-from mcp.server.mcpserver import Audio, Image, MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
+# The trunk backend pins mcp==1.27.2 (the 1.x line, `fastmcp` staging), so the
+# harness mock server runs there too — one interpreter satisfies both sides.
+from mcp.server.fastmcp import Audio, FastMCP, Image
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
+
+MCPServer = FastMCP
 from pydantic import BaseModel
 
 from harness.instance import free_port
