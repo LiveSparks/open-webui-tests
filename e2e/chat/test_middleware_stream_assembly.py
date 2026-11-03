@@ -12,7 +12,9 @@
   first thinking chunk was written into it, so the thinking streamed as the answer until the
   turn finished. The stored reply was right, so only the live page shows it.
 
-Twin of unit/chat/test_middleware_stream_assembly.py.
+The AST audit over the backend source this module twin'd (unit/chat/test_middleware_stream_assembly.py)
+was retired in the PR14 deletion round; its intent — every arm that abandons a run reports the error —
+now drives the pi side at unit/chat/test_translator_error_reporting.py.
 
 `test_a_provider_that_hangs_up_after_a_tool_call_shows_an_error` failed on dev 10fdca6e3 in CI
 with the reply stuck on the tool call although the server logged the connection error, and

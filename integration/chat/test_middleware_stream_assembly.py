@@ -19,7 +19,9 @@
 * #29052 / #29040 (`87bed3f0b`) only showed live in the page (its e2e twin); the stored thinking
   blocks after tool rounds are pinned here as nearby.
 
-Twin of unit/chat/test_middleware_stream_assembly.py.
+The AST audit over the backend source this module twin'd (unit/chat/test_middleware_stream_assembly.py)
+was retired in the PR14 deletion round; its intent — every arm that abandons a run reports the error —
+now drives the pi side at unit/chat/test_translator_error_reporting.py.
 
 Discriminates: passes on dev `bbfa876af`; each narrow test fails with its fix reverted (the outlet
 deepcopy, the late-reasoning placement, the contentless-details guard, the system prompt
