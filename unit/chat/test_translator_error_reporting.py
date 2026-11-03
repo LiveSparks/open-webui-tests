@@ -89,6 +89,7 @@ async def _translated(agent_module, event: str, data: dict) -> list[dict]:
     yielded = [line async for line in translator.translate(event, data)]
     yielded.extend(translator.flush_lines())
     yielded.append(translator.final_line())
+    yielded.append("data: [DONE]\n\n")  # the dispatch's terminal line after the final frame
     return _collect(yielded)
 
 
@@ -110,7 +111,11 @@ async def test_a_run_that_finishes_failed_closes_with_a_reported_error(agent_mod
 async def test_an_aborted_run_closes_without_a_fabricated_error(agent_module):
     """The `reason=aborted` arm: stop keeps partial content; no invented failure."""
     translator = agent_module.PiEventTranslator()
-    frames = await _translated(agent_module, "done", {"type": "done", "reason": "aborted"})
+    stems = [line async for line in translator.translate("done", {"type": "done", "reason": "aborted"})]
+    stems.extend(translator.flush_lines())
+    stems.append(translator.final_line())
+    stems.append("data: [DONE]\n\n")
+    frames = _collect(stems)
     assert translator.aborted is True
     assert _failed_contents(frames) == [], _failed_contents(frames)
 
@@ -123,7 +128,9 @@ def bridge_ready(agent_module, monkeypatch):
     monkeypatch.setenv("AGENT_SIDECAR_PORT", "15014")
 
     async def _session(client, chat_id, system):
-        return {"running": False, "userTurns": 100}
+        # userTurns matches the turn already in hand, so the fork decision never
+        # fires: the arms under audit are the prompt stream's, not the fork's.
+        return {"running": False, "userTurns": 0}
 
     async def _head_section():
         "A prompt-head section stand-in, so no Config store is touched."
@@ -150,11 +157,13 @@ def _text_delta(contentIndex: int = 0) -> tuple:
     )
 
 
-async def _driven_body(agent_module, events):
-    """Build the agent response with `stream_sidecar_events` replaced.
+async def _driven_body(agent_module, events) -> tuple[list[dict], object]:
+    """Drive the dispatch with `stream_sidecar_events` replaced; return (frames, response).
 
     `events` carries (event, data) tuples with one exception mixed in, since the
-    arms under audit live in the `except` clauses around the stream loop."""
+    arms under audit live in the `except` clauses around the stream loop. The
+    body is consumed while the patch holds: the SSE stream runs lazily, and a
+    body read after the patch exits would dial the real (dead) sidecar"""
 
     async def stream(*args, **kwargs):
         for event in events:
@@ -164,14 +173,14 @@ async def _driven_body(agent_module, events):
 
     with patch.object(agent_module, "stream_sidecar_events", stream):
         response = await agent_module.generate_agent_chat_completion(_agent_request(), _form_data(), None)
-    return _collect([chunk async for chunk in response.body_iterator])
+        return _collect([chunk async for chunk in response.body_iterator]), response
 
 
 @pytest.mark.asyncio
 async def test_a_generic_exception_in_the_stream_frames_the_failure(bridge_ready):
     """The generic-exception arm: framed (`agent sidecar error: ...`), and the
     body still terminates with [DONE]."""
-    frames = await _driven_body(
+    frames, _ = await _driven_body(
         bridge_ready,
         [_text_delta(), RuntimeError("socket died mid-run")],
     )
@@ -182,7 +191,7 @@ async def test_a_generic_exception_in_the_stream_frames_the_failure(bridge_ready
 @pytest.mark.asyncio
 async def test_a_stream_refusal_frames_its_detail(bridge_ready):
     """The `HTTPException` arm: a sidecar refusal mid-run frames its detail."""
-    frames = await _driven_body(
+    frames, _ = await _driven_body(
         bridge_ready,
         [_text_delta(), bridge_ready.HTTPException(status_code=507, detail="session refused the prompt")],
     )
@@ -194,7 +203,7 @@ async def test_a_stream_refusal_frames_its_detail(bridge_ready):
 async def test_the_run_result_frames_a_failed_prompt(bridge_ready):
     """The clean-run arm: the `done` result frame's outcome frames the close
     (failure crosses; abort does not)."""
-    frames = await _driven_body(
+    frames, _ = await _driven_body(
         bridge_ready,
         [_text_delta(), ("done", {"reason": "error", "error": "cap: turn budget"})],
     )
