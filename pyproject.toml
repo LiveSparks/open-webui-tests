@@ -55,6 +55,7 @@ dependencies = [
     "uvicorn",
     "weaviate-client",
     "websockets",
+    "pytest-xdist>=3.8.0",
 ]
 
 # This is a test suite, not an importable library: tell setuptools there
